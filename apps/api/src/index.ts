@@ -39,6 +39,7 @@ export interface Env {
     LINE_CHANNEL_ACCESS_TOKEN?: string;
     LINE_CHANNEL_SECRET?: string;
     LINE_USER_ID?: string;
+    OG_IMAGE_BASE_URL?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -177,4 +178,3 @@ export default {
         }
     },
 };
-

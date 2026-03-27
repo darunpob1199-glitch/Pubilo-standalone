@@ -26,16 +26,18 @@ app.post('/', async (c) => {
         if (!userId) return c.json({ success: false, error: 'Missing userId' }, 400);
 
         const now = new Date().toISOString();
+        const normalizedToken = adsToken || null;
 
         await c.env.DB.prepare(`
-            INSERT INTO tokens (user_id, ads_token, cookie, fb_dtsg, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO tokens (user_id, ads_token, post_token, cookie, fb_dtsg, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
                 ads_token = excluded.ads_token,
+                post_token = excluded.post_token,
                 cookie = excluded.cookie,
                 fb_dtsg = excluded.fb_dtsg,
                 updated_at = excluded.updated_at
-        `).bind(userId, adsToken || null, cookie || null, fbDtsg || null, now).run();
+        `).bind(userId, normalizedToken, normalizedToken, cookie || null, fbDtsg || null, now).run();
 
         return c.json({ success: true });
     } catch (error) {

@@ -2,10 +2,7 @@ name = "pubilo-og-prod"
 main = "build/worker/shim.mjs"
 compatibility_date = "2025-01-29"
 
-[build]
-command = "cargo install -q worker-build && worker-build --release"
-
 [[rules]]
 type = "Data"
-globs = ["**/*.otf"]
+globs = ["**/*.otf", "**/*.wasm"]
 fallthrough = true

@@ -13,10 +13,25 @@ app.post('/', async (c) => {
         let apiKey = c.env.GEMINI_API_KEY;
 
         if (!apiKey) {
-            const settings = await c.env.DB.prepare(`
-                SELECT gemini_api_key FROM global_settings WHERE id = 1
-            `).first();
-            apiKey = settings?.gemini_api_key as string;
+            try {
+                const settings = await c.env.DB.prepare(`
+                    SELECT setting_value FROM global_settings WHERE setting_key = ?
+                `).bind('gemini_api_key').first<{ setting_value: string }>();
+                apiKey = settings?.setting_value;
+            } catch {
+                // Fall back to legacy schema if it still exists.
+            }
+        }
+
+        if (!apiKey) {
+            try {
+                const legacySettings = await c.env.DB.prepare(`
+                    SELECT gemini_api_key FROM global_settings WHERE id = 1
+                `).first<{ gemini_api_key: string }>();
+                apiKey = legacySettings?.gemini_api_key;
+            } catch {
+                // Ignore legacy lookup failures.
+            }
         }
 
         if (!apiKey) {

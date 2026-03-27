@@ -192,7 +192,7 @@ openBtn.addEventListener("click", async () => {
   }
 
   // Open Pubilo
-  chrome.tabs.create({ url: "https://pubilo.lslly.com/" }, () => {
+  chrome.tabs.create({ url: "https://pubilo-web-prod.pages.dev/" }, () => {
     window.close();
   });
 });

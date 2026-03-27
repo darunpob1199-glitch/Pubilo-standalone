@@ -131,11 +131,15 @@ async function uploadImageToHost(base64Data: string, FREEIMAGE_API_KEY: string):
 
 
 
-async function generateOGImage(quoteText: string, backgroundUrl: string, font: string): Promise<string> {
+async function generateOGImage(quoteText: string, backgroundUrl: string, font: string, baseUrl?: string): Promise<string> {
     // Use Rust Worker to generate OG Image - return URL directly
     const cleanText = quoteText.replace(/\n/g, ' ').trim();
     const ogParams = new URLSearchParams({ text: cleanText, font, image: backgroundUrl });
-    const generateUrl = `https://og-image-rust.yokthanwa1993-bc9.workers.dev/api/generate.png?${ogParams.toString()}`;
+    const normalizedBaseUrl = (baseUrl || '').trim().replace(/\/+$/, '');
+    if (!normalizedBaseUrl) {
+        throw new Error('OG image worker is not configured');
+    }
+    const generateUrl = `${normalizedBaseUrl}/api/generate.png?${ogParams.toString()}`;
     
     // Facebook will fetch the image from this URL when posting
     return generateUrl;
@@ -257,11 +261,22 @@ app.get('/', async (c) => {
                 
                 if (config.image_source === 'og' && config.og_background_url) {
                     // Use Rust Worker directly - Facebook will fetch from this URL
-                    imageUrl = await generateOGImage(unusedQuote.quote_text, config.og_background_url, config.og_font || 'noto-sans-thai');
+                    imageUrl = await generateOGImage(
+                        unusedQuote.quote_text,
+                        config.og_background_url,
+                        config.og_font || 'noto-sans-thai',
+                        c.env.OG_IMAGE_BASE_URL
+                    );
                 } else {
                     // Get custom prompt
-                    const promptResult = await c.env.DB.prepare(`SELECT prompt_text FROM prompts WHERE page_id = ? AND prompt_type = 'image_post' LIMIT 1`)
-                        .bind(config.page_id).first<{ prompt_text: string }>();
+                    const promptResult = await c.env.DB.prepare(`
+                        SELECT COALESCE(prompt_text, prompt) as prompt_text
+                        FROM prompts
+                        WHERE (page_id = ? AND prompt_type = 'image_post')
+                           OR (page_id = '_default' AND prompt_type = 'image_post')
+                        ORDER BY CASE WHEN page_id = ? THEN 0 ELSE 1 END, updated_at DESC
+                        LIMIT 1
+                    `).bind(config.page_id, config.page_id).first<{ prompt_text: string }>();
 
                     const base64Image = await generateAIImage(
                         unusedQuote.quote_text,

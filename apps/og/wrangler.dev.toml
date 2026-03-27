@@ -1,4 +1,4 @@
-name = "pubilo-og-prod"
+name = "pubilo-og-dev"
 main = "build/worker/shim.mjs"
 compatibility_date = "2025-01-29"
 

@@ -1,5 +1,5 @@
 #:schema node_modules/wrangler/config-schema.json
-name = "pubilo-api"
+name = "pubilo-api-prod"
 main = "src/index.ts"
 compatibility_date = "2025-01-29"
 compatibility_flags = ["nodejs_compat"]
@@ -9,17 +9,8 @@ NODE_ENV = "production"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "pubilo-database"
-database_id = "0ebf313e-b9ca-4a41-900c-5ce2d45ef094"
-
-# R2 temporarily disabled - using freeimage.host instead
-# [[r2_buckets]]
-# binding = "IMAGES"
-# bucket_name = "pubilo-images"
-
-[[routes]]
-pattern = "api.pubilo.com"
-custom_domain = true
+database_name = "pubilo-database-prod"
+database_id = "59e18881-ca09-41a4-a980-8049c6c0dfb9"
 
 # Cron Triggers (UTC timezone)
 # * * * * * = Every minute - Auto-post

@@ -105,8 +105,15 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 // App URLs - supports both local dev and production
-const APP_URLS = ["http://localhost:3000/*", "http://localhost:3005/*", "https://pubilo.lslly.com/*", "https://www.pubilo.com/*"];
-const PRODUCTION_URL = "https://www.pubilo.com/";
+const APP_URLS = [
+  "http://localhost:3000/*",
+  "http://localhost:3005/*",
+  "https://pubilo-web-dev.pages.dev/*",
+  "https://pubilo-web-prod.pages.dev/*",
+  "https://pubilo.lslly.com/*",
+  "https://www.pubilo.com/*"
+];
+const PRODUCTION_URL = "https://pubilo-web-prod.pages.dev/";
 
 // When extension icon is clicked
 chrome.action.onClicked.addListener(async () => {

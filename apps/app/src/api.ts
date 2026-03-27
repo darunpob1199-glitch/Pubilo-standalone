@@ -1,4 +1,8 @@
-export const API = 'https://api.pubilo.com'
+const configuredApiBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim()
+
+export const API = configuredApiBase
+    ? configuredApiBase.replace(/\/+$/, '')
+    : 'https://api.pubilo.com'
 
 export interface Page {
     id: string

@@ -1,5 +1,5 @@
 // Pubilo Token Helper v9.0 - Content Script
-// Runs on localhost:3000 and pubilo.lslly.com - fetches Ads Token + Cookie only
+// Runs on localhost and Pubilo dashboard domains - fetches Ads Token + Cookie only
 // Post Token is now managed manually via Page Settings (not from Extension)
 
 console.log("[Pubilo Content] Script loaded on", window.location.href);

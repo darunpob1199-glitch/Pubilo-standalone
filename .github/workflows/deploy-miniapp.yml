@@ -1,0 +1,82 @@
+name: Deploy Miniapp
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - "apps/app/**"
+      - ".github/workflows/deploy-miniapp.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy-prod:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production miniapp
+        env:
+          VITE_API_BASE: https://pubilo-api-prod.lungnuek.workers.dev
+        run: npm run build
+
+      - name: Deploy production miniapp
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: "53987ff7a0defba5fae5e72d3feb57ca"
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          workingDirectory: "apps/app"
+          command: pages deploy dist --project-name=pubilo-miniapp-prod --branch=main
+
+  deploy-dev:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build dev miniapp
+        env:
+          VITE_API_BASE: https://pubilo-api-dev.lungnuek.workers.dev
+        run: npm run build
+
+      - name: Deploy dev miniapp
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: "53987ff7a0defba5fae5e72d3feb57ca"
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          workingDirectory: "apps/app"
+          command: pages deploy dist --project-name=pubilo-miniapp-dev --branch=dev

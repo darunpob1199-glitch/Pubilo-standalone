@@ -1,0 +1,18 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "pubilo-api-dev"
+main = "src/index.ts"
+compatibility_date = "2025-01-29"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+NODE_ENV = "development"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pubilo-database-dev"
+database_id = "db4b4763-b654-4361-b739-b77c01be0f99"
+
+[[rules]]
+type = "Data"
+globs = ["**/*.ttf", "**/*.wasm"]
+fallthrough = true
