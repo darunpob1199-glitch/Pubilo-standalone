@@ -590,6 +590,43 @@ function renderPagesDropdown(pages) {
     }
 }
 
+function requestPagesFromExtension(accessToken) {
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            window.removeEventListener("message", handleMessage);
+            reject(new Error("Extension ไม่ตอบกลับรายการเพจ"));
+        }, 8000);
+
+        function cleanup() {
+            clearTimeout(timeout);
+            window.removeEventListener("message", handleMessage);
+        }
+
+        function handleMessage(event) {
+            if (event.source !== window) return;
+            if (event.data.type !== "FEWFEED_PAGES_RESPONSE") return;
+
+            cleanup();
+            const response = event.data.data;
+            if (response?.success && Array.isArray(response.pages)) {
+                resolve(response.pages);
+                return;
+            }
+
+            reject(new Error(response?.error || "ดึงรายชื่อเพจไม่สำเร็จ"));
+        }
+
+        window.addEventListener("message", handleMessage);
+        window.postMessage(
+            {
+                type: "FEWFEED_FETCH_PAGES",
+                accessToken,
+            },
+            "*",
+        );
+    });
+}
+
 // Listen for data injection from extension
 window.addEventListener("message", (event) => {
     if (event.source !== window) return;
@@ -626,9 +663,9 @@ window.addEventListener("message", (event) => {
             !!fbPostToken,
         );
 
-        // Fetch pages - prefer Post Token (works better for me/accounts), fallback to Ads Token
-        if (fbPostToken || fbToken) {
-            fetchPages(fbPostToken || fbToken);
+        // Prefer access token from extension so we get the live page list, not stale D1 only.
+        if (fbToken || fbPostToken) {
+            fetchPages(fbToken || fbPostToken);
         }
     }
 
@@ -670,9 +707,9 @@ window.addEventListener("message", (event) => {
             !!fbPostToken,
         );
 
-        // If we don't have pages yet, fetch them with the new post token
-        if (allPages.length === 0 && fbPostToken) {
-            fetchPages(fbPostToken);
+        // If we don't have pages yet, fetch them with the freshest token we have.
+        if (allPages.length === 0 && (fbToken || fbPostToken)) {
+            fetchPages(fbToken || fbPostToken);
         }
     }
 });
@@ -751,7 +788,7 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// Fetch pages from D1 database via Worker API (no extension required)
+// Fetch pages, preferring the live list from extension and falling back to D1.
 async function fetchPages(accessToken) {
     const tokenType = accessToken?.startsWith("EAAChZC")
         ? "POST_TOKEN"
@@ -765,7 +802,20 @@ async function fetchPages(accessToken) {
         accessToken?.substring(0, 10) + "...",
     );
 
-    // Fetch pages directly from D1 database via Worker API
+    if (accessToken) {
+        try {
+            const extensionPages = await requestPagesFromExtension(accessToken);
+            if (Array.isArray(extensionPages) && extensionPages.length > 0) {
+                renderPagesDropdown(extensionPages);
+                console.log("[FEWFEED] Pages loaded from extension:", extensionPages.length);
+                return;
+            }
+        } catch (error) {
+            console.warn("[FEWFEED] Extension page fetch failed, falling back to D1:", error);
+        }
+    }
+
+    // Fallback: pages from D1 database via Worker API
     try {
         const response = await fetch("/api/pages");
         const data = await response.json();
@@ -789,26 +839,10 @@ async function fetchPages(accessToken) {
                 selectPage(0);
             }
         } else {
-            console.log("[FEWFEED] No pages found in D1, trying extension...");
-            // Fallback to extension if no pages in DB
-            window.postMessage(
-                {
-                    type: "FEWFEED_FETCH_PAGES",
-                    accessToken: accessToken,
-                },
-                "*",
-            );
+            console.log("[FEWFEED] No pages found in D1");
         }
     } catch (error) {
         console.error("[FEWFEED] Failed to fetch pages from API:", error);
-        // Fallback to extension
-        window.postMessage(
-            {
-                type: "FEWFEED_FETCH_PAGES",
-                accessToken: accessToken,
-            },
-            "*",
-        );
     }
 }
 
@@ -1364,8 +1398,7 @@ function loadSavedData() {
         );
     }
 
-    // Always fetch pages from D1 database (doesn't require token)
-    fetchPages(postToken || accessToken);
+    fetchPages(accessToken || postToken);
 }
 
 // Load on startup
