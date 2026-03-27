@@ -3,27 +3,32 @@
 async function fetchScheduledPostsFromFacebook() {
     const pageId = document.getElementById("pageSelect").value;
     const selectedPageToken = getPageToken();
+    const accessToken =
+        (typeof fbToken !== "undefined" && fbToken) ||
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        "";
 
     console.log("[FEWFEED] Fetching scheduled posts:", {
         hasPageId: !!pageId,
         pageId: pageId || "(empty)",
         hasSelectedPageToken: !!selectedPageToken,
+        hasAccessToken: !!accessToken,
         tokenPrefix: selectedPageToken?.substring(0, 15) + "...",
     });
 
-    if (!pageId || !selectedPageToken) {
+    if (!pageId || (!selectedPageToken && !accessToken)) {
         console.log(
             "[FEWFEED] Pages not loaded yet - showing skeleton",
         );
         return { loading: true };
     }
 
-    const token = selectedPageToken;
-
     try {
         const params = new URLSearchParams({
             pageId,
-            pageToken: token,
+            ...(selectedPageToken ? { pageToken: selectedPageToken } : {}),
+            ...(accessToken ? { accessToken } : {}),
         });
         const response = await fetch(`/api/scheduled-posts?${params.toString()}`);
         const data = await response.json();

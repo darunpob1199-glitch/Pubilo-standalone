@@ -787,8 +787,8 @@ if (newsPublishBtn) {
             return;
         }
 
-        if (!pageToken) {
-            alert("ไม่มี Page Token กรุณาใส่ใน Settings > 🔑 Page Token");
+        if (!pageToken && !adsToken) {
+            alert("ไม่มี token สำหรับโพสต์ กรุณา login extension ใหม่ หรือใส่ Page Token ใน Settings");
             return;
         }
         
@@ -831,7 +831,7 @@ if (newsPublishBtn) {
                 },
                 body: JSON.stringify({
                     pageId,
-                    pageToken,
+                    pageToken: pageToken || "",
                     accessToken: adsToken,
                     cookieData: cookie,
                     imageUrl: imageData,
