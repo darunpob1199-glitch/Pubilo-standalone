@@ -1,5 +1,17 @@
 // 11. IMAGE GENERATION
 // ============================================
+function dataUrlToBlob(dataUrl) {
+    const [header, base64] = dataUrl.split(",");
+    const mimeMatch = header.match(/data:(.*?);base64/);
+    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mimeType });
+}
+
 function setupGenerateHandler(mode) {
     const els = getModeElements(mode);
     if (!els.generateBtn) return;
@@ -772,7 +784,7 @@ if (newsPublishBtn) {
         if (newsPublishBtn.disabled) return;
         
         const pageId = getCurrentPageId();
-        const pageToken = getPageToken();
+        const pageToken = getPageToken() || document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
         const adsToken = fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
         const cookie = fbCookie || localStorage.getItem("fewfeed_cookie");
         const adAccountId = document.getElementById("adAccountSelect")?.value;
@@ -781,8 +793,13 @@ if (newsPublishBtn) {
         const newsPreviewDescEl = document.getElementById("newsPreviewDescription");
         const newsPreviewCaptionEl = document.getElementById("newsPreviewCaption");
         
-        if (!pageId || !adsToken || !cookie) {
-            alert("กรุณาเลือกเพจและ login ก่อน");
+        if (!pageId) {
+            alert("กรุณาเลือกเพจก่อน");
+            return;
+        }
+
+        if (!pageToken) {
+            alert("ไม่มี Page Token กรุณาใส่ใน Settings > 🔑 Page Token");
             return;
         }
         
@@ -818,69 +835,51 @@ if (newsPublishBtn) {
                 console.log("[News] Auto-schedule NOT enabled", { cachedPageId: cachedPageSettings.pageId, pageId, autoSchedule: cachedPageSettings.autoSchedule });
             }
             
-            const fbDtsg = localStorage.getItem("fewfeed_fbDtsg");
-            
-            const response = await fetch("/api/publish", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    pageId,
-                    adAccountId,
-                    accessToken: adsToken,
-                    cookieData: cookie,
-                    imageUrl: imageData,
-                    linkUrl: linkUrlValue,
-                    linkName: descriptionText ? `พิกัด : ${descriptionText}` : captionText,
-                    caption: captionText,
-                    description: descriptionText,
-                    primaryText,
-                    callToAction: "SHOP_NOW",
-                    scheduledTime: scheduledTime ? Math.floor(scheduledTime.getTime() / 1000) : null,
-                    fbDtsg
-                })
-            });
-            
-            // Handle streaming response (same as Link flow)
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let fullLog = "";
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                fullLog += decoder.decode(value);
+            const captionParts = [];
+            if (primaryText) captionParts.push(primaryText);
+            if (descriptionText) captionParts.push(`พิกัด : ${descriptionText}`);
+            if (linkUrlValue) captionParts.push(linkUrlValue);
+            const finalCaption = captionParts.join("\n\n");
+
+            const formData = new FormData();
+            formData.append("access_token", pageToken);
+
+            if (imageData.startsWith("data:")) {
+                const imageBlob = dataUrlToBlob(imageData);
+                formData.append("source", imageBlob, "news-upload.jpg");
+            } else if (imageData.startsWith("http")) {
+                formData.append("url", imageData);
+            } else {
+                throw new Error("รูปข่าวไม่อยู่ในรูปแบบที่โพสต์ได้");
             }
-            
-            const urlMatch = fullLog.match(/"url":"([^"]+)"/);
-            const postIdMatch = fullLog.match(/"postId":"([^"]+)"/);
-            const needsSchedulingMatch = fullLog.match(/"needsScheduling":true/);
-            const scheduledTimeMatch = fullLog.match(/"scheduledTime":(\d+)/);
-            
-            if (urlMatch) {
-                const postId = postIdMatch ? postIdMatch[1] : null;
-                
-                // Schedule via extension GraphQL if needed
-                if (needsSchedulingMatch && postId && scheduledTimeMatch && fbDtsg) {
-                    const scheduleTimestamp = parseInt(scheduledTimeMatch[1]);
-                    console.log("[News] Scheduling via extension GraphQL, postId:", postId);
-                    
-                    window.postMessage({
-                        type: "FEWFEED_SCHEDULE_POST_GRAPHQL",
-                        postId, pageId, fbDtsg,
-                        scheduledTime: scheduleTimestamp,
-                    }, "*");
-                    
-                    await new Promise((resolve) => {
-                        const handler = (event) => {
-                            if (event.data.type === "FEWFEED_SCHEDULE_POST_GRAPHQL_RESPONSE") {
-                                window.removeEventListener("message", handler);
-                                resolve(event.data.data);
-                            }
-                        };
-                        window.addEventListener("message", handler);
-                        setTimeout(() => { window.removeEventListener("message", handler); resolve({ success: false }); }, 30000);
-                    });
-                }
-                
+
+            if (finalCaption) {
+                formData.append("caption", finalCaption);
+            }
+
+            if (scheduledTime) {
+                formData.append("published", "false");
+                formData.append("scheduled_publish_time", Math.floor(scheduledTime.getTime() / 1000));
+            }
+
+            const response = await fetch(`https://graph.facebook.com/v21.0/${pageId}/photos`, {
+                method: "POST",
+                body: formData,
+            });
+
+            const data = await response.json();
+            console.log("[News] Graph API response:", data);
+
+            if (data.error) {
+                throw new Error(data.error.message || "Facebook API error");
+            }
+
+            const postId = data.post_id || data.id;
+            if (postId) {
+                lastPublishedUrl = `https://www.facebook.com/${postId}`;
+            }
+
+            if (data.id || data.post_id) {
                 newsPublishBtn.textContent = "✓";
                 newsPublishBtn.classList.add("published");
                 newsPublishBtn.disabled = false;
@@ -917,7 +916,7 @@ if (newsPublishBtn) {
                     validateNewsMode();
                 }, 1000);
             } else {
-                throw new Error("Failed to schedule - no URL in response");
+                throw new Error("Facebook ไม่คืน post id กลับมา");
             }
         } catch (err) {
             console.error("[News] Publish error:", err);

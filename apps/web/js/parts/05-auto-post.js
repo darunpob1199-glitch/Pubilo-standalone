@@ -1005,6 +1005,23 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
         await saveAutoHideConfig();
 
         if (data.success) {
+            cachedPageSettings = {
+                ...cachedPageSettings,
+                pageId,
+                autoSchedule,
+                scheduleMinutes: mins,
+                postToken,
+                workingHoursStart: workingStart,
+                workingHoursEnd: workingEnd,
+                newsAnalysisPrompt,
+                newsGenerationPrompt,
+                newsImageSize,
+                newsVariationCount: newsVarCount,
+                imageSource,
+                ogBackgroundUrl: ogBgUrl,
+                ogFont,
+            };
+
             // Update UI mode
             if (currentPostMode) setAutoPostMode(currentPostMode);
 
