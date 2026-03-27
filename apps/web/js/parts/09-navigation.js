@@ -97,6 +97,7 @@ document.getElementById("newsNavItem").addEventListener("click", (e) => {
 
 // News mode upload handlers
 const newsUploadFromDevice = document.getElementById("newsUploadFromDevice");
+const newsUploadFromGemini = document.getElementById("newsUploadFromGemini");
 const newsFileInput = document.createElement("input");
 newsFileInput.type = "file";
 newsFileInput.accept = "image/*";
@@ -105,9 +106,18 @@ newsFileInput.multiple = true;
 let newsSelectedImages = [];
 let newsGeneratedImages = [];
 let newsIsGenerating = false;
+let newsUploadMode = "device";
 
 if (newsUploadFromDevice) {
     newsUploadFromDevice.addEventListener("click", () => {
+        newsUploadMode = "device";
+        newsFileInput.click();
+    });
+}
+
+if (newsUploadFromGemini) {
+    newsUploadFromGemini.addEventListener("click", () => {
+        newsUploadMode = "gemini";
         newsFileInput.click();
     });
 }
@@ -130,12 +140,30 @@ newsFileInput.addEventListener("change", async (e) => {
     });
     
     const newImages = await Promise.all(loadPromises);
-    newsSelectedImages.push(...newImages);
     newsFileInput.value = "";
-    
-    // Auto generate after selecting images
-    await generateNewsImages();
+
+    if (newsUploadMode === "gemini") {
+        newsSelectedImages = [...newImages];
+        newsGeneratedImages = [];
+        newsModeImageReady = false;
+        validateNewsMode();
+        await generateNewsImages();
+        return;
+    }
+
+    useUploadedNewsImages(newImages);
 });
+
+function useUploadedNewsImages(images) {
+    newsSelectedImages = [...images];
+    newsGeneratedImages = images.map((img) => img.dataUrl);
+    newsSelectedIndex = 0;
+    newsModeImageReady = newsGeneratedImages.length > 0;
+    validateNewsMode();
+
+    if (!newsGeneratedImages.length) return;
+    window.selectNewsImage(0);
+}
 
 async function generateNewsImages() {
     if (newsSelectedImages.length === 0 || newsIsGenerating) return;
@@ -256,12 +284,19 @@ window.showNewsImageGrid = function() {
 
 window.removeNewsImage = function(index) {
     newsSelectedImages.splice(index, 1);
+    newsGeneratedImages.splice(index, 1);
     if (newsSelectedImages.length === 0) {
         newsGeneratedImages = [];
+        newsModeImageReady = false;
+        validateNewsMode();
         const container = document.getElementById("newsFullImageView");
         container.style.display = "none";
         document.getElementById("newsUploadPrompt").style.display = "flex";
+        return;
     }
+
+    newsSelectedIndex = Math.max(0, Math.min(newsSelectedIndex, newsGeneratedImages.length - 1));
+    window.selectNewsImage(newsSelectedIndex);
 };
 
 // Image nav item click
