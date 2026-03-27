@@ -64,11 +64,27 @@ async function handleScheduledPosts(
 
     try {
         const fields = 'id,message,scheduled_publish_time,created_time,status_type,full_picture,attachments{media,subattachments},permalink_url';
+        let storedPageToken = pageToken;
+
+        if (!storedPageToken && pageId) {
+            try {
+                const dbResult = await c.env.DB.prepare(
+                    'SELECT post_token FROM page_settings WHERE page_id = ? LIMIT 1'
+                ).bind(pageId).first<{ post_token: string | null }>();
+
+                if (dbResult?.post_token) {
+                    storedPageToken = dbResult.post_token;
+                }
+            } catch (dbErr) {
+                console.error('[scheduled-posts] D1 error:', dbErr);
+            }
+        }
+
         const freshPageToken = await fetchFreshPageToken(pageId, accessToken);
         const authCandidates = buildAuthCandidates([
-            accessToken,
+            storedPageToken,
             freshPageToken,
-            pageToken,
+            accessToken,
         ]);
 
         if (authCandidates.length === 0) {

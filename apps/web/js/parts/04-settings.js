@@ -195,12 +195,14 @@ async function loadSettings() {
             const mins = data.settings.schedule_minutes || "00, 15, 30, 45";
             const imgSource = data.settings.image_source || "ai";
             const ogBgUrl = data.settings.og_background_url || "";
+            const postToken = data.settings.post_token || "";
 
             // Update cache
             cachedPageSettings = {
                 pageId,
                 autoSchedule: enabled,
                 scheduleMinutes: mins,
+                postToken,
                 imageSource: imgSource,
                 ogBackgroundUrl: ogBgUrl
             };
@@ -222,6 +224,7 @@ async function loadSettings() {
             pageId,
             autoSchedule: false,
             scheduleMinutes: "00, 15, 30, 45",
+            postToken: "",
             imageSource: "ai",
             ogBackgroundUrl: ""
         };

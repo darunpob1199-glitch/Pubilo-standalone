@@ -96,9 +96,9 @@ app.post('/', async (c) => {
 
         const freshPageToken = await fetchFreshPageToken(pageId, accessToken);
         const authCandidates = buildAuthCandidates([
-            accessToken,
-            freshPageToken,
             storedPageToken,
+            freshPageToken,
+            accessToken,
         ]);
 
         if (authCandidates.length === 0) {
