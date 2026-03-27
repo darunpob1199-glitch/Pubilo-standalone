@@ -241,9 +241,18 @@ async function loadSettings() {
 
 // Update publish button text
 function updatePublishButton() {
+    const label = getPrimaryPublishLabel();
     if (!publishBtn.classList.contains("published")) {
-        publishBtn.textContent = "SCHEDULE";
+        publishBtn.textContent = label;
     }
+    const newsPublishBtn = document.getElementById("newsPublishBtn");
+    if (newsPublishBtn && !newsPublishBtn.classList.contains("published")) {
+        newsPublishBtn.textContent = label;
+    }
+}
+
+function getPrimaryPublishLabel() {
+    return cachedPageSettings.autoSchedule ? "SCHEDULE" : "POST NOW";
 }
 
 // Parse schedule minutes from string (e.g., "05, 10, 15" => [5, 10, 15])
@@ -417,6 +426,7 @@ autoScheduleEnabled.addEventListener("change", () => {
     ogBackgroundGroup.style.display = (enabled && imageSourceSelect.value === "og") ? "block" : "none";
     nextScheduleInfo.style.display = enabled ? "block" : "none";
     updateNextScheduleDisplay();
+    updatePublishButton();
 });
 
 imageSourceSelect.addEventListener("change", () => {

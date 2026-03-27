@@ -97,8 +97,165 @@ function hideLoadingIndicator() {
   console.log("[FEWFEED Content] Loading complete");
 }
 
+let lastAutoFilledPageId = null;
+let lastAutoTokenAttemptKey = null;
+let lastAutoTokenAttemptAt = 0;
+
+function getAutoTokenStatusElement() {
+  return document.getElementById("pageTokenAutoStatus") || document.getElementById("pubiloAutoFetchPageTokenStatus");
+}
+
+function setAutoTokenStatus(message, tone = "muted") {
+  const statusEl = getAutoTokenStatusElement();
+  if (!statusEl) return;
+
+  const toneColors = {
+    muted: "#6b7280",
+    loading: "#2563eb",
+    success: "#047857",
+    error: "#dc2626"
+  };
+
+  statusEl.textContent = message || "";
+  statusEl.style.display = message ? "inline" : "none";
+  statusEl.style.color = toneColors[tone] || toneColors.muted;
+}
+
+async function fetchPageTokenFromExtension(pageId) {
+  const accessToken = localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
+  const cookie = localStorage.getItem("fewfeed_cookie");
+
+  if (!accessToken) {
+    throw new Error("ไม่พบ Ads Token จาก extension");
+  }
+
+  const response = await chrome.runtime.sendMessage({
+    action: "fetchPages",
+    accessToken,
+    cookie
+  });
+
+  if (!response?.success || !Array.isArray(response.pages)) {
+    throw new Error(response?.error || "ดึงรายชื่อเพจไม่สำเร็จ");
+  }
+
+  const page = response.pages.find((item) => String(item.id) === String(pageId));
+  if (!page?.access_token) {
+    throw new Error("ดึง Page Token ไม่ได้ ตรวจสอบสิทธิ์ของเพจนี้อีกครั้ง");
+  }
+
+  return page.access_token;
+}
+
+async function fillPageTokenInput({ silent = true } = {}) {
+  const tokenInput = document.getElementById("pageTokenInputPanel");
+  const pageSelect = document.getElementById("pageSelect");
+  const pageId = pageSelect?.value;
+
+  if (!tokenInput || !pageId) return false;
+
+  setAutoTokenStatus("กำลังดึง Page Token...", "loading");
+
+  try {
+    const pageToken = await fetchPageTokenFromExtension(pageId);
+    tokenInput.value = pageToken;
+    tokenInput.dispatchEvent(new Event("input", { bubbles: true }));
+    tokenInput.dispatchEvent(new Event("change", { bubbles: true }));
+    lastAutoFilledPageId = String(pageId);
+    setAutoTokenStatus("ดึง token ให้แล้ว กดบันทึกการตั้งค่าอีกครั้ง", "success");
+    if (!silent) {
+      alert("ดึง Page Token สำเร็จแล้ว กดบันทึกการตั้งค่าอีกครั้ง");
+    }
+    return true;
+  } catch (error) {
+    console.error("[Pubilo Content] Auto token fetch failed:", error);
+    const message = error instanceof Error ? error.message : "ดึง Page Token ไม่สำเร็จ";
+    setAutoTokenStatus(message, "error");
+    if (!silent) {
+      alert(message);
+    }
+    return false;
+  }
+}
+
+function ensureAutoTokenControls() {
+  const tokenInput = document.getElementById("pageTokenInputPanel");
+  const pageSelect = document.getElementById("pageSelect");
+  if (!tokenInput || !pageSelect) return;
+
+  const builtInButton = document.getElementById("autoFetchPageTokenBtn");
+  let button = document.getElementById("pubiloAutoFetchPageTokenBtn");
+  let status = document.getElementById("pubiloAutoFetchPageTokenStatus");
+
+  if (!builtInButton && !button) {
+    const controls = document.createElement("div");
+    controls.id = "pubiloAutoFetchPageTokenControls";
+    controls.style.display = "flex";
+    controls.style.alignItems = "center";
+    controls.style.gap = "0.75rem";
+    controls.style.marginTop = "0.75rem";
+    controls.style.flexWrap = "wrap";
+
+    button = document.createElement("button");
+    button.type = "button";
+    button.id = "pubiloAutoFetchPageTokenBtn";
+    button.className = "btn-save";
+    button.textContent = "ดึงอัตโนมัติ";
+    button.style.marginTop = "0";
+    button.style.padding = "0.6rem 1rem";
+    button.style.whiteSpace = "nowrap";
+
+    status = document.createElement("span");
+    status.id = "pubiloAutoFetchPageTokenStatus";
+    status.className = "setting-desc";
+    status.style.margin = "0";
+    status.style.display = "none";
+
+    controls.appendChild(button);
+    controls.appendChild(status);
+    tokenInput.insertAdjacentElement("afterend", controls);
+  }
+
+  button = document.getElementById("pubiloAutoFetchPageTokenBtn");
+  if (button && !button.dataset.bound) {
+    button.dataset.bound = "true";
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      const originalText = button.textContent;
+      button.textContent = "กำลังดึง...";
+      try {
+        await fillPageTokenInput({ silent: false });
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText || "ดึงอัตโนมัติ";
+      }
+    });
+  }
+
+  const currentPageId = pageSelect.value;
+  if (tokenInput.value.trim()) {
+    setAutoTokenStatus("พบ token ในช่องแล้ว", "muted");
+    return;
+  }
+
+  const attemptKey = currentPageId ? String(currentPageId) : null;
+  const now = Date.now();
+  const shouldRetry = attemptKey && (
+    lastAutoTokenAttemptKey !== attemptKey ||
+    now - lastAutoTokenAttemptAt > 10000
+  );
+
+  if (attemptKey && lastAutoFilledPageId !== attemptKey && shouldRetry) {
+    lastAutoTokenAttemptKey = attemptKey;
+    lastAutoTokenAttemptAt = now;
+    fillPageTokenInput({ silent: true });
+  }
+}
+
 // Run initialization
 initializeTokens();
+setTimeout(ensureAutoTokenControls, 1200);
+setInterval(ensureAutoTokenControls, 1500);
 
 // Listen for messages from the page
 window.addEventListener("message", async (event) => {

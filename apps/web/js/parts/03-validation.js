@@ -53,11 +53,13 @@ function validateLinkMode() {
 
 function validateNewsMode() {
     const newsUrlInput = document.getElementById("newsUrlInput");
+    const newsDescriptionInput = document.getElementById("newsDescriptionInput");
     const newsPreviewDesc = document.getElementById("newsPreviewDescription");
     const newsPublishBtn = document.getElementById("newsPublishBtn");
     
     const hasUrl = newsUrlInput && newsUrlInput.value.trim().length > 0;
-    const hasDescription = newsPreviewDesc && newsPreviewDesc.textContent.trim().length > 0;
+    const descriptionValue = newsDescriptionInput?.value?.trim() || newsPreviewDesc?.textContent?.trim() || "";
+    const hasDescription = descriptionValue.length > 0;
     const hasImage = newsModeImageReady;
     
     const isValid = hasUrl && hasDescription && hasImage;
@@ -67,6 +69,12 @@ function validateNewsMode() {
         newsPublishBtn.classList.toggle('disabled', !isValid);
         newsPublishBtn.style.opacity = isValid ? '1' : '0.5';
         newsPublishBtn.style.cursor = isValid ? 'pointer' : 'not-allowed';
+        if (!newsPublishBtn.classList.contains('published')) {
+            const baseLabel = typeof getPrimaryPublishLabel === "function"
+                ? getPrimaryPublishLabel()
+                : "SCHEDULE";
+            newsPublishBtn.textContent = baseLabel;
+        }
     }
 }
 

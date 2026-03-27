@@ -782,7 +782,7 @@ async function fetchFacebookPages(accessToken, cookie) {
     }
 
     const response = await fetch(
-      `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}&fields=id,name,picture,is_published&limit=100`,
+      `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}&fields=id,name,access_token,picture,is_published&limit=100`,
       { headers }
     );
     const data = await response.json();

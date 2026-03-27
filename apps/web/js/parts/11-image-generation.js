@@ -728,6 +728,7 @@ previewDescription.addEventListener("input", () => {
 
 // Setup news description editable (same as link mode)
 const newsPreviewDesc = document.getElementById("newsPreviewDescription");
+const newsDescriptionInput = document.getElementById("newsDescriptionInput");
 if (newsPreviewDesc) {
     const newsDescInput = document.createElement('input');
     newsDescInput.type = 'hidden';
@@ -738,10 +739,28 @@ if (newsPreviewDesc) {
     
     newsPreviewDesc.addEventListener("input", () => {
         newsDescInput.value = newsPreviewDesc.textContent;
+        if (newsDescriptionInput) {
+            newsDescriptionInput.value = newsPreviewDesc.textContent.trim();
+        }
         validateNewsMode();
     });
     
     newsPreviewDesc.addEventListener("blur", () => {
+        if (newsDescriptionInput) {
+            newsDescriptionInput.value = newsPreviewDesc.textContent.trim();
+        }
+        validateNewsMode();
+    });
+}
+
+if (newsDescriptionInput && newsPreviewDesc) {
+    newsDescriptionInput.addEventListener("input", () => {
+        const value = newsDescriptionInput.value;
+        newsPreviewDesc.textContent = value;
+        const hiddenNewsDescription = document.getElementById("newsDescription");
+        if (hiddenNewsDescription) {
+            hiddenNewsDescription.value = value;
+        }
         validateNewsMode();
     });
 }
@@ -768,7 +787,7 @@ if (newsPublishBtn) {
         }
         
         const linkUrlValue = newsUrlInputEl?.value?.trim();
-        const descriptionText = newsPreviewDescEl?.textContent?.trim() || "";
+        const descriptionText = newsDescriptionInput?.value?.trim() || newsPreviewDescEl?.textContent?.trim() || "";
         const captionText = newsPreviewCaptionEl?.textContent?.trim() || "S.LAZADA.CO.TH";
         const primaryText = newsPrimaryTextEl?.value?.trim() || "";
         let imageData = newsGeneratedImages[newsSelectedIndex];
@@ -878,6 +897,7 @@ if (newsPublishBtn) {
                     if (newsUrlInputEl) newsUrlInputEl.value = "";
                     if (newsPrimaryTextEl) newsPrimaryTextEl.value = "";
                     if (newsPreviewDescEl) newsPreviewDescEl.textContent = "";
+                    if (newsDescriptionInput) newsDescriptionInput.value = "";
                     newsGeneratedImages = [];
                     newsSelectedImages = [];
                     newsModeImageReady = false;
@@ -887,7 +907,10 @@ if (newsPublishBtn) {
                     const uploadPrompt = document.getElementById("newsUploadPrompt");
                     if (uploadPrompt) uploadPrompt.style.display = "flex";
                     
-                    newsPublishBtn.textContent = "SCHEDULE";
+                    const baseLabel = typeof getPrimaryPublishLabel === "function"
+                        ? getPrimaryPublishLabel()
+                        : "SCHEDULE";
+                    newsPublishBtn.textContent = baseLabel;
                     newsPublishBtn.classList.remove("published");
                     newsPublishBtn.disabled = true;
                     newsPublishBtn.style.opacity = "0.5";
@@ -899,8 +922,13 @@ if (newsPublishBtn) {
         } catch (err) {
             console.error("[News] Publish error:", err);
             alert("เกิดข้อผิดพลาด: " + err.message);
-            newsPublishBtn.textContent = "SCHEDULE";
+            const baseLabel = typeof getPrimaryPublishLabel === "function"
+                ? getPrimaryPublishLabel()
+                : "SCHEDULE";
+            newsPublishBtn.textContent = baseLabel;
             newsPublishBtn.disabled = false;
+            newsPublishBtn.classList.remove("published");
+            validateNewsMode();
         }
     });
 }

@@ -4,6 +4,8 @@ const postModeImage = document.getElementById("postModeImage");
 const postModeText = document.getElementById("postModeText");
 const postModeAlternate = document.getElementById("postModeAlternate");
 const pageTokenInputPanel = document.getElementById("pageTokenInputPanel");
+const autoFetchPageTokenBtn = document.getElementById("autoFetchPageTokenBtn");
+const pageTokenAutoStatus = document.getElementById("pageTokenAutoStatus");
 let currentPostMode = "image";
 
 // Auto-Hide elements
@@ -50,6 +52,155 @@ function getNewsImageSize() {
 function setNewsImageSize(value) {
     const radio = document.querySelector(`input[name="newsImageSize"][value="${value}"]`);
     if (radio) radio.checked = true;
+}
+
+function setPageTokenAutoStatus(message, tone = "muted") {
+    if (!pageTokenAutoStatus) return;
+
+    const toneColors = {
+        muted: "#6b7280",
+        loading: "#2563eb",
+        success: "#047857",
+        error: "#dc2626",
+    };
+
+    pageTokenAutoStatus.textContent = message || "";
+    pageTokenAutoStatus.style.display = message ? "inline" : "none";
+    pageTokenAutoStatus.style.color = toneColors[tone] || toneColors.muted;
+}
+
+function getInjectedAccessToken() {
+    return (typeof fbToken !== "undefined" && fbToken)
+        || localStorage.getItem("fewfeed_accessToken")
+        || localStorage.getItem("fewfeed_token")
+        || "";
+}
+
+function getLoadedPageToken(pageId) {
+    if (typeof allPages === "undefined" || !Array.isArray(allPages)) return "";
+    const matchedPage = allPages.find((page) => String(page.id) === String(pageId));
+    return matchedPage?.access_token || "";
+}
+
+function mergeLoadedPageTokens(pages) {
+    if (typeof allPages === "undefined" || !Array.isArray(allPages)) return;
+    const tokenMap = new Map(
+        (pages || [])
+            .filter((page) => page?.id && page?.access_token)
+            .map((page) => [String(page.id), page.access_token]),
+    );
+
+    allPages.forEach((page) => {
+        const nextToken = tokenMap.get(String(page.id));
+        if (nextToken) {
+            page.access_token = nextToken;
+        }
+    });
+}
+
+function requestPagesWithTokens(accessToken) {
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            window.removeEventListener("message", handleMessage);
+            reject(new Error("Extension ไม่ตอบกลับ ลองกดใหม่อีกครั้ง"));
+        }, 8000);
+
+        function cleanup() {
+            clearTimeout(timeout);
+            window.removeEventListener("message", handleMessage);
+        }
+
+        function handleMessage(event) {
+            if (event.source !== window) return;
+            if (event.data.type !== "FEWFEED_PAGES_RESPONSE") return;
+
+            cleanup();
+            const response = event.data.data;
+            if (response?.success && Array.isArray(response.pages)) {
+                resolve(response.pages);
+                return;
+            }
+
+            reject(new Error(response?.error || "ดึงรายชื่อเพจไม่สำเร็จ"));
+        }
+
+        window.addEventListener("message", handleMessage);
+        window.postMessage(
+            {
+                type: "FEWFEED_FETCH_PAGES",
+                accessToken,
+            },
+            "*",
+        );
+    });
+}
+
+async function autoFetchPageToken({ silent = false } = {}) {
+    const pageId = getCurrentPageId();
+    if (!pageId) {
+        if (!silent) alert("กรุณาเลือก Page ก่อน");
+        setPageTokenAutoStatus("กรุณาเลือกเพจก่อน", "error");
+        return null;
+    }
+
+    const tokenInput = document.getElementById("pageTokenInputPanel");
+    if (!tokenInput) return null;
+
+    const originalButtonText = autoFetchPageTokenBtn?.textContent || "";
+    if (autoFetchPageTokenBtn) {
+        autoFetchPageTokenBtn.disabled = true;
+        autoFetchPageTokenBtn.textContent = "กำลังดึง...";
+    }
+    setPageTokenAutoStatus("กำลังดึง Page Token...", "loading");
+
+    try {
+        let postToken = getLoadedPageToken(pageId);
+
+        if (!postToken) {
+            const accessToken = getInjectedAccessToken();
+            if (!accessToken) {
+                throw new Error("ไม่พบ Ads Token จาก extension กรุณา login Facebook แล้วกด extension อีกครั้ง");
+            }
+
+            const pages = await requestPagesWithTokens(accessToken);
+            mergeLoadedPageTokens(pages);
+            const matchedPage = pages.find((page) => String(page.id) === String(pageId));
+            postToken = matchedPage?.access_token || "";
+        }
+
+        if (!postToken) {
+            throw new Error("ดึง Page Token ไม่ได้ ตรวจสอบว่า account นี้เป็นแอดมินเพจและมีสิทธิ์โพสต์");
+        }
+
+        tokenInput.value = postToken;
+        tokenInput.dispatchEvent(new Event("input", { bubbles: true }));
+        tokenInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+        cachedPageSettings = {
+            ...cachedPageSettings,
+            pageId,
+            postToken,
+        };
+
+        setPageTokenAutoStatus("ดึง token ให้แล้ว กดบันทึกการตั้งค่าอีกครั้ง", "success");
+        if (!silent) {
+            alert("ดึง Page Token สำเร็จแล้ว กดบันทึกการตั้งค่าอีกครั้ง");
+        }
+        return postToken;
+    } catch (error) {
+        console.error("[Token] Auto fetch failed:", error);
+        const message = error instanceof Error ? error.message : "ดึง Page Token ไม่สำเร็จ";
+        setPageTokenAutoStatus(message, "error");
+        if (!silent) {
+            alert(message);
+        }
+        return null;
+    } finally {
+        if (autoFetchPageTokenBtn) {
+            autoFetchPageTokenBtn.disabled = false;
+            autoFetchPageTokenBtn.textContent = originalButtonText || "ดึงอัตโนมัติ";
+        }
+    }
 }
 
 // Auto-Post Alternating Functions
@@ -573,6 +724,12 @@ async function loadSettingsPanel() {
             if (tokenInput) {
                 tokenInput.value = s.post_token || "";
                 console.log("[LOAD] Set token input to:", s.post_token ? s.post_token.substring(0, 20) + "..." : "(empty)");
+                setPageTokenAutoStatus(
+                    s.post_token
+                        ? "พบ token ที่บันทึกไว้แล้ว"
+                        : "ยังไม่มี token กดดึงอัตโนมัติได้",
+                    s.post_token ? "muted" : "loading",
+                );
             }
 
             // Load hide token into input
@@ -612,9 +769,14 @@ async function loadSettingsPanel() {
 
             const tokenInput = document.getElementById("pageTokenInputPanel");
             if (tokenInput) tokenInput.value = "";
+            setPageTokenAutoStatus("ยังไม่มี token กดดึงอัตโนมัติได้", "loading");
         }
     } catch (err) {
         console.error("[LOAD] Failed to load settings:", err);
+    }
+
+    if (!pageTokenInputPanel?.value?.trim()) {
+        await autoFetchPageToken({ silent: true });
     }
 
     // Sync minute grid with hidden input
@@ -881,6 +1043,12 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
 
     updatePublishButton();
 });
+
+if (autoFetchPageTokenBtn) {
+    autoFetchPageTokenBtn.addEventListener("click", async () => {
+        await autoFetchPageToken({ silent: false });
+    });
+}
 
 // Load settings on page load
 loadSettings();
