@@ -6,9 +6,16 @@ const app = new Hono<{ Bindings: Env }>();
 // POST /api/upload-image
 app.post('/', async (c) => {
     try {
-        const { imageBase64, imageUrl } = await c.req.json();
+        const { imageBase64, imageData, imageUrl } = await c.req.json() as {
+            imageBase64?: string;
+            imageData?: string;
+            imageUrl?: string;
+        };
+        const normalizedImageBase64 =
+            imageBase64?.replace(/^data:image\/\w+;base64,/, '') ||
+            imageData?.replace(/^data:image\/\w+;base64,/, '');
 
-        if (!imageBase64 && !imageUrl) {
+        if (!normalizedImageBase64 && !imageUrl) {
             return c.json({ success: false, error: 'Missing image data' }, 400);
         }
 
@@ -20,8 +27,8 @@ app.post('/', async (c) => {
         const formData = new FormData();
         formData.append('key', apiKey);
 
-        if (imageBase64) {
-            formData.append('source', imageBase64);
+        if (normalizedImageBase64) {
+            formData.append('source', normalizedImageBase64);
         } else if (imageUrl) {
             formData.append('source', imageUrl);
         }

@@ -810,6 +810,22 @@ if (newsPublishBtn) {
             // Compress image
             if (imageData.startsWith("data:")) {
                 imageData = await compressImage(imageData, 1200, 0.8);
+                const uploadRes = await fetch("/api/upload-image", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        imageBase64: imageData,
+                    }),
+                });
+                const uploadData = await uploadRes.json();
+
+                if (!uploadRes.ok || !uploadData.success || !uploadData.url) {
+                    throw new Error(uploadData.error || "Image upload failed");
+                }
+
+                imageData = uploadData.url;
             }
             
             // Check if auto-schedule is enabled
