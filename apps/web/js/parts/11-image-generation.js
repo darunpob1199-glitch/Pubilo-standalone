@@ -1,16 +1,5 @@
 // 11. IMAGE GENERATION
 // ============================================
-function dataUrlToBlob(dataUrl) {
-    const [header, base64] = dataUrl.split(",");
-    const mimeMatch = header.match(/data:(.*?);base64/);
-    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-        bytes[i] = binary.charCodeAt(i);
-    }
-    return new Blob([bytes], { type: mimeType });
-}
 
 function setupGenerateHandler(mode) {
     const els = getModeElements(mode);
@@ -835,51 +824,43 @@ if (newsPublishBtn) {
                 console.log("[News] Auto-schedule NOT enabled", { cachedPageId: cachedPageSettings.pageId, pageId, autoSchedule: cachedPageSettings.autoSchedule });
             }
             
-            const captionParts = [];
-            if (primaryText) captionParts.push(primaryText);
-            if (descriptionText) captionParts.push(`พิกัด : ${descriptionText}`);
-            if (linkUrlValue) captionParts.push(linkUrlValue);
-            const finalCaption = captionParts.join("\n\n");
-
-            const formData = new FormData();
-            formData.append("access_token", pageToken);
-
-            if (imageData.startsWith("data:")) {
-                const imageBlob = dataUrlToBlob(imageData);
-                formData.append("source", imageBlob, "news-upload.jpg");
-            } else if (imageData.startsWith("http")) {
-                formData.append("url", imageData);
-            } else {
-                throw new Error("รูปข่าวไม่อยู่ในรูปแบบที่โพสต์ได้");
-            }
-
-            if (finalCaption) {
-                formData.append("caption", finalCaption);
-            }
-
-            if (scheduledTime) {
-                formData.append("published", "false");
-                formData.append("scheduled_publish_time", Math.floor(scheduledTime.getTime() / 1000));
-            }
-
-            const response = await fetch(`https://graph.facebook.com/v21.0/${pageId}/photos`, {
+            const response = await fetch("/api/publish", {
                 method: "POST",
-                body: formData,
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    pageId,
+                    pageToken,
+                    accessToken: adsToken,
+                    cookieData: cookie,
+                    imageUrl: imageData,
+                    linkUrl: linkUrlValue,
+                    linkName: descriptionText ? `พิกัด : ${descriptionText}` : "",
+                    description: descriptionText,
+                    caption: captionText,
+                    primaryText,
+                    postMode: "news",
+                    adAccountId,
+                    scheduledTime: scheduledTime
+                        ? Math.floor(scheduledTime.getTime() / 1000)
+                        : null,
+                }),
             });
 
             const data = await response.json();
-            console.log("[News] Graph API response:", data);
+            console.log("[News] Publish response:", data);
 
-            if (data.error) {
-                throw new Error(data.error.message || "Facebook API error");
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || "Facebook API error");
             }
 
-            const postId = data.post_id || data.id;
+            const postId = data.postId || data.post_id || data.id;
             if (postId) {
                 lastPublishedUrl = `https://www.facebook.com/${postId}`;
             }
 
-            if (data.id || data.post_id) {
+            if (postId) {
                 newsPublishBtn.textContent = "✓";
                 newsPublishBtn.classList.add("published");
                 newsPublishBtn.disabled = false;

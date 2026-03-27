@@ -5,6 +5,20 @@ const app = new Hono<{ Bindings: Env }>();
 
 const FB_API = 'https://graph.facebook.com/v21.0';
 
+function dataUrlToBlob(dataUrl: string): Blob {
+    const [header, base64] = dataUrl.split(',');
+    const mimeMatch = header.match(/^data:(.*?);base64$/);
+    const mimeType = mimeMatch?.[1] || 'image/jpeg';
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+
+    return new Blob([bytes], { type: mimeType });
+}
+
 // POST /api/publish - Publish to Facebook
 app.post('/', async (c) => {
     try {
@@ -66,45 +80,39 @@ app.post('/', async (c) => {
         }
 
         let endpoint = `${FB_API}/${pageId}`;
-        const params = new URLSearchParams({ access_token: resolvedPageToken });
+        let params = new URLSearchParams({ access_token: resolvedPageToken });
+        let multipartBody: FormData | null = null;
 
         // Determine post type
         const finalMessage = message || primaryText || '';
         const finalLink = link || linkUrl || '';
         let finalImageUrl = imageUrl || '';
 
-        // If image is base64, upload to image host first
+        const captionParts = [];
+        if (finalMessage) captionParts.push(finalMessage);
+        if (linkName) captionParts.push(linkName);
+        else if (description) captionParts.push(`พิกัด : ${description}`);
+        if (caption) captionParts.push(caption);
+        if (finalLink) captionParts.push(finalLink);
+        const finalCaption = captionParts.join('\n\n');
+
+        // If image is base64, upload it directly to Facebook from the worker.
         if (finalImageUrl && finalImageUrl.startsWith('data:')) {
-            console.log('[publish] Uploading base64 image to freeimage.host...');
-            try {
-                const base64Only = finalImageUrl.replace(/^data:image\/\w+;base64,/, '');
-                const formData = new FormData();
-                formData.append('key', c.env.FREEIMAGE_API_KEY);
-                formData.append('source', base64Only);
-                formData.append('format', 'json');
-
-                const uploadRes = await fetch('https://freeimage.host/api/1/upload', { method: 'POST', body: formData });
-                if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.status}`);
-
-                const uploadData = await uploadRes.json() as any;
-                if (!uploadData.image?.url) throw new Error('No URL from image host');
-
-                finalImageUrl = uploadData.image.url;
-                console.log('[publish] Image uploaded:', finalImageUrl);
-            } catch (uploadErr) {
-                console.error('[publish] Image upload error:', uploadErr);
-                return c.json({ success: false, error: 'Failed to upload image: ' + String(uploadErr) }, 500);
-            }
+            endpoint += '/photos';
+            multipartBody = new FormData();
+            multipartBody.append('access_token', resolvedPageToken);
+            multipartBody.append('source', dataUrlToBlob(finalImageUrl), 'pubilo-upload.jpg');
+            if (finalCaption) multipartBody.append('caption', finalCaption);
+            console.log('[publish] Using worker multipart upload for data URL image');
         }
 
-        if (finalImageUrl && finalImageUrl.startsWith('http')) {
+        if (multipartBody) {
+            // Endpoint/body already prepared for direct multipart upload above.
+        } else if (finalImageUrl && finalImageUrl.startsWith('http')) {
             // Photo post — include link in caption if available
             endpoint += '/photos';
             params.append('url', finalImageUrl);
-            const captionParts = [];
-            if (finalMessage) captionParts.push(finalMessage);
-            if (finalLink) captionParts.push(finalLink);
-            if (captionParts.length) params.append('caption', captionParts.join('\n\n'));
+            if (finalCaption) params.append('caption', finalCaption);
         } else if (finalLink) {
             endpoint += '/feed';
             params.append('link', finalLink);
@@ -119,8 +127,13 @@ app.post('/', async (c) => {
             const timestamp = typeof scheduledTime === 'number'
                 ? scheduledTime
                 : Math.floor(new Date(scheduledTime).getTime() / 1000);
-            params.append('scheduled_publish_time', String(timestamp));
-            params.append('published', 'false');
+            if (multipartBody) {
+                multipartBody.append('scheduled_publish_time', String(timestamp));
+                multipartBody.append('published', 'false');
+            } else {
+                params.append('scheduled_publish_time', String(timestamp));
+                params.append('published', 'false');
+            }
         }
 
         console.log('[publish] Posting to:', endpoint);
@@ -128,8 +141,12 @@ app.post('/', async (c) => {
 
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: params.toString(),
+            ...(multipartBody
+                ? { body: multipartBody }
+                : {
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: params.toString(),
+                }),
         });
 
         const data = await response.json() as any;

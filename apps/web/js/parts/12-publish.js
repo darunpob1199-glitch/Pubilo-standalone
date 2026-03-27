@@ -821,6 +821,12 @@ function showCookieStatus(
     hasCookie,
     hasPostToken = false,
 ) {
+    const effectiveHasPostToken =
+        hasPostToken ||
+        !!localStorage.getItem("fewfeed_postToken") ||
+        !!document.getElementById("pageTokenInputPanel")?.value?.trim() ||
+        (typeof getPageToken === "function" && !!getPageToken());
+
     const tokenIndicator =
         document.getElementById("tokenIndicator");
     const cookieIndicator =
@@ -848,7 +854,7 @@ function showCookieStatus(
     if (postTokenIndicator) {
         postTokenIndicator.classList.remove("valid", "invalid");
         postTokenIndicator.classList.add(
-            hasPostToken ? "valid" : "invalid",
+            effectiveHasPostToken ? "valid" : "invalid",
         );
     }
 
@@ -894,7 +900,7 @@ function showCookieStatus(
         "Cookie:",
         hasCookie ? "valid" : "invalid",
         "PostToken:",
-        hasPostToken ? "valid" : "invalid",
+        effectiveHasPostToken ? "valid" : "invalid",
     );
 }
 
@@ -1402,4 +1408,3 @@ document.addEventListener("keydown", (e) => {
         closeLightbox();
     }
 });
-

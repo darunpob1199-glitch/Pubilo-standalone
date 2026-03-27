@@ -21,17 +21,25 @@ async function fetchScheduledPostsFromFacebook() {
     const token = selectedPageToken;
 
     try {
-        const response = await fetch("/api/scheduled-posts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pageId, pageToken: token }),
+        const params = new URLSearchParams({
+            pageId,
+            pageToken: token,
         });
+        const response = await fetch(`/api/scheduled-posts?${params.toString()}`);
         const data = await response.json();
 
         console.log("[FEWFEED] Scheduled posts response:", data);
 
         if (data.success && data.posts) {
-            return data.posts;
+            return data.posts.map((post) => ({
+                id: post.id,
+                postType: post.type || "link",
+                imageUrl: post.image_url || "",
+                fullImageUrl: post.image_url || "",
+                message: post.message || "",
+                scheduledTime: post.scheduled_publish_time || 0,
+                permalink: post.permalink || "",
+            }));
         } else {
             console.error(
                 "[FEWFEED] Failed to fetch scheduled posts:",
