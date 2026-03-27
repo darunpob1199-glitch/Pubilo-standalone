@@ -19,9 +19,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: apps/app
     steps:
       - uses: actions/checkout@v4
 
@@ -32,12 +29,12 @@ jobs:
           cache-dependency-path: apps/app/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --prefix apps/app
 
       - name: Build production miniapp
         env:
           VITE_API_BASE: https://pubilo-api-prod.lungnuek.workers.dev
-        run: npm run build
+        run: npm --prefix apps/app run build
 
       - name: Deploy production miniapp
         uses: cloudflare/wrangler-action@v3
@@ -52,9 +49,6 @@ jobs:
     if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: apps/app
     steps:
       - uses: actions/checkout@v4
 
@@ -65,12 +59,12 @@ jobs:
           cache-dependency-path: apps/app/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --prefix apps/app
 
       - name: Build dev miniapp
         env:
           VITE_API_BASE: https://pubilo-api-dev.lungnuek.workers.dev
-        run: npm run build
+        run: npm --prefix apps/app run build
 
       - name: Deploy dev miniapp
         uses: cloudflare/wrangler-action@v3
