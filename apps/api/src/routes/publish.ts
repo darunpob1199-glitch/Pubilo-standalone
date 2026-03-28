@@ -834,7 +834,7 @@ app.post('/', async (c) => {
 
             for (const targetPageId of publishTargetPageIds) {
                 const response = await app.fetch(
-                    new Request('https://internal/api/publish', {
+                    new Request('https://internal/', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({

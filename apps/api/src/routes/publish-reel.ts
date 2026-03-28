@@ -495,7 +495,7 @@ app.post('/', async (c) => {
                 };
 
                 const response = await app.fetch(
-                    new Request('https://internal/api/publish-reel', {
+                    new Request('https://internal/', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(nextPayload),
