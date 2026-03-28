@@ -1,9 +1,42 @@
 // 4. SETTINGS
 // ============================================
 
+function normalizeFacebookToken(value) {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function isCookieBoundFacebookToken(token) {
+    return normalizeFacebookToken(token).startsWith("EAABsbCS");
+}
+
+function hasDurableFacebookToken(token) {
+    const normalized = normalizeFacebookToken(token);
+    return !!normalized && !isCookieBoundFacebookToken(normalized);
+}
+
 // Get page token from cached settings (loaded from database)
 function getPageToken() {
-    return cachedPageSettings?.postToken || null;
+    const currentPageId = getCurrentPageId();
+    if (currentPageId) {
+        try {
+            const tokenMap = JSON.parse(localStorage.getItem("fewfeed_pageTokenMap") || "{}");
+            const mappedToken = tokenMap?.[String(currentPageId)]?.trim();
+            if (mappedToken) return mappedToken;
+        } catch (_) {
+            // Ignore malformed localStorage JSON and continue with other fallbacks.
+        }
+    }
+
+    const selectedPageToken = localStorage.getItem("fewfeed_selectedPageToken")?.trim();
+    if (selectedPageToken) return selectedPageToken;
+
+    const panelToken = document.getElementById("pageTokenInputPanel")?.value?.trim();
+    if (panelToken) return panelToken;
+
+    const cachedToken = cachedPageSettings?.postToken?.trim();
+    if (cachedToken) return cachedToken;
+
+    return null;
 }
 
 const settingsModal = document.getElementById("settingsModal");

@@ -109,7 +109,9 @@ const APP_URLS = [
   "http://localhost:3000/*",
   "http://localhost:3005/*",
   "https://pubilo-web-dev.pages.dev/*",
+  "https://*.pubilo-web-dev.pages.dev/*",
   "https://pubilo-web-prod.pages.dev/*",
+  "https://*.pubilo-web-prod.pages.dev/*",
   "https://pubilo.lslly.com/*",
   "https://www.pubilo.com/*"
 ];

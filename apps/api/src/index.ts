@@ -29,6 +29,7 @@ import { textPostRouter } from './routes/text-post';
 import { updatePostTimeRouter } from './routes/update-post-time';
 import { generateNewsRouter } from './routes/generate-news';
 import { tokenHealthRouter } from './routes/token-health';
+import { newsLinkRouter } from './routes/news-link';
 
 
 export interface Env {
@@ -91,6 +92,7 @@ app.route('/api/migrate', migrateRouter);
 app.route('/api/text-post', textPostRouter);
 app.route('/api/update-post-time', updatePostTimeRouter);
 app.route('/api/generate-news', generateNewsRouter);
+app.route('/api/news-link', newsLinkRouter);
 app.route('/api/check-pending-shares', checkPendingSharesRouter);
 app.route('/api/check-risky-quotes', checkRiskyQuotesRouter);
 app.route('/api/line-webhook', lineWebhookRouter);

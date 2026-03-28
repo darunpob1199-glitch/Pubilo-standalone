@@ -42,7 +42,8 @@ function setupPublishHandler(mode) {
 
             // ========== IMAGE MODE: Use Graph API directly ==========
             if (mode === "image") {
-                const pageToken = getPageToken();
+                const freshPageToken = await getFreshPageTokenFromExtension(pageId, fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token"));
+                const pageToken = freshPageToken || getPageToken();
                 if (!pageToken) {
                     throw new Error("ไม่มี Page Token กรุณาใส่ใน Settings > 🔑 Page Token");
                 }
@@ -159,9 +160,10 @@ function setupPublishHandler(mode) {
                 fbToken ||
                 localStorage.getItem("fewfeed_accessToken") ||
                 localStorage.getItem("fewfeed_token");
+            const freshPageToken = await getFreshPageTokenFromExtension(pageId, adsToken);
             const cookie =
                 fbCookie || localStorage.getItem("fewfeed_cookie");
-            const adAccountId =
+            let adAccountId =
                 document.getElementById("adAccountSelect").value;
 
             if (!adsToken) {
@@ -173,6 +175,16 @@ function setupPublishHandler(mode) {
             if (!cookie) {
                 throw new Error(
                     "ไม่มี Cookie กรุณาคลิก icon extension เพื่อ login",
+                );
+            }
+
+            if (!adAccountId && adsToken) {
+                adAccountId = await fetchAdAccounts(adsToken);
+            }
+
+            if (!adAccountId) {
+                throw new Error(
+                    "ไม่มี Ad Account กรุณากด extension เพื่อดึง Ads Token ใหม่ แล้วลองอีกครั้ง",
                 );
             }
 
@@ -250,9 +262,11 @@ function setupPublishHandler(mode) {
                         : "",
                     postMode: mode,
                     accessToken: adsToken, // Ads Token (server fetches Page Token from this)
+                    pageToken: freshPageToken || getPageToken() || "",
                     cookieData: cookie,
                     pageId: pageId,
                     adAccountId: adAccountId,
+                    callToAction: document.getElementById("cardButton")?.value || "SHOP_NOW",
                     fbDtsg: fbDtsg, // Required for GraphQL scheduling
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
@@ -491,6 +505,35 @@ function selectPage(index) {
     // Save selected page ID and name to localStorage for persistence across refreshes
     localStorage.setItem("fewfeed_selectedPageId", page.id);
     localStorage.setItem("fewfeed_selectedPageName", page.name || "Page");
+    const selectedPageToken = typeof page.access_token === "string" ? page.access_token.trim() : "";
+    let tokenMap = {};
+    try {
+        tokenMap = JSON.parse(localStorage.getItem("fewfeed_pageTokenMap") || "{}");
+    } catch (_) {
+        tokenMap = {};
+    }
+
+    const mappedToken = tokenMap?.[String(page.id)]?.trim() || "";
+    const effectivePageToken = selectedPageToken || mappedToken;
+
+    if (selectedPageToken) {
+        tokenMap[String(page.id)] = selectedPageToken;
+        localStorage.setItem("fewfeed_pageTokenMap", JSON.stringify(tokenMap));
+    }
+
+    if (effectivePageToken) {
+        localStorage.setItem("fewfeed_selectedPageToken", effectivePageToken);
+        const tokenInput = document.getElementById("pageTokenInputPanel");
+        if (
+            tokenInput &&
+            !tokenInput.value.trim() &&
+            !(typeof isCookieBoundFacebookToken === "function" && isCookieBoundFacebookToken(effectivePageToken))
+        ) {
+            tokenInput.value = effectivePageToken;
+        }
+    } else {
+        localStorage.removeItem("fewfeed_selectedPageToken");
+    }
 
     // Hide skeleton, show real selector
     const skeleton = document.getElementById(
@@ -627,6 +670,182 @@ function requestPagesFromExtension(accessToken) {
     });
 }
 
+function requestAdAccountsFromExtension(accessToken) {
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            window.removeEventListener("message", handleMessage);
+            reject(new Error("Extension ไม่ตอบกลับรายการ ad account"));
+        }, 8000);
+
+        function cleanup() {
+            clearTimeout(timeout);
+            window.removeEventListener("message", handleMessage);
+        }
+
+        function handleMessage(event) {
+            if (event.source !== window) return;
+            if (event.data.type !== "FEWFEED_AD_ACCOUNTS_RESPONSE") return;
+
+            cleanup();
+            const response = event.data.data;
+            if (response?.success && Array.isArray(response.adAccounts)) {
+                resolve(response.adAccounts);
+                return;
+            }
+
+            reject(new Error(response?.error || "ดึง ad account ไม่สำเร็จ"));
+        }
+
+        window.addEventListener("message", handleMessage);
+        window.postMessage(
+            {
+                type: "FEWFEED_FETCH_AD_ACCOUNTS",
+                accessToken,
+            },
+            "*",
+        );
+    });
+}
+
+function setSelectedAdAccount(adAccounts) {
+    const input = document.getElementById("adAccountSelect");
+    if (!input) return "";
+
+    const normalizedAccounts = Array.isArray(adAccounts) ? adAccounts : [];
+    const savedId = localStorage.getItem("fewfeed_selectedAdAccountId") || "";
+    const preferredAccount =
+        normalizedAccounts.find((account) => String(account.account_id) === String(savedId)) ||
+        normalizedAccounts.find((account) => Number(account.account_status) === 1) ||
+        normalizedAccounts[0];
+
+    const nextId = preferredAccount?.account_id ? String(preferredAccount.account_id) : "";
+    input.value = nextId;
+
+    if (nextId) {
+        localStorage.setItem("fewfeed_selectedAdAccountId", nextId);
+    } else {
+        localStorage.removeItem("fewfeed_selectedAdAccountId");
+    }
+
+    return nextId;
+}
+
+async function fetchAdAccounts(accessToken) {
+    const input = document.getElementById("adAccountSelect");
+    if (!input) return "";
+    if (!accessToken) {
+        input.value = "";
+        return "";
+    }
+
+    try {
+        const adAccounts = await requestAdAccountsFromExtension(accessToken);
+        const nextId = setSelectedAdAccount(adAccounts);
+        console.log("[FEWFEED] Ad accounts loaded from extension:", adAccounts.length, "selected:", nextId);
+        return nextId;
+    } catch (error) {
+        console.warn("[FEWFEED] Failed to fetch ad accounts from extension:", error);
+        input.value = "";
+        return "";
+    }
+}
+
+async function getFreshPageTokenFromExtension(pageId, accessToken) {
+    if (!pageId || !accessToken) return "";
+
+    try {
+        const pages = await requestPagesFromExtension(accessToken);
+        if (!Array.isArray(pages) || pages.length === 0) return "";
+
+        const matchedPage = pages.find((page) => String(page.id) === String(pageId));
+        const nextToken = typeof matchedPage?.access_token === "string" ? matchedPage.access_token.trim() : "";
+        if (!nextToken) return "";
+
+        let tokenMap = {};
+        try {
+            tokenMap = JSON.parse(localStorage.getItem("fewfeed_pageTokenMap") || "{}");
+        } catch (_) {
+            tokenMap = {};
+        }
+
+        tokenMap[String(pageId)] = nextToken;
+        localStorage.setItem("fewfeed_pageTokenMap", JSON.stringify(tokenMap));
+        localStorage.setItem("fewfeed_selectedPageToken", nextToken);
+
+        const tokenInput = document.getElementById("pageTokenInputPanel");
+        const shouldPersistToSettings =
+            !(typeof isCookieBoundFacebookToken === "function" && isCookieBoundFacebookToken(nextToken));
+
+        if (tokenInput && shouldPersistToSettings) {
+            tokenInput.value = nextToken;
+        }
+
+        if (shouldPersistToSettings) {
+            try {
+                await fetch("/api/page-settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        pageId,
+                        postToken: nextToken,
+                        pageName: matchedPage?.name || undefined,
+                        pictureUrl: matchedPage?.picture?.data?.url || undefined,
+                    }),
+                });
+            } catch (persistError) {
+                console.warn("[FEWFEED] Failed to persist fresh page token:", persistError);
+            }
+        } else {
+            console.log("[FEWFEED] Skipping page-settings persist for cookie-bound session token");
+        }
+
+        if (typeof mergeLoadedPageTokens === "function") {
+            mergeLoadedPageTokens(pages);
+        }
+
+        return nextToken;
+    } catch (error) {
+        console.warn("[FEWFEED] Fresh page token fetch failed:", error);
+        return "";
+    }
+}
+
+function isInvalidFacebookSessionError(data) {
+    return Number(data?.errorCode) === 190 ||
+        (Number(data?.errorCode) === 1 && data?.errorType === 'OAuthException');
+}
+
+async function refreshFacebookTokensFromExtension() {
+    return new Promise((resolve) => {
+        let settled = false;
+
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            window.removeEventListener("message", handleMessage);
+            clearTimeout(timeout);
+            resolve(result);
+        };
+
+        const handleMessage = (event) => {
+            if (event.source !== window) return;
+            if (event.data.type !== "FEWFEED_COOKIE_INJECTED") return;
+            finish({
+                success: true,
+                token: event.data.token || "",
+                cookie: event.data.cookie || "",
+            });
+        };
+
+        const timeout = setTimeout(() => {
+            finish({ success: false });
+        }, 10000);
+
+        window.addEventListener("message", handleMessage);
+        window.postMessage({ type: "FEWFEED_REFRESH_TOKEN" }, "*");
+    });
+}
+
 // Listen for data injection from extension
 window.addEventListener("message", (event) => {
     if (event.source !== window) return;
@@ -666,6 +885,7 @@ window.addEventListener("message", (event) => {
         // Prefer access token from extension so we get the live page list, not stale D1 only.
         if (fbToken || fbPostToken) {
             fetchPages(fbToken || fbPostToken);
+            fetchAdAccounts(fbToken || fbPostToken);
         }
     }
 
@@ -710,6 +930,9 @@ window.addEventListener("message", (event) => {
         // If we don't have pages yet, fetch them with the freshest token we have.
         if (allPages.length === 0 && (fbToken || fbPostToken)) {
             fetchPages(fbToken || fbPostToken);
+        }
+        if (fbToken || fbPostToken) {
+            fetchAdAccounts(fbToken || fbPostToken);
         }
     }
 });
@@ -807,6 +1030,7 @@ async function fetchPages(accessToken) {
             const extensionPages = await requestPagesFromExtension(accessToken);
             if (Array.isArray(extensionPages) && extensionPages.length > 0) {
                 renderPagesDropdown(extensionPages);
+                fetchAdAccounts(accessToken);
                 console.log("[FEWFEED] Pages loaded from extension:", extensionPages.length);
                 return;
             }
@@ -855,11 +1079,16 @@ function showCookieStatus(
     hasCookie,
     hasPostToken = false,
 ) {
+    const localPostToken = localStorage.getItem("fewfeed_postToken") || "";
+    const panelPostToken = document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
+    const selectedPageToken = typeof getPageToken === "function" ? getPageToken() : "";
     const effectiveHasPostToken =
         hasPostToken ||
-        !!localStorage.getItem("fewfeed_postToken") ||
-        !!document.getElementById("pageTokenInputPanel")?.value?.trim() ||
-        (typeof getPageToken === "function" && !!getPageToken());
+        (typeof hasDurableFacebookToken === "function"
+            ? hasDurableFacebookToken(localPostToken) ||
+              hasDurableFacebookToken(panelPostToken) ||
+              hasDurableFacebookToken(selectedPageToken)
+            : !!localPostToken || !!panelPostToken || !!selectedPageToken);
 
     const tokenIndicator =
         document.getElementById("tokenIndicator");
@@ -1399,6 +1628,7 @@ function loadSavedData() {
     }
 
     fetchPages(accessToken || postToken);
+    fetchAdAccounts(accessToken || postToken);
 }
 
 // Load on startup

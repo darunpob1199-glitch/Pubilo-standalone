@@ -773,10 +773,13 @@ if (newsPublishBtn) {
         if (newsPublishBtn.disabled) return;
         
         const pageId = getCurrentPageId();
-        const pageToken = getPageToken() || document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
         const adsToken = fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
+        const freshPageToken = typeof getFreshPageTokenFromExtension === "function"
+            ? await getFreshPageTokenFromExtension(pageId, adsToken)
+            : "";
+        const pageToken = freshPageToken || getPageToken() || document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
         const cookie = fbCookie || localStorage.getItem("fewfeed_cookie");
-        const adAccountId = document.getElementById("adAccountSelect")?.value;
+        let adAccountId = document.getElementById("adAccountSelect")?.value;
         const newsUrlInputEl = document.getElementById("newsUrlInput");
         const newsPrimaryTextEl = document.getElementById("newsPrimaryText");
         const newsPreviewDescEl = document.getElementById("newsPreviewDescription");
@@ -789,6 +792,15 @@ if (newsPublishBtn) {
 
         if (!pageToken && !adsToken) {
             alert("ไม่มี token สำหรับโพสต์ กรุณา login extension ใหม่ หรือใส่ Page Token ใน Settings");
+            return;
+        }
+
+        if (!adAccountId && adsToken && typeof fetchAdAccounts === "function") {
+            adAccountId = await fetchAdAccounts(adsToken);
+        }
+
+        if (!adAccountId) {
+            alert("ไม่มี Ad Account กรุณากด extension เพื่อดึง Ads Token ใหม่ แล้วลองอีกครั้ง");
             return;
         }
         
@@ -807,25 +819,9 @@ if (newsPublishBtn) {
         newsPublishBtn.innerHTML = '<span class="loading"></span>';
         
         try {
-            // Compress image
+            // Compress image and keep data URL for direct Facebook multipart upload.
             if (imageData.startsWith("data:")) {
                 imageData = await compressImage(imageData, 1200, 0.8);
-                const uploadRes = await fetch("/api/upload-image", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        imageBase64: imageData,
-                    }),
-                });
-                const uploadData = await uploadRes.json();
-
-                if (!uploadRes.ok || !uploadData.success || !uploadData.url) {
-                    throw new Error(uploadData.error || "Image upload failed");
-                }
-
-                imageData = uploadData.url;
             }
             
             // Check if auto-schedule is enabled
@@ -840,16 +836,18 @@ if (newsPublishBtn) {
                 console.log("[News] Auto-schedule NOT enabled", { cachedPageId: cachedPageSettings.pageId, pageId, autoSchedule: cachedPageSettings.autoSchedule });
             }
             
-            const response = await fetch("/api/publish", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
+            const buildPublishRequest = async () => {
+                const latestAdsToken = fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
+                const latestCookie = fbCookie || localStorage.getItem("fewfeed_cookie");
+                const latestPageToken = typeof getFreshPageTokenFromExtension === "function"
+                    ? await getFreshPageTokenFromExtension(pageId, latestAdsToken)
+                    : "";
+
+                return {
                     pageId,
-                    pageToken: pageToken || "",
-                    accessToken: adsToken,
-                    cookieData: cookie,
+                    pageToken: latestPageToken || getPageToken() || document.getElementById("pageTokenInputPanel")?.value?.trim() || "",
+                    accessToken: latestAdsToken,
+                    cookieData: latestCookie,
                     imageUrl: imageData,
                     linkUrl: linkUrlValue,
                     linkName: descriptionText ? `พิกัด : ${descriptionText}` : "",
@@ -858,17 +856,55 @@ if (newsPublishBtn) {
                     primaryText,
                     postMode: "news",
                     adAccountId,
+                    callToAction: "SHOP_NOW",
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
                         : null,
-                }),
-            });
+                };
+            };
 
-            const data = await response.json();
+            const sendPublishRequest = async () => {
+                const response = await fetch("/api/publish", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(await buildPublishRequest()),
+                });
+                return { response, data: await response.json() };
+            };
+
+            let { response, data } = await sendPublishRequest();
+
+            if (typeof isInvalidFacebookSessionError === "function" && isInvalidFacebookSessionError(data)) {
+                const refreshResult = typeof refreshFacebookTokensFromExtension === "function"
+                    ? await refreshFacebookTokensFromExtension()
+                    : { success: false };
+
+                if (refreshResult?.success) {
+                    ({ response, data } = await sendPublishRequest());
+                }
+            }
+
             console.log("[News] Publish response:", data);
 
             if (!response.ok || !data.success) {
-                throw new Error(data.error || "Facebook API error");
+                console.error("[News] Publish FAILED:", JSON.stringify(data, null, 2));
+                const meta = [];
+                if (data.errorCode) meta.push(`code ${data.errorCode}`);
+                if (data.errorSubcode) meta.push(`subcode ${data.errorSubcode}`);
+                if (data._debug) {
+                    meta.push(`candidates:${data._debug.candidateCount}`);
+                    meta.push(`endpoint:${data._debug.isNewsLinkPost ? 'news' : data._debug.postMode}`);
+                    if (data._debug.hostedImageUrl) meta.push('hasHostedImg');
+                    if (data._debug.fbError?.fbtrace_id) meta.push(`trace:${data._debug.fbError.fbtrace_id}`);
+                }
+                const detail = meta.length > 0 ? ` (${meta.join(", ")})` : "";
+                let message = (data.error || "Facebook API error") + detail;
+                if (typeof isInvalidFacebookSessionError === "function" && isInvalidFacebookSessionError(data)) {
+                    message = "Facebook session หมดอายุ กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง" + detail;
+                }
+                throw new Error(message);
             }
 
             const postId = data.postId || data.post_id || data.id;

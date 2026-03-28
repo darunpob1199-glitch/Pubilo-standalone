@@ -3,6 +3,33 @@ import { Env } from '../index';
 
 const app = new Hono<{ Bindings: Env }>();
 
+function normalizeBase64Input(raw?: string): string {
+    if (!raw || typeof raw !== 'string') return '';
+
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+
+    // Support full data URLs with any mime params, e.g. data:image/jpeg;name=a.jpg;base64,xxxx
+    const base64Payload = (() => {
+        if (!trimmed.startsWith('data:')) return trimmed;
+        const commaIndex = trimmed.indexOf(',');
+        return commaIndex >= 0 ? trimmed.slice(commaIndex + 1) : '';
+    })();
+
+    // Normalize possible base64url + whitespace/newlines
+    let normalized = base64Payload
+        .replace(/\s+/g, '')
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+
+    const remainder = normalized.length % 4;
+    if (remainder > 0) {
+        normalized += '='.repeat(4 - remainder);
+    }
+
+    return normalized;
+}
+
 // POST /api/upload-image
 app.post('/', async (c) => {
     try {
@@ -12,8 +39,8 @@ app.post('/', async (c) => {
             imageUrl?: string;
         };
         const normalizedImageBase64 =
-            imageBase64?.replace(/^data:image\/\w+;base64,/, '') ||
-            imageData?.replace(/^data:image\/\w+;base64,/, '');
+            normalizeBase64Input(imageBase64) ||
+            normalizeBase64Input(imageData);
 
         if (!normalizedImageBase64 && !imageUrl) {
             return c.json({ success: false, error: 'Missing image data' }, 400);

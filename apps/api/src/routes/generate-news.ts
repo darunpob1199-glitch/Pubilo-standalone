@@ -28,8 +28,34 @@ app.post('/', async (c) => {
             return c.json({ error: 'No images provided' }, 400);
         }
 
-        const apiKey = c.env.GEMINI_API_KEY;
-        if (!apiKey) return c.json({ error: 'GEMINI_API_KEY not configured' }, 500);
+        // Get API key from environment first, then fallback to database settings.
+        let apiKey: string | undefined = c.env.GEMINI_API_KEY;
+
+        if (!apiKey) {
+            try {
+                const settings = await c.env.DB.prepare(`
+                    SELECT setting_value FROM global_settings WHERE setting_key = ?
+                `).bind('gemini_api_key').first<{ setting_value: string }>();
+                apiKey = settings?.setting_value;
+            } catch {
+                // Fall back to legacy schema if it still exists.
+            }
+        }
+
+        if (!apiKey) {
+            try {
+                const legacySettings = await c.env.DB.prepare(`
+                    SELECT gemini_api_key FROM global_settings WHERE id = 1
+                `).first<{ gemini_api_key: string }>();
+                apiKey = legacySettings?.gemini_api_key;
+            } catch {
+                // Ignore legacy lookup failures.
+            }
+        }
+
+        if (!apiKey) {
+            return c.json({ error: 'No Gemini API key configured' }, 400);
+        }
 
         // Step 1: Analyze images (optional)
         let analysisContext = "";

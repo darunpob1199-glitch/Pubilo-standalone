@@ -203,29 +203,42 @@ async function generateNewsImages() {
             };
         }));
         
-        // Call generate API
-        const response = await fetch('/api/generate-news', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                referenceImages,
-                analysisPrompt: settings.news_analysis_prompt,
-                generationPrompt: settings.news_generation_prompt,
-                aspectRatio: settings.news_image_size || '1:1',
-                variationCount: settings.news_variation_count || 4,
-                aiModel: settings.ai_model,
-                aiResolution: settings.ai_resolution
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success && data.images?.length > 0) {
-            newsGeneratedImages = data.images;
-            renderNewsGeneratedGrid();
-        } else {
+        const payload = {
+            referenceImages,
+            analysisPrompt: settings.news_analysis_prompt,
+            generationPrompt: settings.news_generation_prompt,
+            aspectRatio: settings.news_image_size || '1:1',
+            variationCount: settings.news_variation_count || 4,
+            aiModel: settings.ai_model,
+            aiResolution: settings.ai_resolution
+        };
+
+        const postGenerateNews = async (url) => {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            if (data.success && data.images?.length > 0) return data;
             throw new Error(data.error || 'Failed to generate');
+        };
+
+        let data;
+        try {
+            data = await postGenerateNews('/api/generate-news');
+        } catch (primaryErr) {
+            const message = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+            if (!message.includes('GEMINI_API_KEY not configured')) {
+                throw primaryErr;
+            }
+
+            // Hotfix: fallback to the updated worker when api.pubilo.com still serves old code.
+            data = await postGenerateNews('https://pubilo-api-prod.lungnuek.workers.dev/api/generate-news');
         }
+
+        newsGeneratedImages = data.images;
+        renderNewsGeneratedGrid();
     } catch (err) {
         console.error('[News] Generate error:', err);
         container.innerHTML = `<div style="text-align: center; color: #ef4444; padding: 20px;">เกิดข้อผิดพลาด: ${err.message}<br><button onclick="retryNewsGenerate()" style="margin-top: 12px; padding: 8px 16px; background: #333333; color: white; border: none; border-radius: 8px; cursor: pointer;">ลองใหม่</button></div>`;

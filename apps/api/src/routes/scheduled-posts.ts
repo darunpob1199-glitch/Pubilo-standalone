@@ -5,12 +5,25 @@ const app = new Hono<{ Bindings: Env }>();
 
 const FB_API = 'https://graph.facebook.com/v21.0';
 
-async function fetchFreshPageToken(pageId: string, accessToken?: string): Promise<string> {
+function buildFacebookHeaders(cookieData?: string): Record<string, string> | undefined {
+    const normalizedCookie = typeof cookieData === 'string' ? cookieData.trim() : '';
+    if (!normalizedCookie) return undefined;
+
+    return {
+        Cookie: normalizedCookie,
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    };
+}
+
+async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieData?: string): Promise<string> {
     if (!accessToken) return '';
+
+    const headers = buildFacebookHeaders(cookieData);
 
     try {
         const accountsRes = await fetch(
-            `${FB_API}/me/accounts?access_token=${encodeURIComponent(accessToken)}&fields=id,access_token&limit=100`
+            `${FB_API}/me/accounts?access_token=${encodeURIComponent(accessToken)}&fields=id,access_token&limit=100`,
+            headers ? { headers } : undefined
         );
         const accountsData = await accountsRes.json() as any;
         const matchedPage = accountsData?.data?.find((page: any) => String(page.id) === String(pageId));
@@ -24,7 +37,8 @@ async function fetchFreshPageToken(pageId: string, accessToken?: string): Promis
 
     try {
         const tokenRes = await fetch(
-            `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(accessToken)}`
+            `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(accessToken)}`,
+            headers ? { headers } : undefined
         );
         const tokenData = await tokenRes.json() as any;
 
@@ -56,6 +70,7 @@ async function handleScheduledPosts(
     pageId: string | undefined,
     pageToken: string | undefined,
     accessToken: string | undefined,
+    cookieData: string | undefined,
     c: Context<{ Bindings: Env }>
 ) {
     if (!pageId) {
@@ -80,7 +95,8 @@ async function handleScheduledPosts(
             }
         }
 
-        const freshPageToken = await fetchFreshPageToken(pageId, accessToken);
+        const headers = buildFacebookHeaders(cookieData);
+        const freshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
         const authCandidates = buildAuthCandidates([
             storedPageToken,
             freshPageToken,
@@ -95,7 +111,7 @@ async function handleScheduledPosts(
 
         for (const authToken of authCandidates) {
             const url = `${FB_API}/${pageId}/scheduled_posts?access_token=${encodeURIComponent(authToken)}&fields=${fields}`;
-            const response = await fetch(url);
+            const response = await fetch(url, headers ? { headers } : undefined);
             const data = await response.json() as any;
 
             if (data.error) {
@@ -146,13 +162,14 @@ app.get('/', async (c) => {
     const pageId = c.req.query('pageId');
     const pageToken = c.req.query('pageToken');
     const accessToken = c.req.query('accessToken');
-    return handleScheduledPosts(pageId, pageToken, accessToken, c);
+    const cookieData = c.req.query('cookieData');
+    return handleScheduledPosts(pageId, pageToken, accessToken, cookieData, c);
 });
 
 // POST /api/scheduled-posts { pageId, pageToken, accessToken }
 app.post('/', async (c) => {
-    const body = await c.req.json().catch(() => ({})) as { pageId?: string; pageToken?: string; accessToken?: string };
-    return handleScheduledPosts(body.pageId, body.pageToken, body.accessToken, c);
+    const body = await c.req.json().catch(() => ({})) as { pageId?: string; pageToken?: string; accessToken?: string; cookieData?: string };
+    return handleScheduledPosts(body.pageId, body.pageToken, body.accessToken, body.cookieData, c);
 });
 
 export { app as scheduledPostsRouter };

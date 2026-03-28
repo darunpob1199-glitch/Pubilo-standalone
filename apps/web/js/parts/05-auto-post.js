@@ -172,6 +172,15 @@ async function autoFetchPageToken({ silent = false } = {}) {
             throw new Error("ดึง Page Token ไม่ได้ ตรวจสอบว่า account นี้เป็นแอดมินเพจและมีสิทธิ์โพสต์");
         }
 
+        if (typeof isCookieBoundFacebookToken === "function" && isCookieBoundFacebookToken(postToken)) {
+            localStorage.setItem("fewfeed_selectedPageToken", postToken);
+            setPageTokenAutoStatus("ดึง session token ได้แล้ว ใช้โพสต์บนหน้านี้ได้ แต่บันทึกถาวรไม่ได้", "success");
+            if (!silent) {
+                alert("ดึง session token ได้แล้ว ใช้โพสต์บนหน้านี้ได้ แต่ยังไม่ใช่ Page Token ถาวร");
+            }
+            return postToken;
+        }
+
         tokenInput.value = postToken;
         tokenInput.dispatchEvent(new Event("input", { bubbles: true }));
         tokenInput.dispatchEvent(new Event("change", { bubbles: true }));
@@ -898,6 +907,10 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
     // Get token value FIRST before anything else
     const pageTokenInput = document.getElementById("pageTokenInputPanel");
     const postToken = pageTokenInput ? pageTokenInput.value.trim() : "";
+    const durablePostToken =
+        typeof hasDurableFacebookToken === "function" && hasDurableFacebookToken(postToken)
+            ? postToken
+            : "";
     console.log("[SAVE] Token from input:", postToken ? postToken.substring(0, 20) + "..." : "(empty)");
 
     const autoSchedule = autoScheduleEnabledPanel.checked;
@@ -932,7 +945,7 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
 
     const requestBody = {
         pageId,
-        postToken,  // TOKEN MUST BE INCLUDED
+        postToken: durablePostToken,
         hideToken,  // Separate token for auto-hide (optional)
         autoSchedule,
         scheduleMinutes: mins,
@@ -1010,7 +1023,7 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
                 pageId,
                 autoSchedule,
                 scheduleMinutes: mins,
-                postToken,
+                postToken: durablePostToken,
                 workingHoursStart: workingStart,
                 workingHoursEnd: workingEnd,
                 newsAnalysisPrompt,
@@ -1021,6 +1034,10 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
                 ogBackgroundUrl: ogBgUrl,
                 ogFont,
             };
+
+            if (postToken && !durablePostToken) {
+                setPageTokenAutoStatus("บันทึกค่าอื่นสำเร็จแล้ว แต่ session token จะไม่ถูกเก็บถาวร", "muted");
+            }
 
             // Update UI mode
             if (currentPostMode) setAutoPostMode(currentPostMode);

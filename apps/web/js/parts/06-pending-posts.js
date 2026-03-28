@@ -8,12 +8,17 @@ async function fetchScheduledPostsFromFacebook() {
         localStorage.getItem("fewfeed_accessToken") ||
         localStorage.getItem("fewfeed_token") ||
         "";
+    const cookieData =
+        (typeof fbCookie !== "undefined" && fbCookie) ||
+        localStorage.getItem("fewfeed_cookie") ||
+        "";
 
     console.log("[FEWFEED] Fetching scheduled posts:", {
         hasPageId: !!pageId,
         pageId: pageId || "(empty)",
         hasSelectedPageToken: !!selectedPageToken,
         hasAccessToken: !!accessToken,
+        hasCookie: !!cookieData,
         tokenPrefix: selectedPageToken?.substring(0, 15) + "...",
     });
 
@@ -25,12 +30,16 @@ async function fetchScheduledPostsFromFacebook() {
     }
 
     try {
-        const params = new URLSearchParams({
-            pageId,
-            ...(selectedPageToken ? { pageToken: selectedPageToken } : {}),
-            ...(accessToken ? { accessToken } : {}),
+        const response = await fetch("/api/scheduled-posts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                pageId,
+                ...(selectedPageToken ? { pageToken: selectedPageToken } : {}),
+                ...(accessToken ? { accessToken } : {}),
+                ...(cookieData ? { cookieData } : {}),
+            }),
         });
-        const response = await fetch(`/api/scheduled-posts?${params.toString()}`);
         const data = await response.json();
 
         console.log("[FEWFEED] Scheduled posts response:", data);
