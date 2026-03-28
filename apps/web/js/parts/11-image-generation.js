@@ -199,7 +199,6 @@ function setupGenerateHandler(mode) {
 // Setup generate handlers for all modes
 setupGenerateHandler("link");
 setupGenerateHandler("image");
-setupGenerateHandler("reels");
 
 // Show single generated image full-size
 function showSingleImage(imgSrc) {

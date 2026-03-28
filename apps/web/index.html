@@ -632,15 +632,18 @@
                                             <polyline points="17 8 12 3 7 8" />
                                             <line x1="12" y1="3" x2="12" y2="15" />
                                         </svg>
-                                        <span>อัพโหลดจากเครื่อง</span>
+                                        <span>อัพโหลดวิดีโอ</span>
                                     </button>
-                                    <button class="upload-btn upload-from-gemini" id="reelsUploadFromGemini">
+                                    <button class="upload-btn upload-from-gemini" id="reelsUploadFromGemini" type="button" disabled>
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
                                         </svg>
-                                        <span>เจนจาก Gemini</span>
+                                        <span>V1 ยังไม่ใช้ AI</span>
                                     </button>
                                 </div>
+                                <p style="margin-top: 0.75rem; color: #9ca3af; font-size: 0.85rem; text-align: center;">
+                                    รองรับวิดีโอจากเครื่องก่อนใน V1
+                                </p>
                             </div>
                             <div class="generate-overlay" id="reelsGenerateOverlay" style="display: none">
                                 <button class="btn-generate" id="reelsGenerateBtn">
@@ -1492,6 +1495,7 @@
     </div>
 
     <input type="file" id="fileInput" multiple accept="image/*" style="display: none" />
+    <input type="file" id="reelsFileInput" accept="video/mp4,video/quicktime,video/x-m4v,video/*" style="display: none" />
 
     <!-- Settings Modal -->
     <div class="modal-overlay" id="settingsModal" style="display: none">
@@ -1620,17 +1624,17 @@
 
     <script src="/js/config.js?v=6.3"></script>
     <script src="/js/parts/01-thumb-preview.js?v=6.1"></script>
-    <script src="/js/parts/02-dom-elements.js?v=6.1"></script>
-    <script src="/js/parts/03-validation.js?v=6.1"></script>
+    <script src="/js/parts/02-dom-elements.js?v=6.2"></script>
+    <script src="/js/parts/03-validation.js?v=6.2"></script>
     <script src="/js/parts/04-settings.js?v=6.6"></script>
-    <script src="/js/parts/05-auto-post.js?v=6.3"></script>
+    <script src="/js/parts/05-auto-post.js?v=6.4"></script>
     <script src="/js/parts/06-pending-posts.js?v=6.4"></script>
     <script src="/js/parts/07-earnings.js?v=6.1"></script>
     <script src="/js/parts/08-quotes.js?v=6.1"></script>
-    <script src="/js/parts/09-navigation.js?v=6.2"></script>
-    <script src="/js/parts/10-lazada.js?v=6.1"></script>
-    <script src="/js/parts/11-image-generation.js?v=7.2"></script>
-    <script src="/js/parts/12-publish.js?v=7.4"></script>
+    <script src="/js/parts/09-navigation.js?v=6.3"></script>
+    <script src="/js/parts/10-lazada.js?v=6.2"></script>
+    <script src="/js/parts/11-image-generation.js?v=7.3"></script>
+    <script src="/js/parts/12-publish.js?v=7.5"></script>
 
     <!-- Lightbox Modal -->
     <div class="lightbox-overlay" id="lightboxOverlay">

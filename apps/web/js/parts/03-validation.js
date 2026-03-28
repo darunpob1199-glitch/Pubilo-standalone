@@ -2,6 +2,7 @@
 // ============================================
 let linkModeImageReady = false;
 let newsModeImageReady = false;
+let reelsModeVideoReady = false;
 
 function validateLinkMode() {
     // Determine current mode - default to 'link'
@@ -78,6 +79,24 @@ function validateNewsMode() {
     }
 }
 
+function validateReelsMode() {
+    const reelsPublishBtn = document.getElementById("reelsPublishBtn");
+    const reelsPrimaryText = document.getElementById("reelsPrimaryText");
+    const hasVideo = reelsModeVideoReady;
+    const hasCaption = !!reelsPrimaryText;
+    const isValid = hasVideo && hasCaption;
+
+    if (reelsPublishBtn) {
+        reelsPublishBtn.disabled = !isValid;
+        reelsPublishBtn.classList.toggle("disabled", !isValid);
+        reelsPublishBtn.style.opacity = isValid ? "1" : "0.5";
+        reelsPublishBtn.style.cursor = isValid ? "pointer" : "not-allowed";
+        if (!reelsPublishBtn.classList.contains("published")) {
+            reelsPublishBtn.textContent = "PUBLISH";
+        }
+    }
+}
+
 // Listen for link URL changes
 if (linkUrl) {
     linkUrl.addEventListener("input", validateLinkMode);
@@ -87,5 +106,6 @@ if (linkUrl) {
 
 // Initial validation
 setTimeout(validateLinkMode, 500);
+setTimeout(validateReelsMode, 500);
 
 // ============================================
