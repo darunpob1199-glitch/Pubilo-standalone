@@ -1,5 +1,11 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import {
+    markReelUploadCompleted,
+    markReelUploadFailed,
+    markReelUploadPublishing,
+    upsertReelUploadStage,
+} from '../lib/reel-uploads';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -302,6 +308,15 @@ app.post('/upload', async (c) => {
             source: 'browser-upload',
         });
 
+        await upsertReelUploadStage(c.env, {
+            videoKey: uploaded.key,
+            pageId,
+            fileName: uploaded.fileName,
+            mimeType: uploaded.mimeType,
+            fileSize: uploaded.fileSize,
+            uploadSource: 'browser-upload',
+        });
+
         return c.json({
             success: true,
             videoKey: uploaded.key,
@@ -357,6 +372,15 @@ app.post('/', async (c) => {
                 source: 'publish-fallback',
             });
             videoKeyUsed = uploaded.key;
+
+            await upsertReelUploadStage(c.env, {
+                videoKey: uploaded.key,
+                pageId,
+                fileName: uploaded.fileName,
+                mimeType: uploaded.mimeType,
+                fileSize: uploaded.fileSize,
+                uploadSource: 'publish-fallback',
+            });
         }
 
         if (!videoFile) {
@@ -395,6 +419,10 @@ app.post('/', async (c) => {
 
         let lastFacebookError: any = null;
         let sawSessionExpired = false;
+
+        if (videoKeyUsed) {
+            await markReelUploadPublishing(c.env, videoKeyUsed);
+        }
 
         for (const authToken of authCandidates) {
             const body = new FormData();
@@ -462,6 +490,8 @@ app.post('/', async (c) => {
                 | { success: true; commentId: string; targetId: string }
                 | { success: false; error: any }
                 | null = null;
+            let deleteErrorMessage: string | null = null;
+            let deletedFromR2 = false;
 
             if (affiliateCommentMessage) {
                 affiliateCommentResult = await postAffiliateComment({
@@ -469,6 +499,42 @@ app.post('/', async (c) => {
                     accessToken: authToken,
                     message: affiliateCommentMessage,
                     headers: facebookHeaders,
+                });
+            }
+
+            if (videoKeyUsed) {
+                try {
+                    await c.env.IMAGES.delete(videoKeyUsed);
+                    deletedFromR2 = true;
+                } catch (error) {
+                    deleteErrorMessage = error instanceof Error ? error.message : String(error);
+                    console.error('[publish-reel] Failed to delete staged R2 object after publish:', {
+                        videoKey: videoKeyUsed,
+                        error: deleteErrorMessage,
+                    });
+                }
+            }
+
+            if (videoKeyUsed) {
+                await markReelUploadCompleted(c.env, {
+                    videoKey: videoKeyUsed,
+                    postId: postId || videoId,
+                    videoId,
+                    facebookUrl: buildFacebookVideoUrl({
+                        pageId,
+                        videoId,
+                        postId,
+                        permalinkUrl,
+                    }),
+                    commentId: affiliateCommentResult?.success ? affiliateCommentResult.commentId : undefined,
+                    commentTargetId: affiliateCommentResult?.success ? affiliateCommentResult.targetId : undefined,
+                    warningMessage:
+                        (affiliateCommentMessage && affiliateCommentResult && !affiliateCommentResult.success
+                            ? `Affiliate comment failed: ${affiliateCommentResult.error?.message || 'Unknown error'}`
+                            : null) ||
+                        (deleteErrorMessage ? `R2 cleanup failed: ${deleteErrorMessage}` : null),
+                    deleted: deletedFromR2,
+                    deleteErrorMessage,
                 });
             }
 
@@ -514,7 +580,16 @@ app.post('/', async (c) => {
                 warning:
                     affiliateCommentMessage && affiliateCommentResult && !affiliateCommentResult.success
                         ? `Reel posted but affiliate comment failed: ${affiliateCommentResult.error?.message || 'Unknown error'}`
-                        : null,
+                        : (deleteErrorMessage ? `Reel posted but cleanup failed: ${deleteErrorMessage}` : null),
+            });
+        }
+
+        if (videoKeyUsed) {
+            await markReelUploadFailed(c.env, {
+                videoKey: videoKeyUsed,
+                errorMessage: sawSessionExpired
+                    ? 'Facebook session หมดอายุ กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง'
+                    : (lastFacebookError?.message || 'Facebook API error'),
             });
         }
 

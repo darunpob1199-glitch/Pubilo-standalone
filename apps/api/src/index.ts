@@ -21,6 +21,7 @@ import { cronAutoPostRouter } from './routes/cron-auto-post';
 import { cronEarningsRouter } from './routes/cron-earnings';
 import { autoHideRouter } from './routes/auto-hide';
 import { cronHealthCheckRouter } from './routes/cron-health-check';
+import { cronCleanupReelsRouter } from './routes/cron-cleanup-reels';
 // Additional routes
 import { lineWebhookRouter } from './routes/line-webhook';
 import { checkPendingSharesRouter } from './routes/check-pending-shares';
@@ -237,6 +238,7 @@ app.route('/api/cron/auto-post', cronAutoPostRouter);
 app.route('/api/cron/auto-hide', autoHideRouter);
 app.route('/api/cron/earnings', cronEarningsRouter);
 app.route('/api/cron/health-check', cronHealthCheckRouter);
+app.route('/api/cron/cleanup-reels', cronCleanupReelsRouter);
 
 
 
@@ -291,6 +293,16 @@ export default {
                 console.log('[scheduled] health-check result:', healthData);
             } catch (err) {
                 console.error('[scheduled] health-check error:', err);
+            }
+
+            console.log('[scheduled] Every hour - Cleaning up stale reel uploads');
+            try {
+                const cleanupReq = new Request('https://internal/api/cron/cleanup-reels');
+                const cleanupRes = await app.fetch(cleanupReq, env, ctx);
+                const cleanupData = await cleanupRes.json();
+                console.log('[scheduled] cleanup-reels result:', cleanupData);
+            } catch (err) {
+                console.error('[scheduled] cleanup-reels error:', err);
             }
         }
 
