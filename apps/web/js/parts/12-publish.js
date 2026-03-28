@@ -2,10 +2,6 @@
 // ============================================
 let lastPublishedUrl = null;
 
-function getBasePublishButtonLabel(mode) {
-    return mode === "link" ? "SCHEDULE" : "PUBLISH";
-}
-
 function setupPublishHandler(mode) {
     const els = getModeElements(mode);
     if (!els.publishBtn) return;
@@ -20,14 +16,10 @@ function setupPublishHandler(mode) {
             els.publishBtn.classList.contains("published")
         ) {
             // Reset button after viewing
-<<<<<<< HEAD
             els.publishBtn.textContent =
                 typeof getPrimaryPublishLabel === "function"
                     ? getPrimaryPublishLabel(mode)
                     : "POST NOW";
-=======
-            els.publishBtn.textContent = getBasePublishButtonLabel(mode);
->>>>>>> 53169452cba77e98fce553f412c5281979a57319
             els.publishBtn.classList.remove("published");
             lastPublishedUrl = null;
             return;
@@ -544,14 +536,10 @@ function setupPublishHandler(mode) {
         } catch (err) {
             console.error("[FEWFEED] Error:", err.message);
             alert("Publish failed: " + err.message);
-<<<<<<< HEAD
             els.publishBtn.textContent =
                 typeof getPrimaryPublishLabel === "function"
                     ? getPrimaryPublishLabel(mode)
                     : "POST NOW";
-=======
-            els.publishBtn.textContent = getBasePublishButtonLabel(mode);
->>>>>>> 53169452cba77e98fce553f412c5281979a57319
             els.publishBtn.disabled = false;
         }
     });
