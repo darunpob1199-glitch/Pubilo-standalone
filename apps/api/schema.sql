@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS scheduled_publish_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     page_id TEXT NOT NULL,
     payload_json TEXT NOT NULL,
+    batch_id TEXT,
     scheduled_time INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     post_id TEXT,
@@ -156,3 +157,4 @@ CREATE INDEX IF NOT EXISTS idx_share_queue_target_page_id ON share_queue (target
 CREATE INDEX IF NOT EXISTS idx_earnings_history_date ON earnings_history (date);
 CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_status_time ON scheduled_publish_queue (status, scheduled_time);
 CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_page_status ON scheduled_publish_queue (page_id, status, scheduled_time);
+CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_batch_id ON scheduled_publish_queue (batch_id, status, scheduled_time);

@@ -60,6 +60,7 @@ async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             page_id TEXT NOT NULL,
             payload_json TEXT NOT NULL,
+            batch_id TEXT,
             scheduled_time INTEGER NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
             post_id TEXT,
@@ -72,9 +73,23 @@ async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
         )
     `).run();
 
+    try {
+        await env.DB.prepare(`
+            ALTER TABLE scheduled_publish_queue
+            ADD COLUMN batch_id TEXT
+        `).run();
+    } catch (_) {
+        // Ignore duplicate-column errors on existing databases.
+    }
+
     await env.DB.prepare(`
         CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_status_time
         ON scheduled_publish_queue (status, scheduled_time)
+    `).run();
+
+    await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_batch_id
+        ON scheduled_publish_queue (batch_id, status, scheduled_time)
     `).run();
 }
 
@@ -120,7 +135,10 @@ async function processScheduledPublishQueue(env: Env, ctx: ExecutionContext): Pr
             }
 
             const payload = parseQueuePayload(job.payload_json);
-            const publishReq = new Request('https://internal/api/publish', {
+            const queueRoute = payload?.queueRoute === '/api/publish-reel'
+                ? '/api/publish-reel'
+                : '/api/publish';
+            const publishReq = new Request(`https://internal${queueRoute}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

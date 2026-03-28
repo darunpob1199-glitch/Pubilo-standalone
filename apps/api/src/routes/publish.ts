@@ -182,12 +182,30 @@ function deriveSiteName(inputCaption?: string, targetUrl?: string): string {
     return 'PUBILO';
 }
 
+function normalizeTargetPageIds(input: unknown, currentPageId: string): string[] {
+    if (!Array.isArray(input)) return [];
+
+    const seen = new Set<string>();
+    const normalizedCurrentPageId = String(currentPageId);
+
+    return input
+        .map((value) => String(value || '').trim())
+        .filter((value) => {
+            if (!value || value === normalizedCurrentPageId || seen.has(value)) {
+                return false;
+            }
+            seen.add(value);
+            return true;
+        });
+}
+
 async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
     await env.DB.prepare(`
         CREATE TABLE IF NOT EXISTS scheduled_publish_queue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             page_id TEXT NOT NULL,
             payload_json TEXT NOT NULL,
+            batch_id TEXT,
             scheduled_time INTEGER NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
             post_id TEXT,
@@ -200,6 +218,15 @@ async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
         )
     `).run();
 
+    try {
+        await env.DB.prepare(`
+            ALTER TABLE scheduled_publish_queue
+            ADD COLUMN batch_id TEXT
+        `).run();
+    } catch (_) {
+        // Ignore if column already exists on long-lived prod DBs.
+    }
+
     await env.DB.prepare(`
         CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_status_time
         ON scheduled_publish_queue (status, scheduled_time)
@@ -209,6 +236,11 @@ async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
         CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_page_status
         ON scheduled_publish_queue (page_id, status, scheduled_time)
     `).run();
+
+    await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_batch_id
+        ON scheduled_publish_queue (batch_id, status, scheduled_time)
+    `).run();
 }
 
 async function enqueueScheduledPublish(
@@ -216,6 +248,7 @@ async function enqueueScheduledPublish(
     pageId: string,
     scheduledTime: number,
     payload: Record<string, unknown>,
+    batchId?: string,
 ): Promise<number> {
     await ensureScheduledPublishQueueTable(env);
 
@@ -223,12 +256,14 @@ async function enqueueScheduledPublish(
         INSERT INTO scheduled_publish_queue (
             page_id,
             payload_json,
+            batch_id,
             scheduled_time,
             status
-        ) VALUES (?, ?, ?, 'pending')
+        ) VALUES (?, ?, ?, ?, 'pending')
     `).bind(
         pageId,
         JSON.stringify(payload),
+        batchId || null,
         scheduledTime
     ).run();
 
@@ -649,6 +684,8 @@ app.post('/', async (c) => {
             callToAction,
             scheduleInSystem,
             internalRun,
+            targetPageIds,
+            batchId,
         } = body;
 
         if (!pageId) {
@@ -707,6 +744,8 @@ app.post('/', async (c) => {
                 ? scheduledTime
                 : Math.floor(new Date(scheduledTime).getTime() / 1000))
             : null;
+        const normalizedTargetPageIds = normalizeTargetPageIds(targetPageIds, pageId);
+        const publishTargetPageIds = [pageId, ...normalizedTargetPageIds];
 
         let hostedImageUrl = '';
         if (isLinkAttachmentPost && finalImageUrl) {
@@ -733,16 +772,146 @@ app.post('/', async (c) => {
             : '';
 
         const shouldQueueInSystem = !!scheduleTimestamp && !!scheduleInSystem && !internalRun;
+        const currentBatchId = typeof batchId === 'string' && batchId.trim()
+            ? batchId.trim()
+            : crypto.randomUUID();
+
+        if (!internalRun && publishTargetPageIds.length > 1) {
+            if (shouldQueueInSystem) {
+                const queuedTargets: Array<{ pageId: string; queueId: number; queued: boolean }> = [];
+
+                for (const targetPageId of publishTargetPageIds) {
+                    const queuePayload: Record<string, unknown> = {
+                        ...body,
+                        pageId: targetPageId,
+                        pageToken: '',
+                        imageUrl: hostedImageUrl || finalImageUrl,
+                        targetPageIds: [],
+                        batchId: currentBatchId,
+                        queueRoute: '/api/publish',
+                        scheduledTime: null,
+                        scheduleInSystem: false,
+                        internalRun: false,
+                    };
+
+                    const queueId = await enqueueScheduledPublish(
+                        c.env,
+                        targetPageId,
+                        scheduleTimestamp,
+                        queuePayload,
+                        currentBatchId,
+                    );
+
+                    queuedTargets.push({
+                        pageId: targetPageId,
+                        queueId,
+                        queued: !!queueId,
+                    });
+                }
+
+                return c.json({
+                    success: true,
+                    queued: true,
+                    batchId: currentBatchId,
+                    queuedTargets,
+                    postId: `batch:${currentBatchId}`,
+                    id: `batch:${currentBatchId}`,
+                    url: buildFacebookPostUrl('', pageId),
+                    needsScheduling: false,
+                    scheduledTime: scheduleTimestamp,
+                    _debug: {
+                        flow: 'system-queue-multi-page',
+                        batchId: currentBatchId,
+                        targetCount: publishTargetPageIds.length,
+                        scheduledTime: scheduleTimestamp,
+                    },
+                });
+            }
+
+            const fanOutResults: Array<Record<string, unknown>> = [];
+            let primaryResult: Record<string, any> | null = null;
+            let primaryError = '';
+
+            for (const targetPageId of publishTargetPageIds) {
+                const response = await app.fetch(
+                    new Request('https://internal/api/publish', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            ...body,
+                            pageId: targetPageId,
+                            pageToken: '',
+                            imageUrl: hostedImageUrl || finalImageUrl,
+                            targetPageIds: [],
+                            batchId: currentBatchId,
+                            internalRun: true,
+                        }),
+                    }),
+                    c.env,
+                    c.executionCtx,
+                );
+                const result = await response.json() as Record<string, any>;
+                const success = !!(response.ok && result?.success);
+
+                fanOutResults.push({
+                    pageId: targetPageId,
+                    success,
+                    postId: result?.postId || null,
+                    url: result?.url || null,
+                    error: success ? null : (result?.error || `HTTP ${response.status}`),
+                });
+
+                if (targetPageId === pageId) {
+                    if (success) {
+                        primaryResult = result;
+                    } else {
+                        primaryError = String(result?.error || `HTTP ${response.status}`);
+                    }
+                }
+            }
+
+            if (!primaryResult) {
+                return c.json({
+                    success: false,
+                    error: primaryError || 'Primary page publish failed',
+                    batchId: currentBatchId,
+                    fanOutResults,
+                }, 400);
+            }
+
+            return c.json({
+                ...primaryResult,
+                batchId: currentBatchId,
+                fanOutResults,
+                _debug: {
+                    ...(primaryResult._debug || {}),
+                    flow: 'multi-page-immediate',
+                    batchId: currentBatchId,
+                    targetCount: publishTargetPageIds.length,
+                },
+            });
+        }
+
         if (shouldQueueInSystem) {
             const queuePayload: Record<string, unknown> = {
                 ...body,
                 imageUrl: hostedImageUrl || finalImageUrl,
+                pageToken: '',
+                targetPageIds: [],
+                batchId: currentBatchId,
+                queueRoute: '/api/publish',
                 scheduledTime: null,
                 scheduleInSystem: false,
                 internalRun: false,
             };
 
-            const queueId = await enqueueScheduledPublish(c.env, pageId, scheduleTimestamp, queuePayload);
+            const queueId = await enqueueScheduledPublish(
+                c.env,
+                pageId,
+                scheduleTimestamp,
+                queuePayload,
+                currentBatchId,
+            );
             if (!queueId) {
                 throw new Error('Failed to enqueue scheduled publish');
             }
@@ -751,6 +920,7 @@ app.post('/', async (c) => {
             return c.json({
                 success: true,
                 queued: true,
+                batchId: currentBatchId,
                 postId: queuePostId,
                 id: queuePostId,
                 url: buildFacebookPostUrl('', pageId),
@@ -758,6 +928,7 @@ app.post('/', async (c) => {
                 scheduledTime: scheduleTimestamp,
                 _debug: {
                     flow: 'system-queue',
+                    batchId: currentBatchId,
                     queueId,
                     scheduledTime: scheduleTimestamp,
                 },

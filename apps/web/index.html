@@ -205,6 +205,40 @@
                     </svg>
                 </div>
                 <div class="page-dropdown" id="pageDropdown"></div>
+                <div class="multi-page-picker" id="multiPagePicker">
+                    <button type="button" class="multi-page-trigger" id="multiPageTrigger" aria-expanded="false">
+                        <div class="multi-page-trigger-copy">
+                            <span class="multi-page-trigger-label">โพสต์เพิ่มหลายเพจ</span>
+                            <span class="multi-page-trigger-value" id="multiPageTriggerValue">ยังไม่ได้เลือก</span>
+                        </div>
+                        <div class="multi-page-trigger-meta">
+                            <span class="multi-page-count" id="multiPageCountBadge">0</span>
+                            <svg class="multi-page-trigger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M6 9l6 6 6-6" />
+                            </svg>
+                        </div>
+                    </button>
+                    <div class="multi-page-dropdown" id="multiPageDropdown">
+                        <div class="multi-page-dropdown-head">
+                            <div>
+                                <p class="multi-page-eyebrow">Multi-Page Targets</p>
+                                <h4>เลือกเพจปลายทางเพิ่ม</h4>
+                            </div>
+                            <span class="multi-page-selected-meta" id="multiPageSelectedMeta">0 เพจ</span>
+                        </div>
+                        <div class="multi-page-search-shell">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <path d="m21 21-4.35-4.35"></path>
+                            </svg>
+                            <input type="text" id="multiPageSearchInput" class="multi-page-search-input"
+                                placeholder="ค้นหาชื่อเพจหรือ Page ID" autocomplete="off" />
+                        </div>
+                        <div class="multi-page-selected-strip" id="multiPageSelectedStrip"></div>
+                        <div class="multi-page-list" id="multiPageList"></div>
+                    </div>
+                </div>
             </div>
 
             <nav class="sidebar-nav">

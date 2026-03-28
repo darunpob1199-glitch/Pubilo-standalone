@@ -43,6 +43,10 @@ function setupPublishHandler(mode) {
         try {
             const pageId =
                 document.getElementById("pageSelect").value;
+            const targetPageIds =
+                typeof getSelectedTargetPageIds === "function"
+                    ? getSelectedTargetPageIds()
+                    : [];
 
             if (!pageId) {
                 throw new Error("กรุณาเลือก Page");
@@ -90,6 +94,7 @@ function setupPublishHandler(mode) {
                 formData.append("pageId", pageId);
                 formData.append("postMode", "reels");
                 formData.append("caption", caption);
+                formData.append("targetPageIds", JSON.stringify(targetPageIds));
                 if (affiliateComment) formData.append("affiliateComment", affiliateComment);
                 if (affiliateLink) formData.append("affiliateLink", affiliateLink);
                 if (adsToken) formData.append("accessToken", adsToken);
@@ -136,6 +141,10 @@ function setupPublishHandler(mode) {
                 const pageToken = freshPageToken || getPageToken();
                 if (!pageToken) {
                     throw new Error("ไม่มี Page Token กรุณาใส่ใน Settings > 🔑 Page Token");
+                }
+
+                if (targetPageIds.length > 0) {
+                    throw new Error("โหมด Image ยังไม่รองรับโพสต์หลายเพจในรอบนี้ ใช้ Link, News หรือ Reels ก่อน");
                 }
 
                 const message = els.primaryText?.value || "";
@@ -351,6 +360,7 @@ function setupPublishHandler(mode) {
                     primaryText: primaryTextEl
                         ? primaryTextEl.value
                         : "",
+                    targetPageIds,
                     postMode: mode,
                     accessToken: adsToken, // Ads Token (server fetches Page Token from this)
                     pageToken: freshPageToken || getPageToken() || "",
@@ -581,21 +591,307 @@ let fbToken = null; // Ads Token (for creating ad creatives)
 let fbPostToken = null; // Post Token from Postcron (for fetching pages)
 let allPages = [];
 let selectedPageIndex = 0;
+let selectedTargetPageIds = [];
+let targetPageSearchQuery = "";
+const TARGET_PAGE_STORAGE_KEY = "fewfeed_targetPageIds";
 
 // Page selector elements
 const pageSelector = document.getElementById("pageSelector");
 const pageDropdown = document.getElementById("pageDropdown");
+const multiPagePicker = document.getElementById("multiPagePicker");
+const multiPageTrigger = document.getElementById("multiPageTrigger");
+const multiPageTriggerValue = document.getElementById("multiPageTriggerValue");
+const multiPageCountBadge = document.getElementById("multiPageCountBadge");
+const multiPageDropdown = document.getElementById("multiPageDropdown");
+const multiPageSelectedMeta = document.getElementById("multiPageSelectedMeta");
+const multiPageSearchInput = document.getElementById("multiPageSearchInput");
+const multiPageSelectedStrip = document.getElementById("multiPageSelectedStrip");
+const multiPageList = document.getElementById("multiPageList");
+
+function getPageAvatarUrl(page) {
+    return (
+        page.picture?.data?.url ||
+        `https://graph.facebook.com/${page.id}/picture?type=small`
+    );
+}
+
+function loadStoredTargetPageIds() {
+    try {
+        const parsed = JSON.parse(
+            localStorage.getItem(TARGET_PAGE_STORAGE_KEY) || "[]",
+        );
+        return Array.isArray(parsed)
+            ? parsed.map((id) => String(id)).filter(Boolean)
+            : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function persistTargetPageIds() {
+    localStorage.setItem(
+        TARGET_PAGE_STORAGE_KEY,
+        JSON.stringify(selectedTargetPageIds),
+    );
+}
+
+function getCurrentSelectedPageId() {
+    return (
+        document.getElementById("pageSelect")?.value ||
+        localStorage.getItem("fewfeed_selectedPageId") ||
+        ""
+    );
+}
+
+function getSelectableTargetPages() {
+    const currentPageId = String(getCurrentSelectedPageId() || "");
+    return allPages.filter((page) => String(page.id) !== currentPageId);
+}
+
+function syncSelectedTargetPageIds() {
+    const currentPageId = String(getCurrentSelectedPageId() || "");
+    const availableIds = new Set(
+        getSelectableTargetPages().map((page) => String(page.id)),
+    );
+
+    selectedTargetPageIds = selectedTargetPageIds.filter(
+        (id) => id !== currentPageId && availableIds.has(String(id)),
+    );
+    persistTargetPageIds();
+}
+
+function getSelectedTargetPages() {
+    const selectedSet = new Set(selectedTargetPageIds.map(String));
+    return getSelectableTargetPages().filter((page) =>
+        selectedSet.has(String(page.id)),
+    );
+}
+
+function getTargetTriggerText(selectedPages) {
+    if (!selectedPages.length) return "ยังไม่ได้เลือก";
+    if (selectedPages.length === 1) return selectedPages[0].name || selectedPages[0].id;
+    if (selectedPages.length === 2) {
+        return `${selectedPages[0].name || selectedPages[0].id}, ${selectedPages[1].name || selectedPages[1].id}`;
+    }
+    return `${selectedPages.length} เพจพร้อมโพสต์`;
+}
+
+function setMultiPagePickerOpen(isOpen) {
+    if (!multiPagePicker || !multiPageTrigger) return;
+    multiPagePicker.classList.toggle("open", !!isOpen);
+    multiPageTrigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    if (isOpen && multiPageSearchInput) {
+        multiPageSearchInput.focus();
+        multiPageSearchInput.select();
+    }
+}
+
+function removeTargetPage(pageId) {
+    selectedTargetPageIds = selectedTargetPageIds.filter(
+        (id) => String(id) !== String(pageId),
+    );
+    persistTargetPageIds();
+    renderMultiPageTargetPicker();
+}
+
+function toggleTargetPage(pageId) {
+    const normalizedPageId = String(pageId);
+    const isSelected = selectedTargetPageIds.includes(normalizedPageId);
+
+    if (isSelected) {
+        selectedTargetPageIds = selectedTargetPageIds.filter(
+            (id) => id !== normalizedPageId,
+        );
+    } else {
+        selectedTargetPageIds.push(normalizedPageId);
+    }
+
+    persistTargetPageIds();
+    renderMultiPageTargetPicker();
+}
+
+function renderSelectedTargetStrip(selectedPages) {
+    if (!multiPageSelectedStrip) return;
+    multiPageSelectedStrip.textContent = "";
+
+    if (!selectedPages.length) {
+        multiPageSelectedStrip.style.display = "none";
+        return;
+    }
+
+    multiPageSelectedStrip.style.display = "flex";
+
+    selectedPages.forEach((page) => {
+        const chip = document.createElement("div");
+        chip.className = "multi-page-chip";
+
+        const avatar = document.createElement("img");
+        avatar.className = "multi-page-chip-avatar";
+        avatar.src = getPageAvatarUrl(page);
+        avatar.alt = page.name || page.id;
+
+        const label = document.createElement("span");
+        label.textContent = page.name || page.id;
+
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "multi-page-chip-remove";
+        removeBtn.textContent = "×";
+        removeBtn.title = `เอา ${page.name || page.id} ออก`;
+        removeBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            removeTargetPage(page.id);
+        });
+
+        chip.appendChild(avatar);
+        chip.appendChild(label);
+        chip.appendChild(removeBtn);
+        multiPageSelectedStrip.appendChild(chip);
+    });
+}
+
+function renderMultiPageListItems() {
+    if (!multiPageList) return;
+    multiPageList.textContent = "";
+
+    const selectablePages = getSelectableTargetPages();
+    if (!selectablePages.length) {
+        multiPageList.innerHTML = `
+            <div class="multi-page-empty">
+                <strong>ยังไม่มีเพจอื่นให้เลือก</strong>
+                เลือกเพจหลักก่อน หรือรอ extension ดึงรายชื่อเพจเพิ่ม
+            </div>
+        `;
+        return;
+    }
+
+    const query = targetPageSearchQuery.trim().toLowerCase();
+    const filteredPages = selectablePages.filter((page) => {
+        if (!query) return true;
+        return (
+            String(page.name || "").toLowerCase().includes(query) ||
+            String(page.id || "").toLowerCase().includes(query)
+        );
+    });
+
+    if (!filteredPages.length) {
+        multiPageList.innerHTML = `
+            <div class="multi-page-empty">
+                <strong>ไม่พบเพจที่ค้นหา</strong>
+                ลองค้นหาด้วยชื่อเพจหรือ Page ID อีกครั้ง
+            </div>
+        `;
+        return;
+    }
+
+    filteredPages.forEach((page) => {
+        const normalizedPageId = String(page.id);
+        const isSelected = selectedTargetPageIds.includes(normalizedPageId);
+
+        const item = document.createElement("div");
+        item.className = `multi-page-item${isSelected ? " is-selected" : ""}`;
+        item.addEventListener("click", () => toggleTargetPage(normalizedPageId));
+
+        const avatar = document.createElement("img");
+        avatar.className = "multi-page-item-media";
+        avatar.src = getPageAvatarUrl(page);
+        avatar.alt = page.name || normalizedPageId;
+
+        const copy = document.createElement("div");
+        copy.className = "multi-page-item-copy";
+
+        const title = document.createElement("h4");
+        title.textContent = page.name || "Page";
+
+        const subtitle = document.createElement("p");
+        subtitle.textContent = normalizedPageId;
+
+        copy.appendChild(title);
+        copy.appendChild(subtitle);
+
+        const action = document.createElement("button");
+        action.type = "button";
+        action.className = "multi-page-item-action";
+        action.textContent = isSelected ? "×" : "✓";
+        action.title = isSelected
+            ? `เอา ${page.name || normalizedPageId} ออก`
+            : `เลือก ${page.name || normalizedPageId}`;
+        action.addEventListener("click", (event) => {
+            event.stopPropagation();
+            toggleTargetPage(normalizedPageId);
+        });
+
+        item.appendChild(avatar);
+        item.appendChild(copy);
+        item.appendChild(action);
+        multiPageList.appendChild(item);
+    });
+}
+
+function renderMultiPageTargetPicker() {
+    if (
+        !multiPagePicker ||
+        !multiPageTriggerValue ||
+        !multiPageCountBadge ||
+        !multiPageSelectedMeta
+    ) {
+        return;
+    }
+
+    syncSelectedTargetPageIds();
+    const selectedPages = getSelectedTargetPages();
+
+    multiPageTriggerValue.textContent = getTargetTriggerText(selectedPages);
+    multiPageCountBadge.textContent = String(selectedPages.length);
+    multiPageSelectedMeta.textContent = `${selectedPages.length} เพจ`;
+
+    renderSelectedTargetStrip(selectedPages);
+    renderMultiPageListItems();
+}
+
+window.getSelectedTargetPageIds = function getSelectedTargetPageIds() {
+    return [...selectedTargetPageIds];
+};
+
+window.clearSelectedTargetPages = function clearSelectedTargetPages() {
+    selectedTargetPageIds = [];
+    persistTargetPageIds();
+    renderMultiPageTargetPicker();
+};
 
 // Toggle dropdown
 pageSelector.addEventListener("click", (e) => {
     e.stopPropagation();
+    setMultiPagePickerOpen(false);
     pageDropdown.classList.toggle("visible");
 });
 
 // Close dropdown when clicking outside
 document.addEventListener("click", () => {
     pageDropdown.classList.remove("visible");
+    setMultiPagePickerOpen(false);
 });
+
+if (multiPageTrigger) {
+    multiPageTrigger.addEventListener("click", (event) => {
+        event.stopPropagation();
+        pageDropdown.classList.remove("visible");
+        setMultiPagePickerOpen(!multiPagePicker.classList.contains("open"));
+    });
+}
+
+if (multiPageDropdown) {
+    multiPageDropdown.addEventListener("click", (event) => {
+        event.stopPropagation();
+    });
+}
+
+if (multiPageSearchInput) {
+    multiPageSearchInput.addEventListener("input", (event) => {
+        targetPageSearchQuery = event.target.value || "";
+        renderMultiPageTargetPicker();
+    });
+}
 
 // Select a page
 function selectPage(index) {
@@ -637,6 +933,9 @@ function selectPage(index) {
     } else {
         localStorage.removeItem("fewfeed_selectedPageToken");
     }
+
+    syncSelectedTargetPageIds();
+    renderMultiPageTargetPicker();
 
     // Hide skeleton, show real selector
     const skeleton = document.getElementById(
@@ -688,6 +987,9 @@ function selectPage(index) {
 // Render pages dropdown
 function renderPagesDropdown(pages) {
     allPages = pages;
+    if (!selectedTargetPageIds.length) {
+        selectedTargetPageIds = loadStoredTargetPageIds();
+    }
     pageDropdown.textContent = "";
 
     pages.forEach((page, i) => {
@@ -734,6 +1036,8 @@ function renderPagesDropdown(pages) {
 
         selectPage(indexToSelect);
     }
+
+    renderMultiPageTargetPicker();
 }
 
 function requestPagesFromExtension(accessToken) {

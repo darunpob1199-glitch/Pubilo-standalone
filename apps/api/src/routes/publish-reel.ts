@@ -75,6 +75,42 @@ function buildAffiliateCommentMessage(commentText?: string, productLink?: string
     return parts.join('\n\n').trim();
 }
 
+function normalizeTargetPageIds(input: unknown, currentPageId: string): string[] {
+    const seen = new Set<string>();
+    const normalizedCurrentPageId = String(currentPageId);
+    const values = (() => {
+        if (Array.isArray(input)) return input;
+        if (typeof input !== 'string') return [];
+
+        const trimmed = input.trim();
+        if (!trimmed) return [];
+
+        try {
+            const parsed = JSON.parse(trimmed);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return trimmed.split(',');
+        }
+    })();
+
+    return values
+        .map((value) => String(value || '').trim())
+        .filter((value) => {
+            if (!value || value === normalizedCurrentPageId || seen.has(value)) {
+                return false;
+            }
+            seen.add(value);
+            return true;
+        });
+}
+
+function isTruthyFlag(value: unknown): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
 function isUploadableBlob(value: unknown): value is Blob {
     return !!value
         && typeof value === 'object'
@@ -114,7 +150,7 @@ function getVideoMimeType(video: Blob, fallback = 'video/mp4'): string {
 async function putVideoIntoR2(env: Env, params: {
     pageId: string;
     video: Blob & { name?: string };
-    source: 'browser-upload' | 'publish-fallback';
+    source: 'browser-upload' | 'publish-fallback' | 'fanout-clone';
 }) {
     if (!env.IMAGES) {
         throw new Error('IMAGES R2 binding is not configured');
@@ -143,6 +179,36 @@ async function putVideoIntoR2(env: Env, params: {
         mimeType,
         fileSize: params.video.size,
     };
+}
+
+async function cloneStagedVideoForPage(env: Env, sourceVideoKey: string, targetPageId: string): Promise<{
+    key: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+}> {
+    const storedVideo = await getVideoFromR2(env, sourceVideoKey);
+    if (!storedVideo) {
+        throw new Error('Uploaded video not found. Please re-upload the reel.');
+    }
+
+    const cloneBlob = Object.assign(storedVideo.blob, { name: storedVideo.fileName });
+    const uploaded = await putVideoIntoR2(env, {
+        pageId: targetPageId,
+        video: cloneBlob,
+        source: 'fanout-clone',
+    });
+
+    await upsertReelUploadStage(env, {
+        videoKey: uploaded.key,
+        pageId: targetPageId,
+        fileName: uploaded.fileName,
+        mimeType: uploaded.mimeType,
+        fileSize: uploaded.fileSize,
+        uploadSource: 'fanout-clone',
+    });
+
+    return uploaded;
 }
 
 async function getVideoFromR2(env: Env, key: string): Promise<{ blob: Blob; fileName: string; mimeType: string; fileSize?: number } | null> {
@@ -332,16 +398,26 @@ app.post('/upload', async (c) => {
 
 app.post('/', async (c) => {
     try {
-        const formData = await c.req.formData();
-        const pageId = String(formData.get('pageId') || '').trim();
-        const pageToken = String(formData.get('pageToken') || '').trim();
-        const accessToken = String(formData.get('accessToken') || '').trim();
-        const cookieData = String(formData.get('cookieData') || '').trim();
-        const caption = String(formData.get('caption') || '').trim();
-        const affiliateComment = String(formData.get('affiliateComment') || '').trim();
-        const affiliateLink = String(formData.get('affiliateLink') || '').trim();
-        const videoKey = String(formData.get('videoKey') || '').trim();
-        const videoInput = formData.get('video') as unknown;
+        const contentType = c.req.header('content-type') || '';
+        const isJsonRequest = contentType.includes('application/json');
+        const requestPayload = isJsonRequest ? await c.req.json<any>() : null;
+        const formData = isJsonRequest ? null : await c.req.formData();
+
+        const getValue = (key: string): unknown =>
+            isJsonRequest ? requestPayload?.[key] : formData?.get(key);
+
+        const pageId = String(getValue('pageId') || '').trim();
+        const pageToken = String(getValue('pageToken') || '').trim();
+        const accessToken = String(getValue('accessToken') || '').trim();
+        const cookieData = String(getValue('cookieData') || '').trim();
+        const caption = String(getValue('caption') || '').trim();
+        const affiliateComment = String(getValue('affiliateComment') || '').trim();
+        const affiliateLink = String(getValue('affiliateLink') || '').trim();
+        const videoKey = String(getValue('videoKey') || '').trim();
+        const videoInput = isJsonRequest ? null : formData?.get('video');
+        const targetPageIds = normalizeTargetPageIds(getValue('targetPageIds'), pageId);
+        const internalRun = isTruthyFlag(getValue('internalRun'));
+        const incomingBatchId = String(getValue('batchId') || '').trim();
 
         if (!pageId) {
             return c.json({ success: false, error: 'Missing pageId' }, 400);
@@ -385,6 +461,90 @@ app.post('/', async (c) => {
 
         if (!videoFile) {
             return c.json({ success: false, error: 'Missing video file' }, 400);
+        }
+
+        const currentBatchId = incomingBatchId || crypto.randomUUID();
+
+        if (!internalRun && targetPageIds.length > 0) {
+            const targetVideoKeys = new Map<string, string>();
+            targetVideoKeys.set(pageId, videoKeyUsed);
+
+            for (const targetPageId of targetPageIds) {
+                const clonedVideo = await cloneStagedVideoForPage(c.env, videoKeyUsed, targetPageId);
+                targetVideoKeys.set(targetPageId, clonedVideo.key);
+            }
+
+            const fanOutTargets = [pageId, ...targetPageIds];
+            const fanOutResults: Array<Record<string, unknown>> = [];
+            let primaryResult: Record<string, any> | null = null;
+            let primaryError = '';
+
+            for (const targetPageId of fanOutTargets) {
+                const targetVideoKey = targetVideoKeys.get(targetPageId);
+                const nextPayload = {
+                    pageId: targetPageId,
+                    pageToken: '',
+                    accessToken,
+                    cookieData,
+                    caption,
+                    affiliateComment,
+                    affiliateLink,
+                    videoKey: targetVideoKey,
+                    internalRun: true,
+                    batchId: currentBatchId,
+                };
+
+                const response = await app.fetch(
+                    new Request('https://internal/api/publish-reel', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(nextPayload),
+                    }),
+                    c.env,
+                    c.executionCtx,
+                );
+                const result = await response.json() as Record<string, any>;
+                const success = !!(response.ok && result?.success);
+
+                fanOutResults.push({
+                    pageId: targetPageId,
+                    success,
+                    postId: result?.postId || null,
+                    videoId: result?.videoId || null,
+                    url: result?.url || null,
+                    error: success ? null : (result?.error || `HTTP ${response.status}`),
+                    affiliateComment: result?.affiliateComment || null,
+                });
+
+                if (targetPageId === pageId) {
+                    if (success) {
+                        primaryResult = result;
+                    } else {
+                        primaryError = String(result?.error || `HTTP ${response.status}`);
+                    }
+                }
+            }
+
+            if (!primaryResult) {
+                return c.json({
+                    success: false,
+                    error: primaryError || 'Primary page reel publish failed',
+                    batchId: currentBatchId,
+                    fanOutResults,
+                }, 400);
+            }
+
+            return c.json({
+                ...primaryResult,
+                batchId: currentBatchId,
+                fanOutResults,
+                _debug: {
+                    ...(primaryResult._debug || {}),
+                    flow: 'multi-page-immediate',
+                    batchId: currentBatchId,
+                    targetCount: fanOutTargets.length,
+                },
+            });
         }
 
         let storedPageToken = pageToken;

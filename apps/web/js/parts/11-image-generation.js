@@ -861,6 +861,10 @@ if (newsPublishBtn) {
                     pageToken: latestPageToken || getPageToken() || document.getElementById("pageTokenInputPanel")?.value?.trim() || "",
                     accessToken: latestAdsToken,
                     cookieData: latestCookie,
+                    targetPageIds:
+                        typeof getSelectedTargetPageIds === "function"
+                            ? getSelectedTargetPageIds()
+                            : [],
                     imageUrl: imageData,
                     linkUrl: linkUrlValue,
                     linkName: descriptionText ? `พิกัด : ${descriptionText}` : "",
