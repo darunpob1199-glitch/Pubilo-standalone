@@ -495,11 +495,11 @@ function renderTextBackgroundPicker() {
     grid.innerHTML = items.map((item) => `
         <button
             type="button"
-            class="text-background-option${item.id === activePresetId ? " is-selected" : ""}"
+            class="text-background-option${item.id === activePresetId ? " is-selected" : ""}${!item.id ? " is-neutral" : ""}"
             data-preset-id="${item.id}"
         >
             <span class="text-background-swatch" style="background: ${item.swatch};"></span>
-            <span class="text-background-option-check">${item.id === activePresetId ? "✓" : item.id ? "A" : "∅"}</span>
+            <span class="text-background-option-check">✓</span>
             <span class="text-background-option-label">${item.label}</span>
         </button>
     `).join("");
