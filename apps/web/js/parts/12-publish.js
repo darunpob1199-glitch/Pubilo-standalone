@@ -67,6 +67,10 @@ function setupPublishHandler(mode) {
                 const fbDtsg =
                     localStorage.getItem("fewfeed_fbDtsg") || "";
                 const caption = els.primaryText?.value?.trim() || "";
+                const affiliateComment =
+                    document.getElementById("reelsAffiliateComment")?.value?.trim() || "";
+                const affiliateLink =
+                    document.getElementById("reelsAffiliateLink")?.value?.trim() || "";
                 const videoFile = state.selectedVideoFile;
                 const videoKey = state.selectedVideoKey || "";
 
@@ -86,6 +90,8 @@ function setupPublishHandler(mode) {
                 formData.append("pageId", pageId);
                 formData.append("postMode", "reels");
                 formData.append("caption", caption);
+                if (affiliateComment) formData.append("affiliateComment", affiliateComment);
+                if (affiliateLink) formData.append("affiliateLink", affiliateLink);
                 if (adsToken) formData.append("accessToken", adsToken);
                 if (pageToken) formData.append("pageToken", pageToken);
                 if (cookie) formData.append("cookieData", cookie);
@@ -106,6 +112,10 @@ function setupPublishHandler(mode) {
 
                 if (!response.ok || !data.success) {
                     throw new Error(data.error || "Failed to publish reel");
+                }
+
+                if (data.warning) {
+                    alert(data.warning);
                 }
 
                 lastPublishedUrl =

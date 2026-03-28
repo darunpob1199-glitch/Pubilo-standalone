@@ -60,6 +60,15 @@ function buildFacebookVideoUrl(params: { pageId: string; videoId?: string; postI
     return `https://www.facebook.com/${params.pageId}`;
 }
 
+function buildAffiliateCommentMessage(commentText?: string, productLink?: string): string {
+    const parts = [
+        String(commentText || '').trim(),
+        String(productLink || '').trim(),
+    ].filter(Boolean);
+
+    return parts.join('\n\n').trim();
+}
+
 function isUploadableBlob(value: unknown): value is Blob {
     return !!value
         && typeof value === 'object'
@@ -209,6 +218,58 @@ async function fetchVideoDetailsWithRetry(
     return lastData;
 }
 
+async function postAffiliateComment(params: {
+    objectIds: string[];
+    accessToken: string;
+    message: string;
+    headers?: Record<string, string>;
+}): Promise<{ success: true; commentId: string; targetId: string } | { success: false; error: any }> {
+    let lastError: any = null;
+
+    for (const objectId of params.objectIds) {
+        const normalizedId = String(objectId || '').trim();
+        if (!normalizedId) continue;
+
+        const body = new FormData();
+        body.append('access_token', params.accessToken);
+        body.append('message', params.message);
+
+        const response = await fetch(`${FB_API}/${normalizedId}/comments`, {
+            method: 'POST',
+            ...(params.headers ? { headers: params.headers } : {}),
+            body,
+        });
+
+        const data = await response.json() as any;
+        if (data?.error) {
+            lastError = {
+                ...data.error,
+                targetId: normalizedId,
+            };
+            continue;
+        }
+
+        const commentId = String(data?.id || '').trim();
+        if (commentId) {
+            return {
+                success: true,
+                commentId,
+                targetId: normalizedId,
+            };
+        }
+
+        lastError = {
+            message: 'Facebook did not return comment id',
+            targetId: normalizedId,
+        };
+    }
+
+    return {
+        success: false,
+        error: lastError || { message: 'Failed to create affiliate comment' },
+    };
+}
+
 app.post('/upload', async (c) => {
     try {
         const formData = await c.req.formData();
@@ -262,6 +323,8 @@ app.post('/', async (c) => {
         const accessToken = String(formData.get('accessToken') || '').trim();
         const cookieData = String(formData.get('cookieData') || '').trim();
         const caption = String(formData.get('caption') || '').trim();
+        const affiliateComment = String(formData.get('affiliateComment') || '').trim();
+        const affiliateLink = String(formData.get('affiliateLink') || '').trim();
         const videoKey = String(formData.get('videoKey') || '').trim();
         const videoInput = formData.get('video') as unknown;
 
@@ -394,6 +457,20 @@ app.post('/', async (c) => {
             const postId = String(videoDetails?.post_id || '').trim();
             const permalinkUrl = String(videoDetails?.permalink_url || '').trim();
             const status = getVideoProcessingStatus(videoDetails);
+            const affiliateCommentMessage = buildAffiliateCommentMessage(affiliateComment, affiliateLink);
+            let affiliateCommentResult:
+                | { success: true; commentId: string; targetId: string }
+                | { success: false; error: any }
+                | null = null;
+
+            if (affiliateCommentMessage) {
+                affiliateCommentResult = await postAffiliateComment({
+                    objectIds: [postId, videoId],
+                    accessToken: authToken,
+                    message: affiliateCommentMessage,
+                    headers: facebookHeaders,
+                });
+            }
 
             return c.json({
                 success: true,
@@ -417,6 +494,27 @@ app.post('/', async (c) => {
                     hasPermalink: !!permalinkUrl,
                     hasPostId: !!postId,
                 },
+                affiliateComment: affiliateCommentMessage
+                    ? (
+                        affiliateCommentResult?.success
+                            ? {
+                                success: true,
+                                commentId: affiliateCommentResult.commentId,
+                                targetId: affiliateCommentResult.targetId,
+                            }
+                            : {
+                                success: false,
+                                error: affiliateCommentResult?.error?.message || 'Failed to create affiliate comment',
+                                errorCode: affiliateCommentResult?.error?.code,
+                                errorSubcode: affiliateCommentResult?.error?.error_subcode,
+                                errorType: affiliateCommentResult?.error?.type,
+                            }
+                    )
+                    : null,
+                warning:
+                    affiliateCommentMessage && affiliateCommentResult && !affiliateCommentResult.success
+                        ? `Reel posted but affiliate comment failed: ${affiliateCommentResult.error?.message || 'Unknown error'}`
+                        : null,
             });
         }
 
