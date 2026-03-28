@@ -4,6 +4,7 @@ import { Env } from '../index';
 const app = new Hono<{ Bindings: Env }>();
 
 const FB_API = 'https://graph.facebook.com/v21.0';
+const REELS_V2_MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB for now; direct-to-R2 can raise this later.
 
 function buildFacebookHeaders(cookieData?: string): Record<string, string> | undefined {
     const normalizedCookie = typeof cookieData === 'string' ? cookieData.trim() : '';
@@ -66,6 +67,96 @@ function isUploadableBlob(value: unknown): value is Blob {
         && typeof (value as Blob).stream === 'function';
 }
 
+function sanitizeFileName(rawName?: string): string {
+    const value = String(rawName || '').trim();
+    const fallback = 'pubilo-reel.mp4';
+    if (!value) return fallback;
+
+    return value
+        .replace(/[^\w.\-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '') || fallback;
+}
+
+function buildR2VideoKey(pageId: string, fileName: string): string {
+    const safePageId = String(pageId || 'unknown').replace(/[^\w-]+/g, '');
+    const safeName = sanitizeFileName(fileName);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const randomPart = crypto.randomUUID();
+    return `reels/${safePageId}/${stamp}-${randomPart}-${safeName}`;
+}
+
+function getVideoFileName(video: Blob & { name?: string }, fallback = 'pubilo-reel.mp4'): string {
+    const rawName = typeof video.name === 'string' ? video.name : fallback;
+    return sanitizeFileName(rawName);
+}
+
+function getVideoMimeType(video: Blob, fallback = 'video/mp4'): string {
+    const type = typeof video.type === 'string' ? video.type.trim() : '';
+    return type || fallback;
+}
+
+async function putVideoIntoR2(env: Env, params: {
+    pageId: string;
+    video: Blob & { name?: string };
+    source: 'browser-upload' | 'publish-fallback';
+}) {
+    if (!env.IMAGES) {
+        throw new Error('IMAGES R2 binding is not configured');
+    }
+
+    const fileName = getVideoFileName(params.video);
+    const mimeType = getVideoMimeType(params.video);
+    const key = buildR2VideoKey(params.pageId, fileName);
+    const body = await params.video.arrayBuffer();
+
+    await env.IMAGES.put(key, body, {
+        httpMetadata: {
+            contentType: mimeType,
+        },
+        customMetadata: {
+            pageId: params.pageId,
+            originalName: fileName,
+            uploadSource: params.source,
+            uploadedAt: new Date().toISOString(),
+        },
+    });
+
+    return {
+        key,
+        fileName,
+        mimeType,
+        fileSize: params.video.size,
+    };
+}
+
+async function getVideoFromR2(env: Env, key: string): Promise<{ blob: Blob; fileName: string; mimeType: string; fileSize?: number } | null> {
+    if (!env.IMAGES) {
+        throw new Error('IMAGES R2 binding is not configured');
+    }
+
+    const object = await env.IMAGES.get(key);
+    if (!object) return null;
+
+    const arrayBuffer = await object.arrayBuffer();
+    const fileName =
+        object.customMetadata?.originalName ||
+        key.split('/').pop() ||
+        'pubilo-reel.mp4';
+    const mimeType =
+        object.httpMetadata?.contentType ||
+        object.customMetadata?.mimeType ||
+        'video/mp4';
+    const blob = new Blob([arrayBuffer], { type: mimeType });
+
+    return {
+        blob,
+        fileName: sanitizeFileName(fileName),
+        mimeType,
+        fileSize: object.size,
+    };
+}
+
 function getVideoProcessingStatus(payload: any): string {
     return String(
         payload?.status?.video_status ||
@@ -118,14 +209,10 @@ async function fetchVideoDetailsWithRetry(
     return lastData;
 }
 
-app.post('/', async (c) => {
+app.post('/upload', async (c) => {
     try {
         const formData = await c.req.formData();
         const pageId = String(formData.get('pageId') || '').trim();
-        const pageToken = String(formData.get('pageToken') || '').trim();
-        const accessToken = String(formData.get('accessToken') || '').trim();
-        const cookieData = String(formData.get('cookieData') || '').trim();
-        const caption = String(formData.get('caption') || '').trim();
         const videoInput = formData.get('video') as unknown;
 
         if (!pageId) {
@@ -136,10 +223,82 @@ app.post('/', async (c) => {
             return c.json({ success: false, error: 'Missing video file' }, 400);
         }
 
-        const isFileLike = typeof (videoInput as File).name === 'string';
-        const videoFile = isFileLike
-            ? videoInput as File
-            : new File([videoInput], 'pubilo-reel.mp4', { type: videoInput.type || 'video/mp4' });
+        const videoFile = videoInput as Blob & { name?: string };
+        if (!getVideoMimeType(videoFile).startsWith('video/')) {
+            return c.json({ success: false, error: 'Invalid video file type' }, 400);
+        }
+
+        if (videoFile.size > REELS_V2_MAX_FILE_SIZE) {
+            return c.json({
+                success: false,
+                error: `Video too large. Current limit is ${Math.round(REELS_V2_MAX_FILE_SIZE / (1024 * 1024))} MB`,
+            }, 400);
+        }
+
+        const uploaded = await putVideoIntoR2(c.env, {
+            pageId,
+            video: videoFile,
+            source: 'browser-upload',
+        });
+
+        return c.json({
+            success: true,
+            videoKey: uploaded.key,
+            fileName: uploaded.fileName,
+            fileSize: uploaded.fileSize,
+            mimeType: uploaded.mimeType,
+        });
+    } catch (error) {
+        console.error('[publish-reel/upload] Server error:', error);
+        return c.json({ success: false, error: String(error) }, 500);
+    }
+});
+
+app.post('/', async (c) => {
+    try {
+        const formData = await c.req.formData();
+        const pageId = String(formData.get('pageId') || '').trim();
+        const pageToken = String(formData.get('pageToken') || '').trim();
+        const accessToken = String(formData.get('accessToken') || '').trim();
+        const cookieData = String(formData.get('cookieData') || '').trim();
+        const caption = String(formData.get('caption') || '').trim();
+        const videoKey = String(formData.get('videoKey') || '').trim();
+        const videoInput = formData.get('video') as unknown;
+
+        if (!pageId) {
+            return c.json({ success: false, error: 'Missing pageId' }, 400);
+        }
+
+        let videoFile: Blob & { name?: string } | null = null;
+        let videoKeyUsed = videoKey;
+        if (videoKey) {
+            const storedVideo = await getVideoFromR2(c.env, videoKey);
+            if (!storedVideo) {
+                return c.json({ success: false, error: 'Uploaded video not found. Please re-upload the reel.' }, 400);
+            }
+
+            videoFile = Object.assign(storedVideo.blob, { name: storedVideo.fileName });
+        } else if (isUploadableBlob(videoInput)) {
+            videoFile = videoInput as Blob & { name?: string };
+
+            if (videoFile.size > REELS_V2_MAX_FILE_SIZE) {
+                return c.json({
+                    success: false,
+                    error: `Video too large. Current limit is ${Math.round(REELS_V2_MAX_FILE_SIZE / (1024 * 1024))} MB`,
+                }, 400);
+            }
+
+            const uploaded = await putVideoIntoR2(c.env, {
+                pageId,
+                video: videoFile,
+                source: 'publish-fallback',
+            });
+            videoKeyUsed = uploaded.key;
+        }
+
+        if (!videoFile) {
+            return c.json({ success: false, error: 'Missing video file' }, 400);
+        }
 
         let storedPageToken = pageToken;
         if (!storedPageToken) {
@@ -177,7 +336,7 @@ app.post('/', async (c) => {
         for (const authToken of authCandidates) {
             const body = new FormData();
             body.append('access_token', authToken);
-            body.append('source', videoFile, videoFile.name || 'pubilo-reel.mp4');
+            body.append('source', videoFile, getVideoFileName(videoFile));
             if (caption) {
                 body.append('description', caption);
             }
@@ -193,6 +352,7 @@ app.post('/', async (c) => {
                 fileName: videoFile.name,
                 fileSize: videoFile.size,
                 fileType: videoFile.type,
+                hasVideoKey: !!videoKeyUsed,
             });
 
             const response = await fetch(`${FB_API}/${pageId}/videos`, {
@@ -252,6 +412,7 @@ app.post('/', async (c) => {
                             : authToken === storedPageToken
                                 ? 'storedPageToken'
                                 : 'accessToken',
+                    videoKey: videoKeyUsed || null,
                     processingStatus: status,
                     hasPermalink: !!permalinkUrl,
                     hasPostId: !!postId,

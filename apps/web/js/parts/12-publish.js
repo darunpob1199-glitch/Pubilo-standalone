@@ -68,9 +68,18 @@ function setupPublishHandler(mode) {
                     localStorage.getItem("fewfeed_fbDtsg") || "";
                 const caption = els.primaryText?.value?.trim() || "";
                 const videoFile = state.selectedVideoFile;
+                const videoKey = state.selectedVideoKey || "";
 
                 if (!videoFile) {
                     throw new Error("กรุณาเลือกวิดีโอก่อนโพสต์");
+                }
+
+                if (state.isUploadingVideo) {
+                    throw new Error("กำลังอัปโหลดวิดีโอขึ้นระบบ กรุณารอสักครู่");
+                }
+
+                if (!videoKey) {
+                    throw new Error("วิดีโอยังไม่พร้อมโพสต์ กรุณาอัปโหลดใหม่อีกครั้ง");
                 }
 
                 const formData = new FormData();
@@ -81,7 +90,11 @@ function setupPublishHandler(mode) {
                 if (pageToken) formData.append("pageToken", pageToken);
                 if (cookie) formData.append("cookieData", cookie);
                 if (fbDtsg) formData.append("fbDtsg", fbDtsg);
-                formData.append("video", videoFile, videoFile.name || "pubilo-reel.mp4");
+                formData.append("videoKey", videoKey);
+                formData.append("videoFileName", state.selectedVideoName || videoFile.name || "pubilo-reel.mp4");
+                if (state.selectedVideoMimeType) {
+                    formData.append("videoMimeType", state.selectedVideoMimeType);
+                }
 
                 const response = await fetch("/api/publish-reel", {
                     method: "POST",

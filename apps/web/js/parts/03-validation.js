@@ -84,10 +84,12 @@ function validateNewsMode() {
 
 function validateReelsMode() {
     const reelsPublishBtn = document.getElementById("reelsPublishBtn");
-    const reelsPrimaryText = document.getElementById("reelsPrimaryText");
+    const reelsState = modeState?.reels || {};
     const hasVideo = reelsModeVideoReady;
-    const hasCaption = !!reelsPrimaryText;
-    const isValid = hasVideo && hasCaption;
+    const hasUploadedVideo = !!reelsState.selectedVideoKey;
+    const isUploading = !!reelsState.isUploadingVideo;
+    const hasUploadError = !!reelsState.videoUploadError;
+    const isValid = hasVideo && hasUploadedVideo && !isUploading && !hasUploadError;
 
     if (reelsPublishBtn) {
         reelsPublishBtn.disabled = !isValid;
@@ -95,7 +97,7 @@ function validateReelsMode() {
         reelsPublishBtn.style.opacity = isValid ? "1" : "0.5";
         reelsPublishBtn.style.cursor = isValid ? "pointer" : "not-allowed";
         if (!reelsPublishBtn.classList.contains("published")) {
-            reelsPublishBtn.textContent = "PUBLISH";
+            reelsPublishBtn.textContent = isUploading ? "UPLOADING..." : "PUBLISH";
         }
     }
 }
