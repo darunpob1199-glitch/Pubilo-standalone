@@ -141,11 +141,47 @@ if (newsUrlInput) {
 
 // Track which upload mode was clicked
 let uploadMode = "gemini"; // 'device' or 'gemini'
+const REELS_V1_MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
 // Setup upload button handlers for each mode
 function setupUploadHandlers(mode) {
     const els = getModeElements(mode);
     if (!els.uploadFromDevice || !els.uploadFromGemini) return;
+
+    if (mode === "reels") {
+        els.uploadFromGemini.disabled = true;
+        els.uploadFromGemini.style.opacity = "0.45";
+        els.uploadFromGemini.style.cursor = "not-allowed";
+        els.uploadFromGemini.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            alert("Reels V1 ยังรองรับเฉพาะวิดีโอจากเครื่อง");
+        });
+
+        els.uploadFromDevice.addEventListener("click", (e) => {
+            e.stopPropagation();
+            reelsFileInput?.click();
+        });
+
+        if (els.cardImageArea) {
+            els.cardImageArea.addEventListener("click", (e) => {
+                if (
+                    e.target.closest(".back-to-upload") ||
+                    e.target.closest(".upload-btn") ||
+                    e.target.closest("video")
+                ) {
+                    return;
+                }
+
+                const state = modeState.reels;
+                if (state.currentView === "upload") {
+                    reelsFileInput?.click();
+                }
+            });
+        }
+
+        return;
+    }
 
     els.uploadFromDevice.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -188,6 +224,128 @@ function setupUploadHandlers(mode) {
 setupUploadHandlers("link");
 setupUploadHandlers("image");
 setupUploadHandlers("reels");
+
+function resetReelsVideoState(showPrompt = true) {
+    const state = modeState.reels;
+    const els = getModeElements("reels");
+
+    if (state.selectedVideoUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(state.selectedVideoUrl);
+    }
+
+    state.selectedVideoFile = null;
+    state.selectedVideoUrl = "";
+    state.selectedVideoName = "";
+    state.selectedImage = null;
+    state.currentView = "upload";
+    reelsModeVideoReady = false;
+
+    if (els.fullImageView) {
+        els.fullImageView.style.display = "none";
+        els.fullImageView.textContent = "";
+    }
+
+    if (showPrompt && els.uploadPrompt) {
+        els.uploadPrompt.style.display = "flex";
+    }
+
+    if (els.generateOverlay) els.generateOverlay.style.display = "none";
+    if (els.refThumbsRow) els.refThumbsRow.style.display = "none";
+    if (els.generatedGrid) els.generatedGrid.style.display = "none";
+    if (els.skeletonGrid) els.skeletonGrid.style.display = "none";
+    if (els.publishBtn) {
+        els.publishBtn.classList.remove("published");
+    }
+    lastPublishedUrl = null;
+    validateReelsMode();
+}
+
+function showSelectedReelsVideo(file) {
+    const state = modeState.reels;
+    const els = getModeElements("reels");
+
+    if (!file || !els.fullImageView) return;
+
+    if (state.selectedVideoUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(state.selectedVideoUrl);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    state.selectedVideoFile = file;
+    state.selectedVideoUrl = objectUrl;
+    state.selectedVideoName = file.name || "video";
+    state.selectedImage = null;
+    state.currentView = "full";
+
+    if (els.uploadPrompt) els.uploadPrompt.style.display = "none";
+    if (els.generateOverlay) els.generateOverlay.style.display = "none";
+    if (els.refThumbsRow) els.refThumbsRow.style.display = "none";
+    if (els.generatedGrid) els.generatedGrid.style.display = "none";
+    if (els.skeletonGrid) els.skeletonGrid.style.display = "none";
+
+    els.fullImageView.style.display = "flex";
+    els.fullImageView.style.flexDirection = "column";
+    els.fullImageView.style.alignItems = "center";
+    els.fullImageView.style.justifyContent = "center";
+    els.fullImageView.style.background = "#111";
+    els.fullImageView.style.position = "relative";
+    els.fullImageView.textContent = "";
+
+    const videoEl = document.createElement("video");
+    videoEl.src = objectUrl;
+    videoEl.controls = true;
+    videoEl.preload = "metadata";
+    videoEl.playsInline = true;
+    videoEl.style.cssText =
+        "width: 100%; height: 100%; object-fit: contain; border-radius: 8px; background: #000;";
+
+    const backBtn = document.createElement("button");
+    backBtn.className = "back-to-upload";
+    backBtn.style.cssText =
+        "position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.5); border: none; border-radius: 8px; padding: 8px; cursor: pointer; color: white; z-index: 2;";
+    backBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>`;
+    backBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        resetReelsVideoState(true);
+    });
+
+    const metaEl = document.createElement("div");
+    metaEl.style.cssText =
+        "position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 8px 10px; border-radius: 10px; background: rgba(0,0,0,0.55); color: #fff; font-size: 0.82rem; line-height: 1.4; z-index: 2;";
+    metaEl.textContent = `${state.selectedVideoName} · ${Math.round(file.size / (1024 * 1024) * 10) / 10} MB`;
+
+    els.fullImageView.appendChild(videoEl);
+    els.fullImageView.appendChild(backBtn);
+    els.fullImageView.appendChild(metaEl);
+
+    reelsModeVideoReady = true;
+    if (els.publishBtn) {
+        els.publishBtn.classList.remove("published");
+    }
+    lastPublishedUrl = null;
+    validateReelsMode();
+}
+
+if (reelsFileInput) {
+    reelsFileInput.addEventListener("change", (e) => {
+        const file = e.target.files?.[0];
+        reelsFileInput.value = "";
+
+        if (!file) return;
+
+        if (!file.type.startsWith("video/")) {
+            alert("กรุณาเลือกไฟล์วิดีโอ");
+            return;
+        }
+
+        if (file.size > REELS_V1_MAX_FILE_SIZE) {
+            alert("Reels V1 รองรับวิดีโอไม่เกิน 100 MB");
+            return;
+        }
+
+        showSelectedReelsVideo(file);
+    });
+}
 
 // File input change - handle both device upload and gemini generation
 fileInput.addEventListener("change", async (e) => {

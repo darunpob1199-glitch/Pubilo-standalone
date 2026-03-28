@@ -345,8 +345,10 @@ function setPostMode(mode) {
         container.classList.add("active");
     }
 
-    // Validate link mode when switching modes
+    // Validate mode-specific publish button when switching modes
     validateLinkMode();
+    if (mode === "news") validateNewsMode();
+    if (mode === "reels") validateReelsMode();
 }
 
 // Update pending count on load

@@ -1,6 +1,7 @@
 // 2. DOM ELEMENTS
 // ============================================
 const fileInput = document.getElementById("fileInput");
+const reelsFileInput = document.getElementById("reelsFileInput");
 const cardImageArea = document.getElementById("cardImageArea");
 const uploadPrompt = document.getElementById("uploadPrompt");
 const generateOverlay = document.getElementById("generateOverlay");

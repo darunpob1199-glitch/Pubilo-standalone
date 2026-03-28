@@ -30,6 +30,7 @@ import { updatePostTimeRouter } from './routes/update-post-time';
 import { generateNewsRouter } from './routes/generate-news';
 import { tokenHealthRouter } from './routes/token-health';
 import { newsLinkRouter } from './routes/news-link';
+import { publishReelRouter } from './routes/publish-reel';
 
 
 export interface Env {
@@ -209,6 +210,7 @@ app.route('/api/quotes', quotesRouter);
 app.route('/api/global-settings', globalSettingsRouter);
 app.route('/api/generate', generateRouter);
 app.route('/api/publish', publishRouter);
+app.route('/api/publish-reel', publishReelRouter);
 app.route('/api/scheduled-posts', scheduledPostsRouter);
 app.route('/api/delete-post', deletePostRouter);
 app.route('/api/earnings', earningsRouter);

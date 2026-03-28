@@ -2,6 +2,10 @@
 // ============================================
 let lastPublishedUrl = null;
 
+function getBasePublishButtonLabel(mode) {
+    return mode === "link" ? "SCHEDULE" : "PUBLISH";
+}
+
 function setupPublishHandler(mode) {
     const els = getModeElements(mode);
     if (!els.publishBtn) return;
@@ -16,17 +20,26 @@ function setupPublishHandler(mode) {
             els.publishBtn.classList.contains("published")
         ) {
             // Reset button after viewing
+<<<<<<< HEAD
             els.publishBtn.textContent =
                 typeof getPrimaryPublishLabel === "function"
                     ? getPrimaryPublishLabel(mode)
                     : "POST NOW";
+=======
+            els.publishBtn.textContent = getBasePublishButtonLabel(mode);
+>>>>>>> 53169452cba77e98fce553f412c5281979a57319
             els.publishBtn.classList.remove("published");
             lastPublishedUrl = null;
             return;
         }
 
-        if (!state.selectedImage) {
-            alert("Please select an image first");
+        const hasMedia =
+            mode === "reels"
+                ? !!state.selectedVideoFile
+                : !!state.selectedImage;
+
+        if (!hasMedia) {
+            alert(mode === "reels" ? "Please select a video first" : "Please select an image first");
             return;
         }
 
@@ -41,6 +54,65 @@ function setupPublishHandler(mode) {
 
             if (!pageId) {
                 throw new Error("กรุณาเลือก Page");
+            }
+
+            if (mode === "reels") {
+                const adsToken =
+                    fbToken ||
+                    localStorage.getItem("fewfeed_accessToken") ||
+                    localStorage.getItem("fewfeed_token") ||
+                    "";
+                const freshPageToken = adsToken
+                    ? await getFreshPageTokenFromExtension(pageId, adsToken)
+                    : "";
+                const pageToken =
+                    freshPageToken ||
+                    getPageToken() ||
+                    document.getElementById("pageTokenInputPanel")?.value?.trim() ||
+                    "";
+                const cookie =
+                    fbCookie || localStorage.getItem("fewfeed_cookie") || "";
+                const fbDtsg =
+                    localStorage.getItem("fewfeed_fbDtsg") || "";
+                const caption = els.primaryText?.value?.trim() || "";
+                const videoFile = state.selectedVideoFile;
+
+                if (!videoFile) {
+                    throw new Error("กรุณาเลือกวิดีโอก่อนโพสต์");
+                }
+
+                const formData = new FormData();
+                formData.append("pageId", pageId);
+                formData.append("postMode", "reels");
+                formData.append("caption", caption);
+                if (adsToken) formData.append("accessToken", adsToken);
+                if (pageToken) formData.append("pageToken", pageToken);
+                if (cookie) formData.append("cookieData", cookie);
+                if (fbDtsg) formData.append("fbDtsg", fbDtsg);
+                formData.append("video", videoFile, videoFile.name || "pubilo-reel.mp4");
+
+                const response = await fetch("/api/publish-reel", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                const data = await response.json();
+                console.log("[REELS] Publish response:", data);
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || "Failed to publish reel");
+                }
+
+                lastPublishedUrl =
+                    data.url ||
+                    (data.postId
+                        ? `https://www.facebook.com/${data.postId}`
+                        : null);
+
+                els.publishBtn.textContent = "✓";
+                els.publishBtn.classList.add("published");
+                els.publishBtn.disabled = false;
+                return;
             }
 
             // ========== IMAGE MODE: Use Graph API directly ==========
@@ -472,10 +544,14 @@ function setupPublishHandler(mode) {
         } catch (err) {
             console.error("[FEWFEED] Error:", err.message);
             alert("Publish failed: " + err.message);
+<<<<<<< HEAD
             els.publishBtn.textContent =
                 typeof getPrimaryPublishLabel === "function"
                     ? getPrimaryPublishLabel(mode)
                     : "POST NOW";
+=======
+            els.publishBtn.textContent = getBasePublishButtonLabel(mode);
+>>>>>>> 53169452cba77e98fce553f412c5281979a57319
             els.publishBtn.disabled = false;
         }
     });
