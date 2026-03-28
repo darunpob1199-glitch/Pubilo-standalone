@@ -9,9 +9,11 @@ type ScheduledQueueRow = {
     id: number;
     page_id: string;
     payload_json: string;
+    batch_id?: string | null;
     scheduled_time: number;
     status: string;
     created_at?: string;
+    page_name?: string | null;
 };
 
 function buildFacebookHeaders(cookieData?: string): Record<string, string> | undefined {
@@ -81,6 +83,7 @@ async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             page_id TEXT NOT NULL,
             payload_json TEXT NOT NULL,
+            batch_id TEXT,
             scheduled_time INTEGER NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
             post_id TEXT,
@@ -91,6 +94,26 @@ async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             processed_at TEXT
         )
+    `).run();
+
+    try {
+        await env.DB.prepare(`
+            ALTER TABLE scheduled_publish_queue
+            ADD COLUMN batch_id TEXT
+        `).run();
+    } catch (error) {
+        const message = String(error);
+        if (
+            !message.includes('duplicate column name') &&
+            !message.includes('already exists')
+        ) {
+            throw error;
+        }
+    }
+
+    await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_batch_id
+        ON scheduled_publish_queue (batch_id, status, scheduled_time)
     `).run();
 }
 
@@ -105,23 +128,76 @@ function safeJsonParse(value: string): Record<string, any> {
 
 async function fetchSystemQueuedPosts(env: Env, pageId: string) {
     await ensureScheduledPublishQueueTable(env);
-    const rows = await env.DB.prepare(`
-        SELECT id, page_id, payload_json, scheduled_time, status, created_at
-        FROM scheduled_publish_queue
-        WHERE page_id = ? AND status IN ('pending', 'processing')
-        ORDER BY scheduled_time ASC
+    const primaryRows = await env.DB.prepare(`
+        SELECT
+            q.id,
+            q.page_id,
+            q.payload_json,
+            q.batch_id,
+            q.scheduled_time,
+            q.status,
+            q.created_at,
+            ps.page_name
+        FROM scheduled_publish_queue q
+        LEFT JOIN page_settings ps ON ps.page_id = q.page_id
+        WHERE q.page_id = ? AND q.status IN ('pending', 'processing')
+        ORDER BY q.scheduled_time ASC
         LIMIT 200
     `).bind(pageId).all<ScheduledQueueRow>();
 
-    return (rows.results || []).map((row) => {
+    const batchIds = Array.from(
+        new Set(
+            (primaryRows.results || [])
+                .map((row) => String(row.batch_id || '').trim())
+                .filter(Boolean),
+        ),
+    );
+
+    let rows = primaryRows.results || [];
+
+    if (batchIds.length > 0) {
+        const placeholders = batchIds.map(() => '?').join(', ');
+        const batchRows = await env.DB.prepare(`
+            SELECT
+                q.id,
+                q.page_id,
+                q.payload_json,
+                q.batch_id,
+                q.scheduled_time,
+                q.status,
+                q.created_at,
+                ps.page_name
+            FROM scheduled_publish_queue q
+            LEFT JOIN page_settings ps ON ps.page_id = q.page_id
+            WHERE q.status IN ('pending', 'processing')
+              AND (q.page_id = ? OR q.batch_id IN (${placeholders}))
+            ORDER BY q.scheduled_time ASC, q.created_at ASC
+            LIMIT 500
+        `).bind(pageId, ...batchIds).all<ScheduledQueueRow>();
+
+        rows = batchRows.results || [];
+    }
+
+    const dedupedRows = Array.from(
+        new Map(rows.map((row) => [row.id, row])).values(),
+    );
+
+    return dedupedRows.map((row) => {
         const payload = safeJsonParse(row.payload_json || '{}');
         const fallbackMessage = payload.message || payload.primaryText || '';
         const imageUrl = typeof payload.imageUrl === 'string' && payload.imageUrl.startsWith('http')
             ? payload.imageUrl
             : '';
+        const normalizedBatchId = String(row.batch_id || payload.batchId || '').trim();
+        const pageName = row.page_name || payload.pageName || `เพจ ${row.page_id}`;
 
         return {
             id: `queue:${row.id}`,
+            queueId: row.id,
+            pageId: row.page_id,
+            pageName,
+            batchId: normalizedBatchId,
+            queueStatus: row.status,
             message: fallbackMessage,
             scheduled_publish_time: row.scheduled_time,
             created_time: row.created_at || '',

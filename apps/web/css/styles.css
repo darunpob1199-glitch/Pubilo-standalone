@@ -2346,6 +2346,64 @@
                 background: #a7f3d0;
             }
 
+            .pending-batch-group {
+                border: 1px solid #e5e7eb;
+                border-radius: 18px;
+                overflow: hidden;
+                background: #fff;
+                margin-bottom: 1rem;
+            }
+
+            .pending-batch-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 1rem;
+                padding: 1rem 1.125rem;
+                background: linear-gradient(180deg, #fbfdff 0%, #f6f8fb 100%);
+                border-bottom: 1px solid #e5e7eb;
+            }
+
+            .pending-batch-meta {
+                min-width: 0;
+            }
+
+            .pending-batch-title {
+                font-size: 0.95rem;
+                font-weight: 700;
+                color: #111827;
+            }
+
+            .pending-batch-subtitle {
+                margin-top: 0.2rem;
+                font-size: 0.78rem;
+                color: #6b7280;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .pending-batch-count {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0.35rem 0.7rem;
+                border-radius: 999px;
+                background: #e0e7ff;
+                color: #4338ca;
+                font-size: 0.78rem;
+                font-weight: 700;
+                flex-shrink: 0;
+            }
+
+            .pending-batch-page {
+                min-width: 160px;
+            }
+
+            .pending-batch-group .pending-table th {
+                background: #fff;
+            }
+
             /* Edit Time Modal */
             .edit-time-modal {
                 position: fixed;

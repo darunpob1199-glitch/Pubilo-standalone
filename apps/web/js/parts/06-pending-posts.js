@@ -47,6 +47,11 @@ async function fetchScheduledPostsFromFacebook() {
         if (data.success && data.posts) {
             return data.posts.map((post) => ({
                 id: post.id,
+                queueId: post.queueId || null,
+                pageId: post.pageId || "",
+                pageName: post.pageName || "",
+                batchId: post.batch_id || post.batchId || "",
+                queueStatus: post.queueStatus || "",
                 postType: post.type || post.postType || post.status_type || "link",
                 imageUrl: post.image_url || post.imageUrl || "",
                 fullImageUrl: post.image_url || post.fullImageUrl || post.imageUrl || "",
@@ -70,14 +75,29 @@ async function fetchScheduledPostsFromFacebook() {
     }
 }
 
+function formatPendingTime(timestamp) {
+    if (!timestamp) return "-";
+    return new Date(timestamp * 1000).toLocaleString("th-TH", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+
 // Build pending table using DOM methods (safe from XSS)
-function buildPendingTable(posts) {
+function buildPendingTable(posts, options = {}) {
+    const { showPage = false } = options;
     const table = document.createElement("table");
     table.className = "pending-table";
 
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");
-    ["Type", "Image", "Message", "Time", "Status", "Edit", "Delete"].forEach((text) => {
+    const headers = showPage
+        ? ["Page", "Type", "Image", "Message", "Time", "Status", "Edit", "Delete"]
+        : ["Type", "Image", "Message", "Time", "Status", "Edit", "Delete"];
+    headers.forEach((text) => {
         const th = document.createElement("th");
         th.textContent = text;
         headerRow.appendChild(th);
@@ -89,6 +109,22 @@ function buildPendingTable(posts) {
     posts.forEach((post) => {
         const tr = document.createElement("tr");
         tr.dataset.id = post.id;
+
+        if (showPage) {
+            const pageTd = document.createElement("td");
+            const pageWrap = document.createElement("div");
+            pageWrap.className = "pending-batch-page";
+            const pageNameDiv = document.createElement("div");
+            pageNameDiv.className = "pending-table-title";
+            pageNameDiv.textContent = post.pageName || post.pageId || "Unknown Page";
+            const pageIdDiv = document.createElement("div");
+            pageIdDiv.className = "pending-table-url";
+            pageIdDiv.textContent = post.pageId || "";
+            pageWrap.appendChild(pageNameDiv);
+            if (post.pageId) pageWrap.appendChild(pageIdDiv);
+            pageTd.appendChild(pageWrap);
+            tr.appendChild(pageTd);
+        }
 
         // Type cell with icon
         const typeTd = document.createElement("td");
@@ -156,12 +192,7 @@ function buildPendingTable(posts) {
         const timeTd = document.createElement("td");
         const timeSpan = document.createElement("span");
         timeSpan.className = "pending-table-time";
-        timeSpan.textContent = post.scheduledTime
-            ? new Date(post.scheduledTime * 1000).toLocaleString(
-                  "th-TH",
-                  { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }
-              )
-            : "-";
+        timeSpan.textContent = formatPendingTime(post.scheduledTime);
         timeTd.appendChild(timeSpan);
         tr.appendChild(timeTd);
 
@@ -184,9 +215,10 @@ function buildPendingTable(posts) {
             const statusSpan = document.createElement("span");
             statusSpan.className = "pending-table-status";
             if (isSystemQueuePost) {
-                statusSpan.style.background = "#dbeafe";
-                statusSpan.style.color = "#1d4ed8";
-                statusSpan.textContent = "Queued";
+                const isProcessing = String(post.queueStatus || "").toLowerCase() === "processing";
+                statusSpan.style.background = isProcessing ? "#fef3c7" : "#dbeafe";
+                statusSpan.style.color = isProcessing ? "#b45309" : "#1d4ed8";
+                statusSpan.textContent = isProcessing ? "Processing" : "Queued";
             } else {
                 statusSpan.style.background = "#dcfce7";
                 statusSpan.style.color = "#166534";
@@ -321,13 +353,7 @@ function deleteScheduledPost(postId) {
                 modal.remove();
                 // Invalidate cache after successful delete
                 invalidatePostsCache(getCurrentPageId());
-                // Remove just the row instead of reloading entire panel
-                const row = document.querySelector(`tr[data-id="${postId}"]`);
-                if (row) {
-                    row.style.transition = "opacity 0.3s";
-                    row.style.opacity = "0";
-                    setTimeout(() => row.remove(), 300);
-                }
+                showPendingPanel();
                 updatePendingCount();
             } else {
                 alert("Error: " + (result.error || "Failed to delete"));
@@ -341,6 +367,83 @@ function deleteScheduledPost(postId) {
         }
     };
 
+}
+
+function getValidBatchId(post) {
+    const batchId = String(post.batchId || "").trim();
+    if (!batchId) return "";
+    if (!String(post.id || "").startsWith("queue:")) return "";
+    return batchId;
+}
+
+function buildPendingGroups(posts) {
+    const batchCounts = new Map();
+    posts.forEach((post) => {
+        const batchId = getValidBatchId(post);
+        if (!batchId) return;
+        batchCounts.set(batchId, (batchCounts.get(batchId) || 0) + 1);
+    });
+
+    const seenBatchIds = new Set();
+    const groups = [];
+    const singles = [];
+
+    posts.forEach((post) => {
+        const batchId = getValidBatchId(post);
+        if (batchId && (batchCounts.get(batchId) || 0) > 1) {
+            if (seenBatchIds.has(batchId)) return;
+            seenBatchIds.add(batchId);
+            groups.push({
+                batchId,
+                posts: posts.filter((item) => getValidBatchId(item) === batchId),
+            });
+            return;
+        }
+
+        singles.push(post);
+    });
+
+    return { groups, singles };
+}
+
+function buildBatchGroupSection(group) {
+    const wrapper = document.createElement("section");
+    wrapper.className = "pending-batch-group";
+
+    const header = document.createElement("div");
+    header.className = "pending-batch-header";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "pending-batch-meta";
+
+    const title = document.createElement("div");
+    title.className = "pending-batch-title";
+    title.textContent = `Batch ${group.posts.length} เพจ`;
+
+    const subtitle = document.createElement("div");
+    subtitle.className = "pending-batch-subtitle";
+    const pageNames = Array.from(
+        new Set(
+            group.posts
+                .map((post) => post.pageName || post.pageId || "")
+                .filter(Boolean),
+        ),
+    );
+    subtitle.textContent = `${formatPendingTime(group.posts[0]?.scheduledTime)} • ${pageNames.join(" • ")}`;
+
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(subtitle);
+
+    const badge = document.createElement("span");
+    badge.className = "pending-batch-count";
+    badge.textContent = `${group.posts.length} targets`;
+
+    header.appendChild(titleWrap);
+    header.appendChild(badge);
+    wrapper.appendChild(header);
+    wrapper.appendChild(buildPendingTable(group.posts, { showPage: true }));
+
+    return wrapper;
 }
 
 // Show pending panel (replaces both preview + form panels)
@@ -361,8 +464,46 @@ function renderPendingPosts(posts) {
             // sortNewestFirst: false = soonest to post first (ascending)
             return sortNewestFirst ? (timeB - timeA) : (timeA - timeB);
         });
-        const table = buildPendingTable(sorted);
-        pendingTableContainer.appendChild(table);
+        const { groups, singles } = buildPendingGroups(sorted);
+
+        if (groups.length === 0) {
+            pendingTableContainer.appendChild(buildPendingTable(sorted));
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+
+        groups.forEach((group) => {
+            fragment.appendChild(buildBatchGroupSection(group));
+        });
+
+        if (singles.length > 0) {
+            const singlesSection = document.createElement("section");
+            singlesSection.className = "pending-batch-group pending-batch-group--singles";
+
+            const header = document.createElement("div");
+            header.className = "pending-batch-header";
+
+            const titleWrap = document.createElement("div");
+            titleWrap.className = "pending-batch-meta";
+
+            const title = document.createElement("div");
+            title.className = "pending-batch-title";
+            title.textContent = "โพสต์เดี่ยว";
+
+            const subtitle = document.createElement("div");
+            subtitle.className = "pending-batch-subtitle";
+            subtitle.textContent = "รายการที่ไม่ได้อยู่ใน batch หลายเพจ";
+
+            titleWrap.appendChild(title);
+            titleWrap.appendChild(subtitle);
+            header.appendChild(titleWrap);
+            singlesSection.appendChild(header);
+            singlesSection.appendChild(buildPendingTable(singles));
+            fragment.appendChild(singlesSection);
+        }
+
+        pendingTableContainer.appendChild(fragment);
     }
 }
 
