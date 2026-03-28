@@ -32,7 +32,7 @@ async function loadEarnings() {
     loadingEl.style.color = '';
     dataEl.style.display = "none";
 
-    const pageId = getCurrentPageId() || localStorage.getItem("fewfeed_selectedPageId");
+    const pageId = getCurrentPageId();
     if (!pageId) {
         loadingEl.textContent = 'Please select a Page first';
         loadingEl.style.color = '#e74c3c';
@@ -146,7 +146,7 @@ function showPublishedPanel() {
 
 // Load published posts from our logs
 async function loadPublishedPosts() {
-    const pageId = getCurrentPageId() || localStorage.getItem("fewfeed_selectedPageId");
+    const pageId = getCurrentPageId();
 
     if (!pageId) {
         publishedTableContainer.innerHTML = '<div class="pending-empty">Please select a Page first</div>';

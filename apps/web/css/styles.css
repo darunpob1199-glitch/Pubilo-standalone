@@ -682,6 +682,18 @@
                 box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
             }
 
+            .page-selector.is-empty .preview-page-info h3 {
+                color: #111827;
+            }
+
+            .page-selector.is-empty .preview-page-info p {
+                color: #9ca3af;
+            }
+
+            .page-selector.is-empty .page-dropdown-icon {
+                color: #111827;
+            }
+
             .page-selector-skeleton {
                 display: flex;
                 align-items: center;

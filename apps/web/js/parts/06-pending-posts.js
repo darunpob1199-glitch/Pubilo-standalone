@@ -537,6 +537,12 @@ async function showPendingPanel(forceRefresh = false) {
 
     const pageId = getCurrentPageId();
 
+    if (!pageId) {
+        pendingTableContainer.innerHTML =
+            '<div class="pending-empty">กรุณาเลือกเพจหลักก่อน</div>';
+        return;
+    }
+
     // Show skeleton while loading
     pendingTableContainer.innerHTML = `
         <div class="pending-skeleton">

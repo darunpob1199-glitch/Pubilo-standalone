@@ -594,6 +594,8 @@ let selectedPageIndex = 0;
 let selectedTargetPageIds = [];
 let targetPageSearchQuery = "";
 const TARGET_PAGE_STORAGE_KEY = "fewfeed_targetPageIds";
+const PRIMARY_PAGE_PLACEHOLDER_NAME = "เลือกเพจหลัก";
+const PRIMARY_PAGE_PLACEHOLDER_ID = "ยังไม่ได้เลือก";
 
 // Page selector elements
 const pageSelector = document.getElementById("pageSelector");
@@ -636,15 +638,12 @@ function persistTargetPageIds() {
 }
 
 function getCurrentSelectedPageId() {
-    return (
-        document.getElementById("pageSelect")?.value ||
-        localStorage.getItem("fewfeed_selectedPageId") ||
-        ""
-    );
+    return document.getElementById("pageSelect")?.value || "";
 }
 
 function getSelectableTargetPages() {
     const currentPageId = String(getCurrentSelectedPageId() || "");
+    if (!currentPageId) return allPages;
     return allPages.filter((page) => String(page.id) !== currentPageId);
 }
 
@@ -686,6 +685,71 @@ function setMultiPagePickerOpen(isOpen) {
     }
 }
 
+function getEmptyPageAvatarUrl() {
+    return "data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='40' fill='%23eef2f7'/%3E%3Cpath d='M40 23c6.08 0 11 4.92 11 11s-4.92 11-11 11-11-4.92-11-11 4.92-11 11-11Zm0 28c9.39 0 17 5.37 17 12v2H23v-2c0-6.63 7.61-12 17-12Z' fill='%239ca3af'/%3E%3C/svg%3E";
+}
+
+function refreshActivePagePanels() {
+    const hash = window.location.hash.slice(1) || "link";
+
+    if (hash === "pending") {
+        showPendingPanel();
+    } else if (hash === "published") {
+        loadPublishedPosts();
+    } else if (hash === "earnings") {
+        loadEarnings();
+    } else if (hash === "settings") {
+        loadSettingsPanel();
+    }
+}
+
+function clearPrimaryPageSelection() {
+    const skeleton = document.getElementById("pageSelectorSkeleton");
+    const selector = document.getElementById("pageSelector");
+    if (skeleton) skeleton.style.display = "none";
+    if (selector) {
+        selector.style.display = "flex";
+        selector.classList.add("is-empty");
+    }
+
+    localStorage.removeItem("fewfeed_selectedPageId");
+    localStorage.removeItem("fewfeed_selectedPageName");
+    localStorage.removeItem("fewfeed_selectedPageToken");
+    document.getElementById("pageSelect").value = "";
+    selectedPageIndex = -1;
+
+    const previewName = document.getElementById("previewPageName");
+    const previewId = document.getElementById("previewPageId");
+    const previewImg = document.getElementById("previewAvatarImg");
+    if (previewName) previewName.textContent = PRIMARY_PAGE_PLACEHOLDER_NAME;
+    if (previewId) previewId.textContent = PRIMARY_PAGE_PLACEHOLDER_ID;
+    if (previewImg) {
+        previewImg.src = getEmptyPageAvatarUrl();
+        previewImg.alt = PRIMARY_PAGE_PLACEHOLDER_NAME;
+    }
+
+    document.querySelectorAll(".page-dropdown-item").forEach((item) => {
+        item.classList.remove("selected");
+    });
+
+    if (typeof loadSettings === "function") {
+        loadSettings();
+    }
+    if (typeof updatePublishButton === "function") {
+        updatePublishButton();
+    }
+
+    renderMultiPageTargetPicker();
+    updatePendingCount();
+    refreshActivePagePanels();
+}
+
+function setPrimaryPageById(pageId) {
+    const index = allPages.findIndex((page) => String(page.id) === String(pageId));
+    if (index === -1) return;
+    selectPage(index);
+}
+
 function removeTargetPage(pageId) {
     selectedTargetPageIds = selectedTargetPageIds.filter(
         (id) => String(id) !== String(pageId),
@@ -696,6 +760,18 @@ function removeTargetPage(pageId) {
 
 function toggleTargetPage(pageId) {
     const normalizedPageId = String(pageId);
+    const currentPageId = String(getCurrentSelectedPageId() || "");
+
+    if (!currentPageId) {
+        setPrimaryPageById(normalizedPageId);
+        setMultiPagePickerOpen(false);
+        return;
+    }
+
+    if (normalizedPageId === currentPageId) {
+        return;
+    }
+
     const isSelected = selectedTargetPageIds.includes(normalizedPageId);
 
     if (isSelected) {
@@ -766,6 +842,7 @@ function renderMultiPageListItems() {
     }
 
     const query = targetPageSearchQuery.trim().toLowerCase();
+    const currentPageId = String(getCurrentSelectedPageId() || "");
     const filteredPages = selectablePages.filter((page) => {
         if (!query) return true;
         return (
@@ -786,11 +863,19 @@ function renderMultiPageListItems() {
 
     filteredPages.forEach((page) => {
         const normalizedPageId = String(page.id);
-        const isSelected = selectedTargetPageIds.includes(normalizedPageId);
+        const isPrimarySelectionFlow = !currentPageId;
+        const isSelected = !isPrimarySelectionFlow && selectedTargetPageIds.includes(normalizedPageId);
 
         const item = document.createElement("div");
         item.className = `multi-page-item${isSelected ? " is-selected" : ""}`;
-        item.addEventListener("click", () => toggleTargetPage(normalizedPageId));
+        item.addEventListener("click", () => {
+            if (isPrimarySelectionFlow) {
+                setPrimaryPageById(normalizedPageId);
+                setMultiPagePickerOpen(false);
+                return;
+            }
+            toggleTargetPage(normalizedPageId);
+        });
 
         const avatar = document.createElement("img");
         avatar.className = "multi-page-item-media";
@@ -812,12 +897,23 @@ function renderMultiPageListItems() {
         const action = document.createElement("button");
         action.type = "button";
         action.className = "multi-page-item-action";
-        action.textContent = isSelected ? "×" : "✓";
-        action.title = isSelected
-            ? `เอา ${page.name || normalizedPageId} ออก`
-            : `เลือก ${page.name || normalizedPageId}`;
+        action.textContent = isPrimarySelectionFlow
+            ? "หลัก"
+            : isSelected
+                ? "×"
+                : "✓";
+        action.title = isPrimarySelectionFlow
+            ? `ตั้ง ${page.name || normalizedPageId} เป็นเพจหลัก`
+            : isSelected
+                ? `เอา ${page.name || normalizedPageId} ออก`
+                : `เลือก ${page.name || normalizedPageId}`;
         action.addEventListener("click", (event) => {
             event.stopPropagation();
+            if (isPrimarySelectionFlow) {
+                setPrimaryPageById(normalizedPageId);
+                setMultiPagePickerOpen(false);
+                return;
+            }
             toggleTargetPage(normalizedPageId);
         });
 
@@ -840,12 +936,19 @@ function renderMultiPageTargetPicker() {
 
     syncSelectedTargetPageIds();
     const selectedPages = getSelectedTargetPages();
+    const currentPageId = getCurrentSelectedPageId();
 
-    multiPageTriggerValue.textContent = getTargetTriggerText(selectedPages);
-    multiPageCountBadge.textContent = String(selectedPages.length);
-    multiPageSelectedMeta.textContent = `${selectedPages.length} เพจ`;
+    const visibleSelectedCount = currentPageId ? selectedPages.length : 0;
 
-    renderSelectedTargetStrip(selectedPages);
+    multiPageTriggerValue.textContent = currentPageId
+        ? getTargetTriggerText(selectedPages)
+        : "เลือกเพจหลักก่อน";
+    multiPageCountBadge.textContent = String(visibleSelectedCount);
+    multiPageSelectedMeta.textContent = currentPageId
+        ? `${selectedPages.length} เพจ`
+        : "ยังไม่เลือกเพจหลัก";
+
+    renderSelectedTargetStrip(currentPageId ? selectedPages : []);
     renderMultiPageListItems();
 }
 
@@ -862,6 +965,11 @@ window.clearSelectedTargetPages = function clearSelectedTargetPages() {
 // Toggle dropdown
 pageSelector.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (pageSelector.classList.contains("is-empty")) {
+        pageDropdown.classList.add("visible");
+        setMultiPagePickerOpen(false);
+        return;
+    }
     setMultiPagePickerOpen(false);
     pageDropdown.classList.toggle("visible");
 });
@@ -944,6 +1052,7 @@ function selectPage(index) {
     const pageSelector = document.getElementById("pageSelector");
     if (skeleton) skeleton.style.display = "none";
     pageSelector.style.display = "flex";
+    pageSelector.classList.remove("is-empty");
 
     // Update content
     document.getElementById("previewPageName").textContent =
@@ -1022,19 +1131,20 @@ function renderPagesDropdown(pages) {
         pageDropdown.appendChild(item);
     });
 
-    // Auto-select saved page or first page
     if (pages.length > 0) {
         const savedPageId = localStorage.getItem("fewfeed_selectedPageId");
-        let indexToSelect = 0;
-
         if (savedPageId) {
-            const savedIndex = pages.findIndex(p => p.id === savedPageId);
+            const savedIndex = pages.findIndex((page) => String(page.id) === String(savedPageId));
             if (savedIndex !== -1) {
-                indexToSelect = savedIndex;
+                selectPage(savedIndex);
+            } else {
+                clearPrimaryPageSelection();
             }
+        } else {
+            clearPrimaryPageSelection();
         }
-
-        selectPage(indexToSelect);
+    } else {
+        clearPrimaryPageSelection();
     }
 
     renderMultiPageTargetPicker();
