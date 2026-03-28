@@ -16,7 +16,10 @@ function setupPublishHandler(mode) {
             els.publishBtn.classList.contains("published")
         ) {
             // Reset button after viewing
-            els.publishBtn.textContent = "SCHEDULE";
+            els.publishBtn.textContent =
+                typeof getPrimaryPublishLabel === "function"
+                    ? getPrimaryPublishLabel(mode)
+                    : "POST NOW";
             els.publishBtn.classList.remove("published");
             lastPublishedUrl = null;
             return;
@@ -69,17 +72,13 @@ function setupPublishHandler(mode) {
                     console.log("[FEWFEED] Image uploaded:", imageUrl);
                 }
 
-                // Check if auto-schedule is enabled (use cached settings from database)
-                const isAutoSchedule = cachedPageSettings.pageId === pageId && cachedPageSettings.autoSchedule;
-                let scheduledTime = null;
-                if (isAutoSchedule) {
-                    // Refresh scheduled times from Facebook to avoid duplicates
-                    await refreshScheduledPostTimes();
-                    scheduledTime = getNextScheduleTime();
-                    // Add to local cache immediately to prevent duplicates in rapid succession
-                    scheduledPostTimes.push(scheduledTime);
-                    console.log("[FEWFEED] Image scheduling for:", scheduledTime.toISOString());
-                }
+                const { scheduledTime, scheduleSource } =
+                    await resolveScheduledTimeForMode(mode, pageId);
+                console.log(
+                    "[FEWFEED] Image schedule source:",
+                    scheduleSource,
+                    scheduledTime?.toISOString?.() || null,
+                );
 
                 console.log("[FEWFEED] Publishing image via Graph API...");
 
@@ -130,7 +129,13 @@ function setupPublishHandler(mode) {
                         linkModeImageReady = false;
                         if (els.fullImageView) els.fullImageView.style.display = "none";
                         if (els.uploadPrompt) els.uploadPrompt.style.display = "flex";
-                        els.publishBtn.textContent = "SCHEDULE";
+                        if (typeof clearManualSchedule === "function") {
+                            clearManualSchedule(mode);
+                        }
+                        els.publishBtn.textContent =
+                            typeof getPrimaryPublishLabel === "function"
+                                ? getPrimaryPublishLabel(mode)
+                                : "POST NOW";
                         els.publishBtn.classList.remove("published");
 
                         // Clear form fields silently (Link URL, Primary Text, Caption/พิกัด)
@@ -138,10 +143,12 @@ function setupPublishHandler(mode) {
                         const primaryTextField = document.getElementById("primaryText");
                         const captionField = document.getElementById("caption");
                         const descField = document.getElementById("description");
+                        const linkDescField = document.getElementById("linkDescriptionInput");
                         if (linkUrlField) linkUrlField.value = "";
                         if (primaryTextField) primaryTextField.value = "";
                         if (captionField) captionField.value = "";
                         if (descField) descField.value = "";
+                        if (linkDescField) linkDescField.value = "";
                         // Clear the preview description (พิกัด) - but keep domain display
                         const previewDesc = document.getElementById("previewDescription");
                         if (previewDesc) previewDesc.textContent = "";
@@ -192,20 +199,13 @@ function setupPublishHandler(mode) {
                 "[FEWFEED] Publishing with Ads Token only (server fetches Page Token)",
             );
 
-            // Check if auto-schedule is enabled (use cached settings from database)
-            const isAutoSchedule = cachedPageSettings.pageId === pageId && cachedPageSettings.autoSchedule;
-            let scheduledTime = null;
-            if (isAutoSchedule) {
-                // Refresh scheduled times from Facebook to avoid duplicates
-                await refreshScheduledPostTimes();
-                scheduledTime = getNextScheduleTime();
-                // Add to local cache immediately to prevent duplicates in rapid succession
-                scheduledPostTimes.push(scheduledTime);
-                console.log(
-                    "[FEWFEED] Scheduling for:",
-                    scheduledTime.toISOString(),
-                );
-            }
+            const { scheduledTime, scheduleSource } =
+                await resolveScheduledTimeForMode(mode, pageId);
+            console.log(
+                "[FEWFEED] Schedule source:",
+                scheduleSource,
+                scheduledTime?.toISOString?.() || null,
+            );
 
             // Get fb_dtsg for GraphQL scheduling
             const fbDtsg = localStorage.getItem("fewfeed_fbDtsg");
@@ -222,14 +222,18 @@ function setupPublishHandler(mode) {
 
             const previewDescEl = document.getElementById("previewDescription");
             const previewCaptionEl = document.getElementById("previewCaption");
+            const linkDescriptionInputEl = document.getElementById("linkDescriptionInput");
             const descriptionText = isLinkMode
-                ? (description?.value?.trim() || previewDescEl?.textContent?.trim() || "")
+                ? (linkDescriptionInputEl?.value?.trim() || description?.value?.trim() || previewDescEl?.textContent?.trim() || "")
                 : "";
             const captionText = isLinkMode
                 ? (caption?.value?.trim() || previewCaptionEl?.textContent?.trim() || "")
                 : "";
             if (isLinkMode) {
                 description.value = descriptionText;
+                if (linkDescriptionInputEl) {
+                    linkDescriptionInputEl.value = descriptionText;
+                }
                 caption.value = captionText;
             }
             const linkUrlValue = isLinkMode ? linkUrl.value.trim() : "";
@@ -268,6 +272,7 @@ function setupPublishHandler(mode) {
                     adAccountId: adAccountId,
                     callToAction: document.getElementById("cardButton")?.value || "SHOP_NOW",
                     fbDtsg: fbDtsg, // Required for GraphQL scheduling
+                    scheduleInSystem: scheduleSource === "manual",
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
                         : null, // Unix timestamp
@@ -406,7 +411,13 @@ function setupPublishHandler(mode) {
                             linkModeImageReady = false;
                             if (els.fullImageView) els.fullImageView.style.display = "none";
                             if (els.uploadPrompt) els.uploadPrompt.style.display = "flex";
-                            els.publishBtn.textContent = "SCHEDULE";
+                            if (typeof clearManualSchedule === "function") {
+                                clearManualSchedule(mode);
+                            }
+                            els.publishBtn.textContent =
+                                typeof getPrimaryPublishLabel === "function"
+                                    ? getPrimaryPublishLabel(mode)
+                                    : "POST NOW";
                             els.publishBtn.classList.remove("published");
 
                             // Clear form fields silently (Link URL, Primary Text, Caption/พิกัด)
@@ -414,10 +425,12 @@ function setupPublishHandler(mode) {
                             const primaryTextField = document.getElementById("primaryText");
                             const captionField = document.getElementById("caption");
                             const descField = document.getElementById("description");
+                            const linkDescField = document.getElementById("linkDescriptionInput");
                             if (linkUrlField) linkUrlField.value = "";
                             if (primaryTextField) primaryTextField.value = "";
                             if (captionField) captionField.value = "";
                             if (descField) descField.value = "";
+                            if (linkDescField) linkDescField.value = "";
                             // Clear the preview description (พิกัด) - but keep domain display
                             const previewDesc = document.getElementById("previewDescription");
                             if (previewDesc) previewDesc.textContent = "";
@@ -459,7 +472,10 @@ function setupPublishHandler(mode) {
         } catch (err) {
             console.error("[FEWFEED] Error:", err.message);
             alert("Publish failed: " + err.message);
-            els.publishBtn.textContent = "SCHEDULE";
+            els.publishBtn.textContent =
+                typeof getPrimaryPublishLabel === "function"
+                    ? getPrimaryPublishLabel(mode)
+                    : "POST NOW";
             els.publishBtn.disabled = false;
         }
     });

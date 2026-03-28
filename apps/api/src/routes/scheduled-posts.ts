@@ -5,6 +5,15 @@ const app = new Hono<{ Bindings: Env }>();
 
 const FB_API = 'https://graph.facebook.com/v21.0';
 
+type ScheduledQueueRow = {
+    id: number;
+    page_id: string;
+    payload_json: string;
+    scheduled_time: number;
+    status: string;
+    created_at?: string;
+};
+
 function buildFacebookHeaders(cookieData?: string): Record<string, string> | undefined {
     const normalizedCookie = typeof cookieData === 'string' ? cookieData.trim() : '';
     if (!normalizedCookie) return undefined;
@@ -66,6 +75,70 @@ function buildAuthCandidates(tokens: Array<string | null | undefined>): string[]
     return candidates;
 }
 
+async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
+    await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS scheduled_publish_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            scheduled_time INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            post_id TEXT,
+            facebook_url TEXT,
+            error_message TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            processed_at TEXT
+        )
+    `).run();
+}
+
+function safeJsonParse(value: string): Record<string, any> {
+    try {
+        const parsed = JSON.parse(value);
+        return typeof parsed === 'object' && parsed ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+async function fetchSystemQueuedPosts(env: Env, pageId: string) {
+    await ensureScheduledPublishQueueTable(env);
+    const rows = await env.DB.prepare(`
+        SELECT id, page_id, payload_json, scheduled_time, status, created_at
+        FROM scheduled_publish_queue
+        WHERE page_id = ? AND status IN ('pending', 'processing')
+        ORDER BY scheduled_time ASC
+        LIMIT 200
+    `).bind(pageId).all<ScheduledQueueRow>();
+
+    return (rows.results || []).map((row) => {
+        const payload = safeJsonParse(row.payload_json || '{}');
+        const fallbackMessage = payload.message || payload.primaryText || '';
+        const imageUrl = typeof payload.imageUrl === 'string' && payload.imageUrl.startsWith('http')
+            ? payload.imageUrl
+            : '';
+
+        return {
+            id: `queue:${row.id}`,
+            message: fallbackMessage,
+            scheduled_publish_time: row.scheduled_time,
+            created_time: row.created_at || '',
+            status_type: payload.postMode || 'link',
+            full_picture: imageUrl,
+            permalink_url: '',
+            source: 'system',
+            // Backward-compatible aliases for the legacy web dashboard.
+            scheduledTime: row.scheduled_time,
+            postType: payload.postMode || 'link',
+            imageUrl,
+            fullImageUrl: imageUrl,
+            permalink: '',
+        };
+    });
+}
+
 async function handleScheduledPosts(
     pageId: string | undefined,
     pageToken: string | undefined,
@@ -79,6 +152,7 @@ async function handleScheduledPosts(
 
     try {
         const fields = 'id,message,scheduled_publish_time,created_time,status_type,full_picture,attachments{media,subattachments},permalink_url';
+        const systemQueuedPosts = await fetchSystemQueuedPosts(c.env, pageId);
         let storedPageToken = pageToken;
 
         if (!storedPageToken && pageId) {
@@ -104,7 +178,7 @@ async function handleScheduledPosts(
         ]);
 
         if (authCandidates.length === 0) {
-            return c.json({ success: false, error: 'Missing pageToken or accessToken' }, 400);
+            return c.json({ success: true, posts: systemQueuedPosts });
         }
 
         let lastFacebookError: any = null;
@@ -142,7 +216,15 @@ async function handleScheduledPosts(
                 };
             });
 
-            return c.json({ success: true, posts });
+            return c.json({ success: true, posts: [...systemQueuedPosts, ...posts] });
+        }
+
+        if (systemQueuedPosts.length > 0) {
+            return c.json({
+                success: true,
+                posts: systemQueuedPosts,
+                warning: lastFacebookError?.message || 'Facebook API error',
+            });
         }
 
         return c.json({

@@ -45,6 +45,138 @@ export interface Env {
 
 const app = new Hono<{ Bindings: Env }>();
 
+type ScheduledQueueJob = {
+    id: number;
+    payload_json: string;
+    scheduled_time: number;
+    attempts: number;
+};
+
+async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
+    await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS scheduled_publish_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            scheduled_time INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            post_id TEXT,
+            facebook_url TEXT,
+            error_message TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            processed_at TEXT
+        )
+    `).run();
+
+    await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_status_time
+        ON scheduled_publish_queue (status, scheduled_time)
+    `).run();
+}
+
+function parseQueuePayload(raw: string): Record<string, any> {
+    try {
+        const parsed = JSON.parse(raw);
+        return typeof parsed === 'object' && parsed ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+async function processScheduledPublishQueue(env: Env, ctx: ExecutionContext): Promise<void> {
+    await ensureScheduledPublishQueueTable(env);
+    const nowTs = Math.floor(Date.now() / 1000);
+    const dueRows = await env.DB.prepare(`
+        SELECT id, payload_json, scheduled_time, attempts
+        FROM scheduled_publish_queue
+        WHERE status = 'pending' AND scheduled_time <= ?
+        ORDER BY scheduled_time ASC
+        LIMIT 15
+    `).bind(nowTs).all<ScheduledQueueJob>();
+
+    const jobs = dueRows.results || [];
+    if (jobs.length === 0) {
+        return;
+    }
+
+    console.log('[scheduled] Processing queued publishes:', jobs.length);
+
+    for (const job of jobs) {
+        try {
+            const claim = await env.DB.prepare(`
+                UPDATE scheduled_publish_queue
+                SET status = 'processing',
+                    attempts = attempts + 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = 'pending'
+            `).bind(job.id).run();
+
+            if (!Number(claim.meta?.changes || 0)) {
+                continue;
+            }
+
+            const payload = parseQueuePayload(job.payload_json);
+            const publishReq = new Request('https://internal/api/publish', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...payload,
+                    scheduledTime: null,
+                    scheduleInSystem: false,
+                    internalRun: true,
+                }),
+            });
+
+            const publishRes = await app.fetch(publishReq, env, ctx);
+            const publishData = await publishRes.json() as any;
+
+            if (publishRes.ok && publishData?.success) {
+                await env.DB.prepare(`
+                    UPDATE scheduled_publish_queue
+                    SET status = 'published',
+                        post_id = ?,
+                        facebook_url = ?,
+                        error_message = NULL,
+                        updated_at = CURRENT_TIMESTAMP,
+                        processed_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                `).bind(
+                    String(publishData.postId || ''),
+                    String(publishData.url || ''),
+                    job.id
+                ).run();
+            } else {
+                await env.DB.prepare(`
+                    UPDATE scheduled_publish_queue
+                    SET status = 'failed',
+                        error_message = ?,
+                        updated_at = CURRENT_TIMESTAMP,
+                        processed_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                `).bind(
+                    String(publishData?.error || `HTTP ${publishRes.status}`),
+                    job.id
+                ).run();
+            }
+        } catch (error) {
+            console.error('[scheduled] queued publish job failed:', { id: job.id, error });
+            await env.DB.prepare(`
+                UPDATE scheduled_publish_queue
+                SET status = 'failed',
+                    error_message = ?,
+                    updated_at = CURRENT_TIMESTAMP,
+                    processed_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `).bind(
+                error instanceof Error ? error.message : String(error),
+                job.id
+            ).run();
+        }
+    }
+}
+
 // CORS
 app.use('*', cors({
     origin: '*',
@@ -118,6 +250,13 @@ export default {
 
         // Every minute: Run auto-post and auto-hide
         if (cron === '* * * * *') {
+            console.log('[scheduled] Every minute - Processing scheduled publish queue');
+            try {
+                await processScheduledPublishQueue(env, ctx);
+            } catch (err) {
+                console.error('[scheduled] scheduled publish queue error:', err);
+            }
+
             console.log('[scheduled] Every minute - Running auto-post');
             try {
                 const autoPostReq = new Request('https://internal/api/cron/auto-post');

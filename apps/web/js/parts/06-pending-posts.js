@@ -22,7 +22,7 @@ async function fetchScheduledPostsFromFacebook() {
         tokenPrefix: selectedPageToken?.substring(0, 15) + "...",
     });
 
-    if (!pageId || (!selectedPageToken && !accessToken)) {
+    if (!pageId) {
         console.log(
             "[FEWFEED] Pages not loaded yet - showing skeleton",
         );
@@ -47,11 +47,11 @@ async function fetchScheduledPostsFromFacebook() {
         if (data.success && data.posts) {
             return data.posts.map((post) => ({
                 id: post.id,
-                postType: post.type || "link",
-                imageUrl: post.image_url || "",
-                fullImageUrl: post.image_url || "",
+                postType: post.type || post.postType || post.status_type || "link",
+                imageUrl: post.image_url || post.imageUrl || "",
+                fullImageUrl: post.image_url || post.fullImageUrl || post.imageUrl || "",
                 message: post.message || "",
-                scheduledTime: post.scheduled_publish_time || 0,
+                scheduledTime: post.scheduled_publish_time || post.scheduledTime || 0,
                 permalink: post.permalink || "",
             }));
         } else {
@@ -167,7 +167,8 @@ function buildPendingTable(posts) {
 
         // Status cell (clickable link to Facebook post)
         const statusTd = document.createElement("td");
-        if (post.permalink || post.id) {
+        const isSystemQueuePost = String(post.id || '').startsWith('queue:');
+        if ((post.permalink || post.id) && !isSystemQueuePost) {
             const statusLink = document.createElement("a");
             statusLink.className = "pending-table-status";
             statusLink.style.background = "#dcfce7";
@@ -182,9 +183,15 @@ function buildPendingTable(posts) {
         } else {
             const statusSpan = document.createElement("span");
             statusSpan.className = "pending-table-status";
-            statusSpan.style.background = "#dcfce7";
-            statusSpan.style.color = "#166534";
-            statusSpan.textContent = "Scheduled";
+            if (isSystemQueuePost) {
+                statusSpan.style.background = "#dbeafe";
+                statusSpan.style.color = "#1d4ed8";
+                statusSpan.textContent = "Queued";
+            } else {
+                statusSpan.style.background = "#dcfce7";
+                statusSpan.style.color = "#166534";
+                statusSpan.textContent = "Scheduled";
+            }
             statusTd.appendChild(statusSpan);
         }
         tr.appendChild(statusTd);

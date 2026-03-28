@@ -663,14 +663,31 @@ function showFullImage(imgSrc) {
 }
 
 // Update preview on input change
+const linkDescriptionInput = document.getElementById("linkDescriptionInput");
+
 caption.addEventListener(
     "input",
     () => (previewCaption.textContent = caption.value),
 );
 description.addEventListener(
     "input",
-    () => (previewDescription.textContent = description.value),
+    () => {
+        const nextValue = description.value;
+        previewDescription.textContent = nextValue;
+        if (linkDescriptionInput && linkDescriptionInput.value !== nextValue) {
+            linkDescriptionInput.value = nextValue;
+        }
+    },
 );
+
+if (linkDescriptionInput) {
+    linkDescriptionInput.addEventListener("input", () => {
+        const value = linkDescriptionInput.value;
+        description.value = value;
+        previewDescription.textContent = value;
+        validateLinkMode();
+    });
+}
 
 // Double-click to edit preview text
 function setupEditableText(previewEl, inputEl) {
@@ -692,6 +709,9 @@ function setupEditableText(previewEl, inputEl) {
         inputEl.value = previewEl.textContent;
         // Trigger validation when description changes
         if (inputEl.id === 'description') {
+            if (linkDescriptionInput) {
+                linkDescriptionInput.value = previewEl.textContent.trim();
+            }
             validateLinkMode();
         }
     });
@@ -724,6 +744,9 @@ previewCaption.addEventListener("input", () => {
 });
 previewDescription.addEventListener("input", () => {
     description.value = previewDescription.textContent;
+    if (linkDescriptionInput) {
+        linkDescriptionInput.value = previewDescription.textContent.trim();
+    }
     validateLinkMode();
 });
 
@@ -824,17 +847,8 @@ if (newsPublishBtn) {
                 imageData = await compressImage(imageData, 1200, 0.8);
             }
             
-            // Check if auto-schedule is enabled
-            const isAutoSchedule = cachedPageSettings.pageId === pageId && cachedPageSettings.autoSchedule;
-            let scheduledTime = null;
-            if (isAutoSchedule) {
-                await refreshScheduledPostTimes();
-                scheduledTime = getNextScheduleTime();
-                scheduledPostTimes.push(scheduledTime);
-                console.log("[News] Auto-schedule enabled, scheduledTime:", scheduledTime?.toISOString());
-            } else {
-                console.log("[News] Auto-schedule NOT enabled", { cachedPageId: cachedPageSettings.pageId, pageId, autoSchedule: cachedPageSettings.autoSchedule });
-            }
+            const { scheduledTime, scheduleSource } = await resolveScheduledTimeForMode("news", pageId);
+            console.log("[News] Schedule source:", scheduleSource, scheduledTime?.toISOString?.() || null);
             
             const buildPublishRequest = async () => {
                 const latestAdsToken = fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
@@ -857,6 +871,7 @@ if (newsPublishBtn) {
                     postMode: "news",
                     adAccountId,
                     callToAction: "SHOP_NOW",
+                    scheduleInSystem: scheduleSource === "manual",
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
                         : null,
@@ -908,11 +923,14 @@ if (newsPublishBtn) {
             }
 
             const postId = data.postId || data.post_id || data.id;
-            if (postId) {
+            const isQueuedPost = typeof postId === "string" && postId.startsWith("queue:");
+            if (data.url) {
+                lastPublishedUrl = data.url;
+            } else if (postId && !isQueuedPost) {
                 lastPublishedUrl = `https://www.facebook.com/${postId}`;
             }
 
-            if (postId) {
+            if (postId || data.queued) {
                 newsPublishBtn.textContent = "✓";
                 newsPublishBtn.classList.add("published");
                 newsPublishBtn.disabled = false;
@@ -930,6 +948,9 @@ if (newsPublishBtn) {
                     if (newsPrimaryTextEl) newsPrimaryTextEl.value = "";
                     if (newsPreviewDescEl) newsPreviewDescEl.textContent = "";
                     if (newsDescriptionInput) newsDescriptionInput.value = "";
+                    if (typeof clearManualSchedule === "function") {
+                        clearManualSchedule("news");
+                    }
                     newsGeneratedImages = [];
                     newsSelectedImages = [];
                     newsModeImageReady = false;
@@ -940,8 +961,8 @@ if (newsPublishBtn) {
                     if (uploadPrompt) uploadPrompt.style.display = "flex";
                     
                     const baseLabel = typeof getPrimaryPublishLabel === "function"
-                        ? getPrimaryPublishLabel()
-                        : "SCHEDULE";
+                        ? getPrimaryPublishLabel("news")
+                        : "POST NOW";
                     newsPublishBtn.textContent = baseLabel;
                     newsPublishBtn.classList.remove("published");
                     newsPublishBtn.disabled = true;
@@ -955,8 +976,8 @@ if (newsPublishBtn) {
             console.error("[News] Publish error:", err);
             alert("เกิดข้อผิดพลาด: " + err.message);
             const baseLabel = typeof getPrimaryPublishLabel === "function"
-                ? getPrimaryPublishLabel()
-                : "SCHEDULE";
+                ? getPrimaryPublishLabel("news")
+                : "POST NOW";
             newsPublishBtn.textContent = baseLabel;
             newsPublishBtn.disabled = false;
             newsPublishBtn.classList.remove("published");

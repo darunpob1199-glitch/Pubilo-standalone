@@ -369,6 +369,20 @@
                                 ข้อความนี้จะแสดงใต้รูปตรงคำว่า พิกัด :
                             </small>
                         </div>
+                        <div class="form-group">
+                            <div
+                                style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.4rem;">
+                                <label class="form-label" for="newsManualScheduleInput" style="margin-bottom: 0;">ตั้งวันเวลา</label>
+                                <button type="button" id="newsManualScheduleClearBtn"
+                                    style="border: 1px solid #d1d5db; background: #fff; color: #4b5563; border-radius: 10px; padding: 0.45rem 0.75rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                                    ล้างเวลา
+                                </button>
+                            </div>
+                            <input type="datetime-local" class="form-input" id="newsManualScheduleInput" step="60">
+                            <small id="newsManualScheduleHint" style="color: #888; margin-top: 4px; display: block;">
+                                ถ้ากรอกไว้ ระบบจะใช้เวลานี้ก่อน auto schedule ใน Settings
+                            </small>
+                        </div>
                         <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
                             <label class="form-label">Primary Text</label>
                             <textarea class="form-textarea" id="newsPrimaryText"
@@ -470,10 +484,40 @@
                                             display: block;
                                         "></small>
                             </div>
+                            <div class="form-group">
+                                <label class="form-label">พิกัด</label>
+                                <input type="text" class="form-input" id="linkDescriptionInput"
+                                    placeholder="เช่น Telegram Premium ราคาพิเศษ" />
+                                <small style="
+                                            color: #888;
+                                            margin-top: 4px;
+                                            display: block;
+                                        ">
+                                    ข้อความนี้จะแสดงใต้รูปตรงคำว่า พิกัด :
+                                </small>
+                            </div>
                             <!-- Hidden inputs for Link Name, Caption, Description (editable via double-click in preview) -->
                             <input type="hidden" id="linkName" value="S.LAZADA.CO.TH" />
                             <input type="hidden" id="caption" value="S.LAZADA.CO.TH" />
                             <input type="hidden" id="description" value="" />
+                        </div>
+                        <div class="form-group">
+                            <div
+                                style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.4rem;">
+                                <label class="form-label" for="linkManualScheduleInput" style="margin-bottom: 0;">ตั้งวันเวลา</label>
+                                <button type="button" id="linkManualScheduleClearBtn"
+                                    style="border: 1px solid #d1d5db; background: #fff; color: #4b5563; border-radius: 10px; padding: 0.45rem 0.75rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                                    ล้างเวลา
+                                </button>
+                            </div>
+                            <input type="datetime-local" class="form-input" id="linkManualScheduleInput" step="60" />
+                            <small id="linkManualScheduleHint" style="
+                                        color: #888;
+                                        margin-top: 4px;
+                                        display: block;
+                                    ">
+                                ถ้ากรอกไว้ ระบบจะใช้เวลานี้ก่อน auto schedule ใน Settings
+                            </small>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Primary Text</label>
@@ -1621,16 +1665,16 @@
     <script src="/js/config.js?v=6.3"></script>
     <script src="/js/parts/01-thumb-preview.js?v=6.1"></script>
     <script src="/js/parts/02-dom-elements.js?v=6.1"></script>
-    <script src="/js/parts/03-validation.js?v=6.1"></script>
-    <script src="/js/parts/04-settings.js?v=6.6"></script>
+    <script src="/js/parts/03-validation.js?v=6.2"></script>
+    <script src="/js/parts/04-settings.js?v=6.7"></script>
     <script src="/js/parts/05-auto-post.js?v=6.3"></script>
-    <script src="/js/parts/06-pending-posts.js?v=6.4"></script>
+    <script src="/js/parts/06-pending-posts.js?v=6.5"></script>
     <script src="/js/parts/07-earnings.js?v=6.1"></script>
     <script src="/js/parts/08-quotes.js?v=6.1"></script>
     <script src="/js/parts/09-navigation.js?v=6.2"></script>
     <script src="/js/parts/10-lazada.js?v=6.1"></script>
-    <script src="/js/parts/11-image-generation.js?v=7.2"></script>
-    <script src="/js/parts/12-publish.js?v=7.4"></script>
+    <script src="/js/parts/11-image-generation.js?v=7.6"></script>
+    <script src="/js/parts/12-publish.js?v=7.7"></script>
 
     <!-- Lightbox Modal -->
     <div class="lightbox-overlay" id="lightboxOverlay">

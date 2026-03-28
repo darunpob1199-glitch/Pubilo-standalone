@@ -9,9 +9,10 @@ function validateLinkMode() {
     
     if (currentMode === 'link') {
         const hasUrl = linkUrl && linkUrl.value.trim().length > 0;
+        const linkDescriptionInput = document.getElementById("linkDescriptionInput");
         // Check both hidden input and preview element (in case blur hasn't synced yet)
         const previewDesc = document.getElementById("previewDescription");
-        const descValue = description?.value?.trim() || previewDesc?.textContent?.trim() || '';
+        const descValue = linkDescriptionInput?.value?.trim() || description?.value?.trim() || previewDesc?.textContent?.trim() || '';
         const hasDescription = descValue.length > 0;
 
         // Use linkModeImageReady flag (set by showSingleImage/showFullImage, cleared by delete/regenerate)
@@ -37,7 +38,9 @@ function validateLinkMode() {
             // Update button text if it was showing success state but now invalid (e.g. cleared image)
             if (!isValid && publishBtn.classList.contains('published')) {
                 publishBtn.classList.remove('published');
-                publishBtn.textContent = 'SCHEDULE';
+                publishBtn.textContent = typeof getPrimaryPublishLabel === "function"
+                    ? getPrimaryPublishLabel('link')
+                    : 'POST NOW';
             }
         }
     } else {
@@ -71,8 +74,8 @@ function validateNewsMode() {
         newsPublishBtn.style.cursor = isValid ? 'pointer' : 'not-allowed';
         if (!newsPublishBtn.classList.contains('published')) {
             const baseLabel = typeof getPrimaryPublishLabel === "function"
-                ? getPrimaryPublishLabel()
-                : "SCHEDULE";
+                ? getPrimaryPublishLabel("news")
+                : "POST NOW";
             newsPublishBtn.textContent = baseLabel;
         }
     }

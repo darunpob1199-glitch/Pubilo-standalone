@@ -130,6 +130,21 @@ CREATE TABLE IF NOT EXISTS hidden_posts (
     PRIMARY KEY (page_id, post_id)
 );
 
+CREATE TABLE IF NOT EXISTS scheduled_publish_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    page_id TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    scheduled_time INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    post_id TEXT,
+    facebook_url TEXT,
+    error_message TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    processed_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_page_settings_auto_schedule ON page_settings (auto_schedule);
 CREATE INDEX IF NOT EXISTS idx_page_settings_share_page_id ON page_settings (share_page_id);
 CREATE INDEX IF NOT EXISTS idx_prompts_page_type ON prompts (page_id, prompt_type);
@@ -139,3 +154,5 @@ CREATE INDEX IF NOT EXISTS idx_auto_post_logs_created_at ON auto_post_logs (crea
 CREATE INDEX IF NOT EXISTS idx_share_queue_status_created_at ON share_queue (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_share_queue_target_page_id ON share_queue (target_page_id);
 CREATE INDEX IF NOT EXISTS idx_earnings_history_date ON earnings_history (date);
+CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_status_time ON scheduled_publish_queue (status, scheduled_time);
+CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_page_status ON scheduled_publish_queue (page_id, status, scheduled_time);

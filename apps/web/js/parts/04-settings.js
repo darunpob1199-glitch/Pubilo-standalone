@@ -51,6 +51,12 @@ const imageSourceGroup = document.getElementById("imageSourceGroup");
 const imageSourceSelect = document.getElementById("imageSourceSelect");
 const ogBackgroundGroup = document.getElementById("ogBackgroundGroup");
 const ogBackgroundUrl = document.getElementById("ogBackgroundUrl");
+const linkManualScheduleInput = document.getElementById("linkManualScheduleInput");
+const linkManualScheduleHint = document.getElementById("linkManualScheduleHint");
+const linkManualScheduleClearBtn = document.getElementById("linkManualScheduleClearBtn");
+const newsManualScheduleInput = document.getElementById("newsManualScheduleInput");
+const newsManualScheduleHint = document.getElementById("newsManualScheduleHint");
+const newsManualScheduleClearBtn = document.getElementById("newsManualScheduleClearBtn");
 
 // Sync minute checkboxes with hidden input
 function syncMinuteGridToInput(grid, input) {
@@ -82,6 +88,203 @@ const nextScheduleInfo =
 const nextScheduleDisplay = document.getElementById(
     "nextScheduleDisplay",
 );
+
+function formatDateTimeLocalValue(date) {
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatSchedulePreview(date) {
+    return date.toLocaleString("th-TH", {
+        dateStyle: "short",
+        timeStyle: "short",
+    });
+}
+
+function getMinimumManualScheduleTime() {
+    const threshold = Date.now() + 10 * 60 * 1000;
+    const minDate = new Date(threshold);
+    minDate.setSeconds(0, 0);
+    if (minDate.getTime() < threshold) {
+        minDate.setMinutes(minDate.getMinutes() + 1);
+    }
+    return minDate;
+}
+
+function getManualScheduleElements(mode = postMode) {
+    if (mode === "news") {
+        return {
+            input: newsManualScheduleInput,
+            hint: newsManualScheduleHint,
+            clearBtn: newsManualScheduleClearBtn,
+        };
+    }
+
+    if (mode === "link") {
+        return {
+            input: linkManualScheduleInput,
+            hint: linkManualScheduleHint,
+            clearBtn: linkManualScheduleClearBtn,
+        };
+    }
+
+    return {
+        input: null,
+        hint: null,
+        clearBtn: null,
+    };
+}
+
+function getManualScheduleHintDefaultText() {
+    return "ถ้ากรอกไว้ ระบบจะใช้เวลานี้ก่อน auto schedule ใน Settings";
+}
+
+function setManualScheduleHint(mode, message, isError = false) {
+    const { hint } = getManualScheduleElements(mode);
+    if (!hint) return;
+
+    hint.textContent = message || getManualScheduleHintDefaultText();
+    hint.style.color = isError ? "#dc2626" : "#888";
+}
+
+function updateManualScheduleMin(mode = null) {
+    const modes = mode ? [mode] : ["link", "news"];
+    const minValue = formatDateTimeLocalValue(getMinimumManualScheduleTime());
+
+    modes.forEach((currentMode) => {
+        const { input } = getManualScheduleElements(currentMode);
+        if (input) {
+            input.min = minValue;
+        }
+    });
+}
+
+function parseManualScheduledTime(mode = postMode) {
+    const { input } = getManualScheduleElements(mode);
+    const value = input?.value?.trim() || "";
+    if (!value) {
+        return { value: "", date: null, error: null };
+    }
+
+    const scheduledTime = new Date(value);
+    if (Number.isNaN(scheduledTime.getTime())) {
+        return {
+            value,
+            date: null,
+            error: "วันเวลาที่เลือกไม่ถูกต้อง",
+        };
+    }
+
+    const minTime = getMinimumManualScheduleTime();
+    if (scheduledTime.getTime() < minTime.getTime()) {
+        return {
+            value,
+            date: null,
+            error: `เวลาต้องมากกว่าปัจจุบันอย่างน้อย 10 นาที (เร็วสุด ${formatSchedulePreview(minTime)})`,
+        };
+    }
+
+    return {
+        value,
+        date: scheduledTime,
+        error: null,
+    };
+}
+
+function getManualScheduledTime(mode = postMode) {
+    const parsed = parseManualScheduledTime(mode);
+    if (parsed.error) {
+        throw new Error(parsed.error);
+    }
+    return parsed.date;
+}
+
+function clearManualSchedule(mode = postMode) {
+    const { input } = getManualScheduleElements(mode);
+    if (input) {
+        input.value = "";
+    }
+    setManualScheduleHint(mode, getManualScheduleHintDefaultText());
+    updateManualScheduleMin(mode);
+}
+
+function refreshManualScheduleUi(mode = postMode) {
+    updateManualScheduleMin(mode);
+    const parsed = parseManualScheduledTime(mode);
+
+    if (!parsed.value) {
+        setManualScheduleHint(mode, getManualScheduleHintDefaultText());
+    } else if (parsed.error) {
+        setManualScheduleHint(mode, parsed.error, true);
+    } else if (parsed.date) {
+        setManualScheduleHint(mode, `จะตั้งเวลาโพสต์เป็น ${formatSchedulePreview(parsed.date)}`);
+    }
+
+    updatePublishButton();
+}
+
+function bindManualScheduleControls(mode) {
+    const { input, clearBtn } = getManualScheduleElements(mode);
+    if (!input) return;
+
+    if (!input.dataset.bound) {
+        input.dataset.bound = "true";
+        const handleChange = () => {
+            refreshManualScheduleUi(mode);
+            if (mode === "news") {
+                validateNewsMode();
+            } else if (mode === "link") {
+                validateLinkMode();
+            }
+        };
+
+        input.addEventListener("focus", () => updateManualScheduleMin(mode));
+        input.addEventListener("input", handleChange);
+        input.addEventListener("change", handleChange);
+    }
+
+    if (clearBtn && !clearBtn.dataset.bound) {
+        clearBtn.dataset.bound = "true";
+        clearBtn.addEventListener("click", () => {
+            clearManualSchedule(mode);
+            if (mode === "news") {
+                validateNewsMode();
+            } else if (mode === "link") {
+                validateLinkMode();
+            }
+        });
+    }
+}
+
+async function resolveScheduledTimeForMode(mode, pageId) {
+    const manualTime = getManualScheduledTime(mode);
+    if (manualTime) {
+        console.log(`[FEWFEED] Manual scheduling for ${mode}:`, manualTime.toISOString());
+        return {
+            scheduledTime: manualTime,
+            scheduleSource: "manual",
+        };
+    }
+
+    const isAutoSchedule =
+        cachedPageSettings.pageId === pageId && cachedPageSettings.autoSchedule;
+
+    if (isAutoSchedule) {
+        await refreshScheduledPostTimes();
+        const autoTime = getNextScheduleTime();
+        scheduledPostTimes.push(autoTime);
+        console.log(`[FEWFEED] Auto scheduling for ${mode}:`, autoTime.toISOString());
+        return {
+            scheduledTime: autoTime,
+            scheduleSource: "auto",
+        };
+    }
+
+    return {
+        scheduledTime: null,
+        scheduleSource: "immediate",
+    };
+}
 
 // ============================================
 // 5. SCHEDULE & CACHING
@@ -142,6 +345,12 @@ let cachedPageSettings = {
     autoSchedule: false,
     scheduleMinutes: "00, 15, 30, 45"
 };
+
+bindManualScheduleControls("link");
+bindManualScheduleControls("news");
+refreshManualScheduleUi("link");
+refreshManualScheduleUi("news");
+window.addEventListener("focus", () => updateManualScheduleMin());
 
 // Cache for scheduled posts per page
 const scheduledPostsCache = new Map(); // pageId -> { posts: [], timestamp: Date }
@@ -277,18 +486,24 @@ async function loadSettings() {
 
 // Update publish button text
 function updatePublishButton() {
-    const label = getPrimaryPublishLabel();
+    const linkLabel = getPrimaryPublishLabel("link");
     if (!publishBtn.classList.contains("published")) {
-        publishBtn.textContent = label;
+        publishBtn.textContent = linkLabel;
     }
     const newsPublishBtn = document.getElementById("newsPublishBtn");
     if (newsPublishBtn && !newsPublishBtn.classList.contains("published")) {
-        newsPublishBtn.textContent = label;
+        newsPublishBtn.textContent = getPrimaryPublishLabel("news");
     }
 }
 
-function getPrimaryPublishLabel() {
-    return cachedPageSettings.autoSchedule ? "SCHEDULE" : "POST NOW";
+function getPrimaryPublishLabel(mode = postMode) {
+    const { input } = getManualScheduleElements(mode);
+    const hasManualSchedule = !!input?.value?.trim();
+    const currentPageId = getCurrentPageId();
+    const hasAutoSchedule =
+        cachedPageSettings.autoSchedule &&
+        (!currentPageId || cachedPageSettings.pageId === currentPageId);
+    return hasManualSchedule || hasAutoSchedule ? "SCHEDULE" : "POST NOW";
 }
 
 // Parse schedule minutes from string (e.g., "05, 10, 15" => [5, 10, 15])

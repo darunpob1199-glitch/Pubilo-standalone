@@ -182,6 +182,59 @@ function deriveSiteName(inputCaption?: string, targetUrl?: string): string {
     return 'PUBILO';
 }
 
+async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
+    await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS scheduled_publish_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            scheduled_time INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            post_id TEXT,
+            facebook_url TEXT,
+            error_message TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            processed_at TEXT
+        )
+    `).run();
+
+    await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_status_time
+        ON scheduled_publish_queue (status, scheduled_time)
+    `).run();
+
+    await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_page_status
+        ON scheduled_publish_queue (page_id, status, scheduled_time)
+    `).run();
+}
+
+async function enqueueScheduledPublish(
+    env: Env,
+    pageId: string,
+    scheduledTime: number,
+    payload: Record<string, unknown>,
+): Promise<number> {
+    await ensureScheduledPublishQueueTable(env);
+
+    const result = await env.DB.prepare(`
+        INSERT INTO scheduled_publish_queue (
+            page_id,
+            payload_json,
+            scheduled_time,
+            status
+        ) VALUES (?, ?, ?, 'pending')
+    `).bind(
+        pageId,
+        JSON.stringify(payload),
+        scheduledTime
+    ).run();
+
+    return Number(result.meta?.last_row_id || 0);
+}
+
 async function publishExistingUnpublishedPost(postId: string, pageToken: string, headers?: Record<string, string>): Promise<void> {
     const publishParams = new URLSearchParams({
         access_token: pageToken,
@@ -288,6 +341,86 @@ async function fetchReusableAdSeed(params: {
     };
 }
 
+async function fetchAccessibleAdAccountIds(
+    accessToken: string,
+    headers?: Record<string, string>,
+): Promise<string[]> {
+    const response = await fetch(
+        `${FB_API}/me/adaccounts?fields=account_id,account_status&limit=100&access_token=${encodeURIComponent(accessToken)}`,
+        headers ? { headers } : undefined
+    );
+    const data = await response.json() as any;
+
+    if (data?.error) {
+        throw new Error(data.error.message || 'Failed to fetch accessible ad accounts');
+    }
+
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    const seen = new Set<string>();
+    const accountIds: string[] = [];
+
+    for (const row of rows) {
+        const accountId = normalizeAdAccountId(row?.account_id);
+        if (!accountId || seen.has(accountId)) continue;
+        seen.add(accountId);
+        accountIds.push(accountId);
+    }
+
+    return accountIds;
+}
+
+async function resolveAdSeedContext(params: {
+    preferredAdAccountId: string;
+    accessToken: string;
+    pageId: string;
+    headers?: Record<string, string>;
+}): Promise<{
+    adAccountId: string;
+    seed: { adId: string; adsetId: string; campaignId: string; raw: any } | null;
+    scannedAccounts: string[];
+}> {
+    const candidateAccounts = [params.preferredAdAccountId].filter(Boolean);
+
+    try {
+        const accessibleAccounts = await fetchAccessibleAdAccountIds(params.accessToken, params.headers);
+        for (const accountId of accessibleAccounts) {
+            if (!accountId || candidateAccounts.includes(accountId)) continue;
+            candidateAccounts.push(accountId);
+        }
+    } catch (error) {
+        console.warn('[publish] Failed to enumerate accessible ad accounts:', error);
+    }
+
+    for (const accountId of candidateAccounts) {
+        try {
+            const seed = await fetchReusableAdSeed({
+                adAccountId: accountId,
+                accessToken: params.accessToken,
+                pageId: params.pageId,
+                headers: params.headers,
+            });
+            if (seed?.adsetId) {
+                return {
+                    adAccountId: accountId,
+                    seed,
+                    scannedAccounts: candidateAccounts,
+                };
+            }
+        } catch (error) {
+            console.warn('[publish] Failed to inspect ad account for reusable seed:', {
+                accountId,
+                error,
+            });
+        }
+    }
+
+    return {
+        adAccountId: params.preferredAdAccountId,
+        seed: null,
+        scannedAccounts: candidateAccounts,
+    };
+}
+
 async function fetchAdStoryIdWithRetry(
     adId: string,
     accessToken: string,
@@ -330,8 +463,9 @@ async function materializeCreativeWithAd(params: {
     pageId: string;
     creativeId: string;
     headers?: Record<string, string>;
+    seed?: { adId: string; adsetId: string; campaignId: string; raw: any } | null;
 }): Promise<{ adId: string; adsetId: string; campaignId: string; postId: string; seedAdId: string; adData: any }> {
-    const seed = await fetchReusableAdSeed({
+    const seed = params.seed ?? await fetchReusableAdSeed({
         adAccountId: params.adAccountId,
         accessToken: params.accessToken,
         pageId: params.pageId,
@@ -406,6 +540,7 @@ async function createStandaloneAdCreative(params: {
     caption?: string;
     description?: string;
     callToAction?: string;
+    seed?: { adId: string; adsetId: string; campaignId: string; raw: any } | null;
 }): Promise<{ creativeId: string; postId: string; creativeData: any; adId?: string; adsetId?: string; campaignId?: string; seedAdId?: string; materializedBy?: string }> {
     const creativePayload: Record<string, any> = {
         page_id: params.pageId,
@@ -475,6 +610,7 @@ async function createStandaloneAdCreative(params: {
         pageId: params.pageId,
         creativeId,
         headers: params.cookieHeaders,
+        seed: params.seed,
     });
 
     return {
@@ -492,8 +628,28 @@ async function createStandaloneAdCreative(params: {
 // POST /api/publish - Publish to Facebook
 app.post('/', async (c) => {
     try {
-        const { pageId, pageToken, accessToken, cookieData, message, imageUrl, scheduledTime, link,
-            linkUrl, linkName, caption, description, primaryText, postMode, adAccountId, fbDtsg, callToAction } = await c.req.json();
+        const body = await c.req.json() as Record<string, any>;
+        const {
+            pageId,
+            pageToken,
+            accessToken,
+            cookieData,
+            message,
+            imageUrl,
+            scheduledTime,
+            link,
+            linkUrl,
+            linkName,
+            caption,
+            description,
+            primaryText,
+            postMode,
+            adAccountId,
+            fbDtsg,
+            callToAction,
+            scheduleInSystem,
+            internalRun,
+        } = body;
 
         if (!pageId) {
             return c.json({ success: false, error: 'Missing pageId' }, 400);
@@ -576,6 +732,38 @@ app.post('/', async (c) => {
             })
             : '';
 
+        const shouldQueueInSystem = !!scheduleTimestamp && !!scheduleInSystem && !internalRun;
+        if (shouldQueueInSystem) {
+            const queuePayload: Record<string, unknown> = {
+                ...body,
+                imageUrl: hostedImageUrl || finalImageUrl,
+                scheduledTime: null,
+                scheduleInSystem: false,
+                internalRun: false,
+            };
+
+            const queueId = await enqueueScheduledPublish(c.env, pageId, scheduleTimestamp, queuePayload);
+            if (!queueId) {
+                throw new Error('Failed to enqueue scheduled publish');
+            }
+
+            const queuePostId = `queue:${queueId}`;
+            return c.json({
+                success: true,
+                queued: true,
+                postId: queuePostId,
+                id: queuePostId,
+                url: buildFacebookPostUrl('', pageId),
+                needsScheduling: false,
+                scheduledTime: scheduleTimestamp,
+                _debug: {
+                    flow: 'system-queue',
+                    queueId,
+                    scheduledTime: scheduleTimestamp,
+                },
+            });
+        }
+
         let lastFacebookError: any = null;
         let sawSessionExpired = false;
         const normalizedAdAccountId = normalizeAdAccountId(adAccountId);
@@ -595,11 +783,22 @@ app.post('/', async (c) => {
                     throw new Error('ไม่พบ Page Token สำหรับ publish post');
                 }
 
+                const seedContext = await resolveAdSeedContext({
+                    preferredAdAccountId: normalizedAdAccountId,
+                    accessToken,
+                    pageId,
+                    headers: facebookHeaders,
+                });
+
+                const resolvedAdAccountId = seedContext.seed?.adsetId
+                    ? seedContext.adAccountId
+                    : normalizedAdAccountId;
+
                 const creativeResult = await createStandaloneAdCreative({
                     pageId,
                     accessToken,
                     cookieHeaders: facebookHeaders,
-                    adAccountId: normalizedAdAccountId,
+                    adAccountId: resolvedAdAccountId,
                     linkUrl: finalLink,
                     hostedImageUrl: hostedImageUrl || undefined,
                     message: finalMessage,
@@ -607,17 +806,21 @@ app.post('/', async (c) => {
                     caption: previewSiteName || undefined,
                     description: attachmentDescription || undefined,
                     callToAction: callToAction || 'SHOP_NOW',
+                    seed: seedContext.seed,
                 });
 
                 console.log('[publish] Ad creative created:', {
                     creativeId: creativeResult.creativeId,
                     postId: creativeResult.postId,
                     creativeData: creativeResult.creativeData,
+                    requestedAdAccountId: normalizedAdAccountId,
+                    resolvedAdAccountId,
                     adId: creativeResult.adId,
                     adsetId: creativeResult.adsetId,
                     campaignId: creativeResult.campaignId,
                     seedAdId: creativeResult.seedAdId,
                     materializedBy: creativeResult.materializedBy,
+                    scannedAccounts: seedContext.scannedAccounts,
                 });
 
                 if (!scheduleTimestamp) {
@@ -633,19 +836,21 @@ app.post('/', async (c) => {
                     _debug: {
                         flow: 'adcreative',
                         creativeId: creativeResult.creativeId,
-                        adAccountId: normalizedAdAccountId,
+                        adAccountId: resolvedAdAccountId,
+                        requestedAdAccountId: normalizedAdAccountId,
                         adId: creativeResult.adId || '',
                         adsetId: creativeResult.adsetId || '',
                         campaignId: creativeResult.campaignId || '',
                         seedAdId: creativeResult.seedAdId || '',
                         materializedBy: creativeResult.materializedBy || '',
+                        scannedAccounts: seedContext.scannedAccounts,
                     },
                 });
             } catch (error) {
                 const rawMessage = error instanceof Error ? error.message : String(error);
                 const friendlyMessage =
                     rawMessage === 'No reusable adset found for this page in the selected ad account'
-                        ? 'ไม่พบ adset เดิมของเพจนี้ใน ad account ที่เลือก กรุณาเปิด Ads Manager/เคยสร้างโฆษณาของเพจนี้ก่อน แล้วลองอีกครั้ง'
+                        ? 'ไม่พบ adset เดิมของเพจนี้ใน ad accounts ที่ token นี้เข้าถึงได้ กรุณาเปิด Ads Manager/เคยสร้างโฆษณาของเพจนี้ก่อน แล้วลองอีกครั้ง'
                         : rawMessage;
                 lastFacebookError = { message: friendlyMessage, type: 'AdCreativeFlowError' };
                 console.warn('[publish] Ad creative flow failed:', lastFacebookError);
