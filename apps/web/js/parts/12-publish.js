@@ -1069,9 +1069,6 @@ function selectPage(index) {
         localStorage.removeItem("fewfeed_selectedPageToken");
     }
 
-    syncSelectedTargetPageIds();
-    renderMultiPageTargetPicker();
-
     // Hide skeleton, show real selector
     const skeleton = document.getElementById(
         "pageSelectorSkeleton",
@@ -1100,6 +1097,9 @@ function selectPage(index) {
             item.classList.toggle("selected", itemPageId === String(page.id));
             item.classList.toggle("is-primary", itemPageId === String(page.id));
         });
+
+    syncSelectedTargetPageIds();
+    renderMultiPageTargetPicker();
 
     setPageDropdownOpen(false);
 
