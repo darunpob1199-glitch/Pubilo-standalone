@@ -182,33 +182,34 @@
 
             .multi-page-picker {
                 position: relative;
-                margin-top: 0.75rem;
+                margin-top: 0;
             }
 
             .multi-page-trigger {
                 width: 100%;
                 border: 1px solid #e5e7eb;
+                border-top: 1px solid #eceff3;
                 background:
                     linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 250, 251, 0.98) 100%);
-                border-radius: 12px;
-                padding: 0.875rem 0.9rem;
+                border-radius: 0 0 18px 18px;
+                padding: 0.8rem 0.95rem 0.9rem;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 gap: 0.75rem;
                 cursor: pointer;
                 transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+                border-top-color: rgba(17, 24, 39, 0.06);
             }
 
             .multi-page-trigger:hover {
                 border-color: #d1d5db;
-                box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-                transform: translateY(-1px);
+                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
             }
 
             .multi-page-picker.open .multi-page-trigger {
                 border-color: #111827;
-                box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+                box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
             }
 
             .multi-page-trigger-copy {
@@ -234,7 +235,7 @@
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                max-width: 150px;
+                max-width: 165px;
             }
 
             .multi-page-trigger-meta {
@@ -665,15 +666,20 @@
                 display: flex;
                 align-items: center;
                 gap: 0.75rem;
-                padding: 0.5rem 0.75rem;
-                border-radius: 8px;
+                padding: 0.95rem 0.95rem 0.9rem;
+                border-radius: 18px 18px 0 0;
+                background:
+                    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 250, 251, 0.96) 100%);
+                border: 1px solid #e5e7eb;
+                border-bottom: none;
                 cursor: pointer;
-                transition: background 0.15s;
+                transition: background 0.15s, border-color 0.18s ease, box-shadow 0.18s ease;
                 position: relative;
             }
 
             .page-selector:hover {
-                background: #f3f4f6;
+                border-color: #d1d5db;
+                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
             }
 
             .page-selector-skeleton {
@@ -726,13 +732,13 @@
                 top: 100%;
                 left: 0;
                 background: #fff;
-                border-radius: 8px;
-                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+                border-radius: 18px;
+                box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
                 min-width: 280px;
                 max-height: 300px;
                 overflow-y: auto;
                 z-index: 1000;
-                margin-top: 4px;
+                margin-top: 8px;
             }
 
             .page-dropdown.visible {
