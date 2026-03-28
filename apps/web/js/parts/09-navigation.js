@@ -36,7 +36,8 @@ function handleNavigation() {
         showDashboard();
     } else if (hash === "text") {
         textNavItem.classList.add("active");
-        showTextPanel();
+        setPostMode("text");
+        showDashboard();
     } else {
         // Default: link
         dashboardNavItem.classList.add("active");
@@ -349,6 +350,8 @@ function setPostMode(mode) {
     validateLinkMode();
     if (mode === "news") validateNewsMode();
     if (mode === "reels") validateReelsMode();
+    if (mode === "text" && typeof validateTextMode === "function") validateTextMode();
+    if (mode === "text" && typeof renderTextComposerUi === "function") renderTextComposerUi();
 }
 
 // Update pending count on load

@@ -1,6 +1,196 @@
 // 10. PUBLISH
 // ============================================
 let lastPublishedUrl = null;
+const TEXT_BACKGROUND_STORAGE_KEY_PREFIX = "fewfeed_textBackgroundPreset_";
+
+const TEXT_BACKGROUND_THEMES = [
+    { swatch: "linear-gradient(135deg, #f7f6ff 0%, #dbeafe 100%)", preview: "linear-gradient(135deg, #f7f6ff 0%, #dbeafe 100%)", textColor: "#111827" },
+    { swatch: "linear-gradient(135deg, #dbeafe 0%, #93c5fd 45%, #c4b5fd 100%)", preview: "linear-gradient(135deg, #dbeafe 0%, #93c5fd 45%, #c4b5fd 100%)", textColor: "#111827" },
+    { swatch: "linear-gradient(135deg, #fee2e2 0%, #fecdd3 50%, #f9a8d4 100%)", preview: "linear-gradient(135deg, #fee2e2 0%, #fecdd3 50%, #f9a8d4 100%)", textColor: "#111827" },
+    { swatch: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%)", preview: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%)", textColor: "#f8fafc" },
+    { swatch: "linear-gradient(135deg, #fef3c7 0%, #fdba74 100%)", preview: "linear-gradient(135deg, #fef3c7 0%, #fdba74 100%)", textColor: "#111827" },
+    { swatch: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #34d399 100%)", preview: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #34d399 100%)", textColor: "#052e16" },
+    { swatch: "linear-gradient(135deg, #f5d0fe 0%, #c4b5fd 45%, #93c5fd 100%)", preview: "linear-gradient(135deg, #f5d0fe 0%, #c4b5fd 45%, #93c5fd 100%)", textColor: "#111827" },
+    { swatch: "linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%)", preview: "linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%)", textColor: "#0f172a" },
+    { swatch: "linear-gradient(135deg, #111827 0%, #374151 100%)", preview: "linear-gradient(135deg, #111827 0%, #374151 100%)", textColor: "#f9fafb" },
+    { swatch: "linear-gradient(135deg, #ffe4e6 0%, #fef3c7 45%, #d9f99d 100%)", preview: "linear-gradient(135deg, #ffe4e6 0%, #fef3c7 45%, #d9f99d 100%)", textColor: "#111827" },
+];
+
+function getTextModeState() {
+    if (!modeState.text) {
+        modeState.text = { selectedBackgroundPresetId: "" };
+    }
+    return modeState.text;
+}
+
+function getTextBackgroundStorageKey(pageId) {
+    return `${TEXT_BACKGROUND_STORAGE_KEY_PREFIX}${pageId}`;
+}
+
+function hashTextPresetId(value) {
+    let hash = 0;
+    const input = String(value || "");
+    for (let index = 0; index < input.length; index += 1) {
+        hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
+    }
+    return hash;
+}
+
+function getTextBackgroundTheme(presetId) {
+    const index = hashTextPresetId(presetId) % TEXT_BACKGROUND_THEMES.length;
+    return TEXT_BACKGROUND_THEMES[index];
+}
+
+function getConfiguredTextBackgroundPresets() {
+    return Array.isArray(currentPresets)
+        ? currentPresets.map((preset) => String(preset || "").trim()).filter(Boolean)
+        : [];
+}
+
+function isTextBackgroundEnabledForComposer() {
+    const toggle = document.getElementById("colorBgEnabled");
+    return !!toggle?.checked;
+}
+
+function getStoredTextBackgroundPresetId(pageId) {
+    if (!pageId) return "";
+    return localStorage.getItem(getTextBackgroundStorageKey(pageId)) || "";
+}
+
+function persistTextBackgroundPresetId(pageId, presetId) {
+    if (!pageId) return;
+    const key = getTextBackgroundStorageKey(pageId);
+    if (presetId) {
+        localStorage.setItem(key, presetId);
+    } else {
+        localStorage.removeItem(key);
+    }
+}
+
+function getActiveTextBackgroundPresetId() {
+    const state = getTextModeState();
+    return String(state.selectedBackgroundPresetId || "").trim();
+}
+
+function setActiveTextBackgroundPresetId(presetId) {
+    const pageId = getCurrentPageId();
+    const state = getTextModeState();
+    const nextPresetId = String(presetId || "").trim();
+    state.selectedBackgroundPresetId = nextPresetId;
+    persistTextBackgroundPresetId(pageId, nextPresetId);
+}
+
+function syncTextBackgroundSelection() {
+    const pageId = getCurrentPageId();
+    const state = getTextModeState();
+    const presets = getConfiguredTextBackgroundPresets();
+
+    if (!pageId || !isTextBackgroundEnabledForComposer() || !presets.length) {
+        state.selectedBackgroundPresetId = "";
+        return;
+    }
+
+    const currentPresetId = String(state.selectedBackgroundPresetId || "").trim();
+    if (currentPresetId && presets.includes(currentPresetId)) {
+        return;
+    }
+
+    const storedPresetId = getStoredTextBackgroundPresetId(pageId);
+    state.selectedBackgroundPresetId = presets.includes(storedPresetId) ? storedPresetId : "";
+}
+
+function renderTextBackgroundPicker() {
+    const grid = document.getElementById("textBackgroundGrid");
+    const help = document.getElementById("textBackgroundHelp");
+    const summary = document.getElementById("textBackgroundSummary");
+    const source = document.getElementById("textBackgroundSource");
+    if (!grid || !help || !summary || !source) return;
+
+    syncTextBackgroundSelection();
+
+    const presets = getConfiguredTextBackgroundPresets();
+    const enabled = isTextBackgroundEnabledForComposer();
+    const activePresetId = getActiveTextBackgroundPresetId();
+    const hasPresets = enabled && presets.length > 0;
+
+    if (!enabled) {
+        help.textContent = "เปิด Colors Background ใน Settings ก่อน แล้วค่อยกลับมาเลือกพื้นหลังที่นี่";
+    } else if (!presets.length) {
+        help.textContent = "ยังไม่มี Preset IDs ใน Settings เพิ่ม preset ก่อนแล้ว picker นี้จะเปิดให้เลือก";
+    } else {
+        help.textContent = "เลือกพื้นหลังที่จะส่งเป็น text_format_preset_id ไปพร้อมโพสต์ข้อความ";
+    }
+
+    summary.textContent = hasPresets
+        ? activePresetId
+            ? `เลือกแล้ว: ${activePresetId}`
+            : "กำลังโพสต์แบบพื้นหลังปกติ"
+        : "โพสต์แบบพื้นหลังปกติ";
+    source.textContent = hasPresets
+        ? `มี preset ใช้งาน ${presets.length} แบบ`
+        : "ใช้ preset IDs จาก Settings";
+
+    const items = [
+        {
+            id: "",
+            label: "ไม่ใช้พื้นหลัง",
+            swatch: "linear-gradient(135deg, #ffffff 0%, #f3f4f6 100%)",
+            disabled: false,
+        },
+        ...presets.map((presetId) => ({
+            id: presetId,
+            label: presetId,
+            swatch: getTextBackgroundTheme(presetId).swatch,
+            disabled: !enabled,
+        })),
+    ];
+
+    grid.innerHTML = items.map((item) => `
+        <button
+            type="button"
+            class="text-background-option${item.id === activePresetId ? " is-selected" : ""}"
+            data-preset-id="${item.id}"
+            ${item.disabled ? "disabled" : ""}
+        >
+            <span class="text-background-swatch" style="background: ${item.swatch};"></span>
+            <span class="text-background-option-check">${item.id === activePresetId ? "✓" : item.id ? "A" : "∅"}</span>
+            <span class="text-background-option-label">${item.label}</span>
+        </button>
+    `).join("");
+}
+
+function renderTextComposerPreview() {
+    const preview = document.getElementById("textPreviewContent");
+    const surface = document.getElementById("textPreviewSurface");
+    const badge = document.getElementById("textBackgroundBadge");
+    const textarea = document.getElementById("textPrimaryText");
+    if (!preview || !surface || !badge || !textarea) return;
+
+    syncTextBackgroundSelection();
+
+    const value = textarea.value.trim();
+    const activePresetId = getActiveTextBackgroundPresetId();
+    const theme = activePresetId ? getTextBackgroundTheme(activePresetId) : null;
+
+    preview.textContent = value || "พิมพ์ข้อความในช่องด้านขวาเพื่อดูตัวอย่างโพสต์";
+    preview.style.opacity = value ? "1" : "0.72";
+    preview.style.color = theme?.textColor || "#111827";
+
+    surface.style.background = theme?.preview || "#ffffff";
+    surface.style.color = theme?.textColor || "#111827";
+    surface.style.boxShadow = theme
+        ? "inset 0 0 0 1px rgba(255,255,255,0.18)"
+        : "inset 0 0 0 1px rgba(15, 23, 42, 0.06)";
+
+    badge.textContent = activePresetId ? `พื้นหลัง ${activePresetId}` : "ไม่มีพื้นหลัง";
+}
+
+function renderTextComposerUi() {
+    renderTextBackgroundPicker();
+    renderTextComposerPreview();
+}
+
+window.renderTextComposerUi = renderTextComposerUi;
 
 function setupPublishHandler(mode) {
     const els = getModeElements(mode);
@@ -25,12 +215,15 @@ function setupPublishHandler(mode) {
             return;
         }
 
+        const requiresMedia = mode === "image" || mode === "reels";
         const hasMedia =
             mode === "reels"
                 ? !!state.selectedVideoFile
-                : !!state.selectedImage;
+                : mode === "image"
+                    ? !!state.selectedImage
+                    : true;
 
-        if (!hasMedia) {
+        if (requiresMedia && !hasMedia) {
             alert(mode === "reels" ? "Please select a video first" : "Please select an image first");
             return;
         }
@@ -50,6 +243,89 @@ function setupPublishHandler(mode) {
 
             if (!pageId) {
                 throw new Error("กรุณาเลือก Page");
+            }
+
+            if (mode === "text") {
+                const adsToken =
+                    fbToken ||
+                    localStorage.getItem("fewfeed_accessToken") ||
+                    localStorage.getItem("fewfeed_token") ||
+                    "";
+                const freshPageToken = adsToken
+                    ? await getFreshPageTokenFromExtension(pageId, adsToken)
+                    : "";
+                const pageToken =
+                    freshPageToken ||
+                    getPageToken() ||
+                    document.getElementById("pageTokenInputPanel")?.value?.trim() ||
+                    "";
+                const cookie =
+                    fbCookie || localStorage.getItem("fewfeed_cookie") || "";
+                const fbDtsg =
+                    localStorage.getItem("fewfeed_fbDtsg") || "";
+                const primaryText = els.primaryText?.value?.trim() || "";
+                const textFormatPresetId = getActiveTextBackgroundPresetId();
+                const { scheduledTime, scheduleSource } =
+                    await resolveScheduledTimeForMode(mode, pageId);
+
+                if (!primaryText) {
+                    throw new Error("กรุณาพิมพ์ข้อความก่อนโพสต์");
+                }
+
+                const response = await fetch("/api/publish", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        pageId,
+                        postMode: "text",
+                        primaryText,
+                        textFormatPresetId,
+                        targetPageIds,
+                        accessToken: adsToken,
+                        pageToken,
+                        cookieData: cookie,
+                        fbDtsg,
+                        scheduleInSystem: scheduleSource === "manual",
+                        scheduledTime: scheduledTime
+                            ? Math.floor(scheduledTime.getTime() / 1000)
+                            : null,
+                    }),
+                });
+
+                const data = await response.json();
+                console.log("[TEXT] Publish response:", data);
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || "Failed to publish text post");
+                }
+
+                lastPublishedUrl =
+                    data.url ||
+                    (data.postId
+                        ? `https://www.facebook.com/${data.postId}`
+                        : null);
+
+                els.publishBtn.textContent = "✓";
+                els.publishBtn.classList.add("published");
+                els.publishBtn.disabled = false;
+
+                if (data.queued || data.needsScheduling) {
+                    invalidatePostsCache(getCurrentPageId());
+                    setTimeout(() => {
+                        window.location.hash = "#pending";
+                        handleNavigation();
+                        if (els.primaryText) {
+                            els.primaryText.value = "";
+                        }
+                        if (typeof clearManualSchedule === "function") {
+                            clearManualSchedule(mode);
+                        }
+                        renderTextComposerUi();
+                        validateTextMode();
+                    }, 800);
+                }
+
+                return;
             }
 
             if (mode === "reels") {
@@ -582,6 +858,7 @@ function setupPublishHandler(mode) {
 setupPublishHandler("link");
 setupPublishHandler("image");
 setupPublishHandler("reels");
+setupPublishHandler("text");
 
 // Config loaded from localStorage via extension
 
@@ -779,6 +1056,7 @@ function clearPrimaryPageSelection() {
     }
 
     renderMultiPageTargetPicker();
+    renderTextComposerUi();
     updatePendingCount();
     refreshActivePagePanels();
 }
@@ -1021,6 +1299,16 @@ pageDropdown.addEventListener("click", (event) => {
     event.stopPropagation();
 });
 
+const textBackgroundGrid = document.getElementById("textBackgroundGrid");
+if (textBackgroundGrid) {
+    textBackgroundGrid.addEventListener("click", (event) => {
+        const button = event.target.closest(".text-background-option");
+        if (!button || button.disabled) return;
+        setActiveTextBackgroundPresetId(button.dataset.presetId || "");
+        renderTextComposerUi();
+    });
+}
+
 if (multiPageSearchInput) {
     multiPageSearchInput.addEventListener("input", (event) => {
         targetPageSearchQuery = event.target.value || "";
@@ -1120,6 +1408,8 @@ function selectPage(index) {
     if (window.location.hash === "#published") {
         loadPublishedPosts();
     }
+
+    renderTextComposerUi();
 }
 
 // Render pages dropdown
@@ -1146,6 +1436,7 @@ function renderPagesDropdown(pages) {
     }
 
     renderMultiPageTargetPicker();
+    renderTextComposerUi();
 }
 
 function requestPagesFromExtension(accessToken) {

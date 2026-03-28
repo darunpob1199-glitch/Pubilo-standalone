@@ -606,6 +606,10 @@ function renderPresets() {
             saveAutoPostConfig(undefined, undefined, undefined, currentPresets.join(','));
         });
     });
+
+    if (typeof renderTextComposerUi === "function") {
+        renderTextComposerUi();
+    }
 }
 
 addPresetBtn.addEventListener("click", () => {
@@ -869,6 +873,10 @@ async function loadSettingsPanel() {
 
     // Load Auto-Hide config
     await loadAutoHideConfig();
+
+    if (typeof renderTextComposerUi === "function") {
+        renderTextComposerUi();
+    }
 }
 
 // Auto schedule checkbox change handler for panel
@@ -1052,6 +1060,9 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
 
             // Update UI mode
             if (currentPostMode) setAutoPostMode(currentPostMode);
+            if (typeof renderTextComposerUi === "function") {
+                renderTextComposerUi();
+            }
 
             // Show success
             saveSettingsPanelBtn.innerHTML = "✓ บันทึกแล้ว!";
@@ -1167,6 +1178,9 @@ const modeState = {
         selectedImage: null,
         currentView: "upload",
         lastCaption: "", // Store last used caption for regeneration
+    },
+    text: {
+        selectedBackgroundPresetId: "",
     },
     image: {
         referenceImages: [],

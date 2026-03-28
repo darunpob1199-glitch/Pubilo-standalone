@@ -57,6 +57,9 @@ const linkManualScheduleClearBtn = document.getElementById("linkManualScheduleCl
 const newsManualScheduleInput = document.getElementById("newsManualScheduleInput");
 const newsManualScheduleHint = document.getElementById("newsManualScheduleHint");
 const newsManualScheduleClearBtn = document.getElementById("newsManualScheduleClearBtn");
+const textManualScheduleInput = document.getElementById("textManualScheduleInput");
+const textManualScheduleHint = document.getElementById("textManualScheduleHint");
+const textManualScheduleClearBtn = document.getElementById("textManualScheduleClearBtn");
 
 // Sync minute checkboxes with hidden input
 function syncMinuteGridToInput(grid, input) {
@@ -112,6 +115,14 @@ function getMinimumManualScheduleTime() {
 }
 
 function getManualScheduleElements(mode = postMode) {
+    if (mode === "text") {
+        return {
+            input: textManualScheduleInput,
+            hint: textManualScheduleHint,
+            clearBtn: textManualScheduleClearBtn,
+        };
+    }
+
     if (mode === "news") {
         return {
             input: newsManualScheduleInput,
@@ -148,7 +159,7 @@ function setManualScheduleHint(mode, message, isError = false) {
 }
 
 function updateManualScheduleMin(mode = null) {
-    const modes = mode ? [mode] : ["link", "news"];
+    const modes = mode ? [mode] : ["link", "news", "text"];
     const minValue = formatDateTimeLocalValue(getMinimumManualScheduleTime());
 
     modes.forEach((currentMode) => {
@@ -233,6 +244,8 @@ function bindManualScheduleControls(mode) {
             refreshManualScheduleUi(mode);
             if (mode === "news") {
                 validateNewsMode();
+            } else if (mode === "text") {
+                validateTextMode();
             } else if (mode === "link") {
                 validateLinkMode();
             }
@@ -249,6 +262,8 @@ function bindManualScheduleControls(mode) {
             clearManualSchedule(mode);
             if (mode === "news") {
                 validateNewsMode();
+            } else if (mode === "text") {
+                validateTextMode();
             } else if (mode === "link") {
                 validateLinkMode();
             }
@@ -348,8 +363,10 @@ let cachedPageSettings = {
 
 bindManualScheduleControls("link");
 bindManualScheduleControls("news");
+bindManualScheduleControls("text");
 refreshManualScheduleUi("link");
 refreshManualScheduleUi("news");
+refreshManualScheduleUi("text");
 window.addEventListener("focus", () => updateManualScheduleMin());
 
 // Cache for scheduled posts per page
@@ -489,6 +506,10 @@ function updatePublishButton() {
     const linkLabel = getPrimaryPublishLabel("link");
     if (!publishBtn.classList.contains("published")) {
         publishBtn.textContent = linkLabel;
+    }
+    const textPublishBtn = document.getElementById("textPublishBtn");
+    if (textPublishBtn && !textPublishBtn.classList.contains("published")) {
+        textPublishBtn.textContent = getPrimaryPublishLabel("text");
     }
     const newsPublishBtn = document.getElementById("newsPublishBtn");
     if (newsPublishBtn && !newsPublishBtn.classList.contains("published")) {

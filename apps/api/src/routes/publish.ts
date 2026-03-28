@@ -682,6 +682,7 @@ app.post('/', async (c) => {
             adAccountId,
             fbDtsg,
             callToAction,
+            textFormatPresetId,
             scheduleInSystem,
             internalRun,
             targetPageIds,
@@ -1070,6 +1071,9 @@ app.post('/', async (c) => {
             } else {
                 endpoint += '/feed';
                 if (finalMessage) params.append('message', finalMessage);
+                if (typeof textFormatPresetId === 'string' && textFormatPresetId.trim()) {
+                    params.append('text_format_preset_id', textFormatPresetId.trim());
+                }
             }
 
             if (scheduleTimestamp && !isLinkAttachmentPost) {

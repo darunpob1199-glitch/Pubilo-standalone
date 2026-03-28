@@ -3,6 +3,7 @@
 let linkModeImageReady = false;
 let newsModeImageReady = false;
 let reelsModeVideoReady = false;
+let textModeReady = false;
 
 function validateLinkMode() {
     // Determine current mode - default to 'link'
@@ -102,9 +103,40 @@ function validateReelsMode() {
     }
 }
 
+function validateTextMode() {
+    const textPublishBtn = document.getElementById("textPublishBtn");
+    const textPrimaryText = document.getElementById("textPrimaryText");
+    const hasText = !!textPrimaryText?.value?.trim();
+    const isValid = hasText;
+
+    textModeReady = isValid;
+
+    if (textPublishBtn) {
+        textPublishBtn.disabled = !isValid;
+        textPublishBtn.classList.toggle("disabled", !isValid);
+        textPublishBtn.style.opacity = isValid ? "1" : "0.5";
+        textPublishBtn.style.cursor = isValid ? "pointer" : "not-allowed";
+        if (!textPublishBtn.classList.contains("published")) {
+            textPublishBtn.textContent = typeof getPrimaryPublishLabel === "function"
+                ? getPrimaryPublishLabel("text")
+                : "POST NOW";
+        }
+    }
+}
+
 // Listen for link URL changes
 if (linkUrl) {
     linkUrl.addEventListener("input", validateLinkMode);
+}
+
+const textPrimaryText = document.getElementById("textPrimaryText");
+if (textPrimaryText) {
+    textPrimaryText.addEventListener("input", () => {
+        if (typeof renderTextComposerUi === "function") {
+            renderTextComposerUi();
+        }
+        validateTextMode();
+    });
 }
 // Note: description validation is triggered from setupEditableText blur handler
 // and after config loading/form clearing
@@ -112,5 +144,6 @@ if (linkUrl) {
 // Initial validation
 setTimeout(validateLinkMode, 500);
 setTimeout(validateReelsMode, 500);
+setTimeout(validateTextMode, 500);
 
 // ============================================
