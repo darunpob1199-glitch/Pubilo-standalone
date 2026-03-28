@@ -600,11 +600,8 @@ const PRIMARY_PAGE_PLACEHOLDER_ID = "ยังไม่ได้เลือก"
 // Page selector elements
 const pageSelector = document.getElementById("pageSelector");
 const pageDropdown = document.getElementById("pageDropdown");
-const multiPagePicker = document.getElementById("multiPagePicker");
-const multiPageTrigger = document.getElementById("multiPageTrigger");
-const multiPageTriggerValue = document.getElementById("multiPageTriggerValue");
-const multiPageCountBadge = document.getElementById("multiPageCountBadge");
-const multiPageDropdown = document.getElementById("multiPageDropdown");
+const multiPageTriggerValue = document.getElementById("pageSelectorTargetSummary");
+const multiPageCountBadge = document.getElementById("pageSelectorTargetCount");
 const multiPageSelectedMeta = document.getElementById("multiPageSelectedMeta");
 const multiPageSearchInput = document.getElementById("multiPageSearchInput");
 const multiPageSelectedStrip = document.getElementById("multiPageSelectedStrip");
@@ -642,16 +639,12 @@ function getCurrentSelectedPageId() {
 }
 
 function getSelectableTargetPages() {
-    const currentPageId = String(getCurrentSelectedPageId() || "");
-    if (!currentPageId) return allPages;
-    return allPages.filter((page) => String(page.id) !== currentPageId);
+    return allPages;
 }
 
 function syncSelectedTargetPageIds() {
     const currentPageId = String(getCurrentSelectedPageId() || "");
-    const availableIds = new Set(
-        getSelectableTargetPages().map((page) => String(page.id)),
-    );
+    const availableIds = new Set(allPages.map((page) => String(page.id)));
 
     selectedTargetPageIds = selectedTargetPageIds.filter(
         (id) => id !== currentPageId && availableIds.has(String(id)),
@@ -660,9 +653,11 @@ function syncSelectedTargetPageIds() {
 }
 
 function getSelectedTargetPages() {
+    const currentPageId = String(getCurrentSelectedPageId() || "");
     const selectedSet = new Set(selectedTargetPageIds.map(String));
-    return getSelectableTargetPages().filter((page) =>
-        selectedSet.has(String(page.id)),
+    return allPages.filter((page) =>
+        selectedSet.has(String(page.id)) &&
+        String(page.id) !== currentPageId,
     );
 }
 
@@ -675,10 +670,10 @@ function getTargetTriggerText(selectedPages) {
     return `${selectedPages.length} เพจพร้อมโพสต์`;
 }
 
-function setMultiPagePickerOpen(isOpen) {
-    if (!multiPagePicker || !multiPageTrigger) return;
-    multiPagePicker.classList.toggle("open", !!isOpen);
-    multiPageTrigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
+function setPageDropdownOpen(isOpen) {
+    if (!pageDropdown || !pageSelector) return;
+    pageDropdown.classList.toggle("visible", !!isOpen);
+    pageSelector.classList.toggle("open", !!isOpen);
     if (isOpen && multiPageSearchInput) {
         multiPageSearchInput.focus();
         multiPageSearchInput.select();
@@ -711,6 +706,7 @@ function clearPrimaryPageSelection() {
         selector.style.display = "flex";
         selector.classList.add("is-empty");
     }
+    setPageDropdownOpen(false);
 
     localStorage.removeItem("fewfeed_selectedPageId");
     localStorage.removeItem("fewfeed_selectedPageName");
@@ -764,7 +760,7 @@ function toggleTargetPage(pageId) {
 
     if (!currentPageId) {
         setPrimaryPageById(normalizedPageId);
-        setMultiPagePickerOpen(false);
+        setPageDropdownOpen(false);
         return;
     }
 
@@ -830,12 +826,11 @@ function renderMultiPageListItems() {
     if (!multiPageList) return;
     multiPageList.textContent = "";
 
-    const selectablePages = getSelectableTargetPages();
-    if (!selectablePages.length) {
+    if (!allPages.length) {
         multiPageList.innerHTML = `
             <div class="multi-page-empty">
-                <strong>ยังไม่มีเพจอื่นให้เลือก</strong>
-                เลือกเพจหลักก่อน หรือรอ extension ดึงรายชื่อเพจเพิ่ม
+                <strong>ยังไม่มีเพจให้เลือก</strong>
+                รอ extension ดึงรายชื่อเพจ หรือรีเฟรชใหม่อีกครั้ง
             </div>
         `;
         return;
@@ -843,7 +838,7 @@ function renderMultiPageListItems() {
 
     const query = targetPageSearchQuery.trim().toLowerCase();
     const currentPageId = String(getCurrentSelectedPageId() || "");
-    const filteredPages = selectablePages.filter((page) => {
+    const filteredPages = allPages.filter((page) => {
         if (!query) return true;
         return (
             String(page.name || "").toLowerCase().includes(query) ||
@@ -863,18 +858,19 @@ function renderMultiPageListItems() {
 
     filteredPages.forEach((page) => {
         const normalizedPageId = String(page.id);
-        const isPrimarySelectionFlow = !currentPageId;
-        const isSelected = !isPrimarySelectionFlow && selectedTargetPageIds.includes(normalizedPageId);
+        const hasPrimarySelection = !!currentPageId;
+        const isPrimary = normalizedPageId === currentPageId;
+        const isSelected = !isPrimary && selectedTargetPageIds.includes(normalizedPageId);
 
         const item = document.createElement("div");
-        item.className = `multi-page-item${isSelected ? " is-selected" : ""}`;
+        item.className = `page-dropdown-item multi-page-item${isPrimary ? " selected is-primary" : ""}${isSelected ? " is-selected" : ""}`;
+        item.dataset.pageId = normalizedPageId;
         item.addEventListener("click", () => {
-            if (isPrimarySelectionFlow) {
+            if (!isPrimary) {
                 setPrimaryPageById(normalizedPageId);
-                setMultiPagePickerOpen(false);
-                return;
+            } else {
+                setPageDropdownOpen(false);
             }
-            toggleTargetPage(normalizedPageId);
         });
 
         const avatar = document.createElement("img");
@@ -883,7 +879,7 @@ function renderMultiPageListItems() {
         avatar.alt = page.name || normalizedPageId;
 
         const copy = document.createElement("div");
-        copy.className = "multi-page-item-copy";
+        copy.className = "page-dropdown-item-info multi-page-item-copy";
 
         const title = document.createElement("h4");
         title.textContent = page.name || "Page";
@@ -897,23 +893,33 @@ function renderMultiPageListItems() {
         const action = document.createElement("button");
         action.type = "button";
         action.className = "multi-page-item-action";
-        action.textContent = isPrimarySelectionFlow
+        action.textContent = isPrimary
             ? "หลัก"
-            : isSelected
-                ? "×"
-                : "✓";
-        action.title = isPrimarySelectionFlow
-            ? `ตั้ง ${page.name || normalizedPageId} เป็นเพจหลัก`
-            : isSelected
-                ? `เอา ${page.name || normalizedPageId} ออก`
-                : `เลือก ${page.name || normalizedPageId}`;
+            : !hasPrimarySelection
+                ? "หลัก"
+                : isSelected
+                    ? "×"
+                    : "✓";
+        action.title = isPrimary
+            ? `${page.name || normalizedPageId} คือเพจหลัก`
+            : !hasPrimarySelection
+                ? `ตั้ง ${page.name || normalizedPageId} เป็นเพจหลัก`
+                : isSelected
+                    ? `เอา ${page.name || normalizedPageId} ออก`
+                    : `เลือก ${page.name || normalizedPageId}`;
         action.addEventListener("click", (event) => {
             event.stopPropagation();
-            if (isPrimarySelectionFlow) {
-                setPrimaryPageById(normalizedPageId);
-                setMultiPagePickerOpen(false);
+
+            if (isPrimary) {
+                setPageDropdownOpen(false);
                 return;
             }
+
+            if (!hasPrimarySelection) {
+                setPrimaryPageById(normalizedPageId);
+                return;
+            }
+
             toggleTargetPage(normalizedPageId);
         });
 
@@ -926,7 +932,6 @@ function renderMultiPageListItems() {
 
 function renderMultiPageTargetPicker() {
     if (
-        !multiPagePicker ||
         !multiPageTriggerValue ||
         !multiPageCountBadge ||
         !multiPageSelectedMeta
@@ -965,34 +970,17 @@ window.clearSelectedTargetPages = function clearSelectedTargetPages() {
 // Toggle dropdown
 pageSelector.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (pageSelector.classList.contains("is-empty")) {
-        pageDropdown.classList.add("visible");
-        setMultiPagePickerOpen(false);
-        return;
-    }
-    setMultiPagePickerOpen(false);
-    pageDropdown.classList.toggle("visible");
+    setPageDropdownOpen(!pageDropdown.classList.contains("visible"));
 });
 
 // Close dropdown when clicking outside
 document.addEventListener("click", () => {
-    pageDropdown.classList.remove("visible");
-    setMultiPagePickerOpen(false);
+    setPageDropdownOpen(false);
 });
 
-if (multiPageTrigger) {
-    multiPageTrigger.addEventListener("click", (event) => {
-        event.stopPropagation();
-        pageDropdown.classList.remove("visible");
-        setMultiPagePickerOpen(!multiPagePicker.classList.contains("open"));
-    });
-}
-
-if (multiPageDropdown) {
-    multiPageDropdown.addEventListener("click", (event) => {
-        event.stopPropagation();
-    });
-}
+pageDropdown.addEventListener("click", (event) => {
+    event.stopPropagation();
+});
 
 if (multiPageSearchInput) {
     multiPageSearchInput.addEventListener("input", (event) => {
@@ -1068,11 +1056,13 @@ function selectPage(index) {
     // Update dropdown selection
     document
         .querySelectorAll(".page-dropdown-item")
-        .forEach((item, i) => {
-            item.classList.toggle("selected", i === index);
+        .forEach((item) => {
+            const itemPageId = item.dataset.pageId || "";
+            item.classList.toggle("selected", itemPageId === String(page.id));
+            item.classList.toggle("is-primary", itemPageId === String(page.id));
         });
 
-    pageDropdown.classList.remove("visible");
+    setPageDropdownOpen(false);
 
     // Load page-specific settings
     loadSettings();
@@ -1099,37 +1089,6 @@ function renderPagesDropdown(pages) {
     if (!selectedTargetPageIds.length) {
         selectedTargetPageIds = loadStoredTargetPageIds();
     }
-    pageDropdown.textContent = "";
-
-    pages.forEach((page, i) => {
-        const item = document.createElement("div");
-        item.className =
-            "page-dropdown-item" +
-            (i === selectedPageIndex ? " selected" : "");
-
-        const img = document.createElement("img");
-        img.src =
-            page.picture?.data?.url ||
-            `https://graph.facebook.com/${page.id}/picture?type=small`;
-        img.alt = page.name;
-
-        const info = document.createElement("div");
-        info.className = "page-dropdown-item-info";
-
-        const name = document.createElement("h4");
-        name.textContent = page.name || "Page";
-
-        const id = document.createElement("p");
-        id.textContent = page.id;
-
-        info.appendChild(name);
-        info.appendChild(id);
-        item.appendChild(img);
-        item.appendChild(info);
-
-        item.addEventListener("click", () => selectPage(i));
-        pageDropdown.appendChild(item);
-    });
 
     if (pages.length > 0) {
         const savedPageId = localStorage.getItem("fewfeed_selectedPageId");
@@ -1573,12 +1532,6 @@ async function fetchPages(accessToken) {
             }));
 
             renderPagesDropdown(pages);
-
-            // Auto-select first page if none selected
-            const pageSelect = document.getElementById("pageSelect");
-            if (pageSelect && !pageSelect.value && pages.length > 0) {
-                selectPage(0);
-            }
         } else {
             console.log("[FEWFEED] No pages found in D1");
         }
