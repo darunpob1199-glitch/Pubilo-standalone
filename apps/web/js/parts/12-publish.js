@@ -88,6 +88,167 @@ const DEFAULT_TEXT_BACKGROUND_OPTIONS = [
         preview: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
         textColor: "#0c4a6e",
     },
+    {
+        id: "106018623298955",
+        label: "ม่วงสด",
+        swatch: "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+        preview: "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+        textColor: "#faf5ff",
+    },
+    {
+        id: "365653833956649",
+        label: "สวนชมพู",
+        swatch: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 45%, #c4b5fd 100%)",
+        preview: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 45%, #c4b5fd 100%)",
+        textColor: "#831843",
+    },
+    {
+        id: "618093735238824",
+        label: "น้ำตาลอุ่น",
+        swatch: "linear-gradient(135deg, #f5d0a9 0%, #d6a97d 100%)",
+        preview: "linear-gradient(135deg, #f5d0a9 0%, #d6a97d 100%)",
+        textColor: "#422006",
+    },
+    {
+        id: "191761991491375",
+        label: "หัวใจ 3D",
+        swatch: "linear-gradient(135deg, #fecdd3 0%, #fb7185 100%)",
+        preview: "linear-gradient(135deg, #fecdd3 0%, #fb7185 100%)",
+        textColor: "#881337",
+    },
+    {
+        id: "2193627793985415",
+        label: "อีโมจิหัวใจ",
+        swatch: "linear-gradient(135deg, #f9a8d4 0%, #fb7185 50%, #f97316 100%)",
+        preview: "linear-gradient(135deg, #f9a8d4 0%, #fb7185 50%, #f97316 100%)",
+        textColor: "#fff7ed",
+    },
+    {
+        id: "200521337465306",
+        label: "ไฟลุก",
+        swatch: "linear-gradient(135deg, #fb923c 0%, #ef4444 60%, #7f1d1d 100%)",
+        preview: "linear-gradient(135deg, #fb923c 0%, #ef4444 60%, #7f1d1d 100%)",
+        textColor: "#fff7ed",
+    },
+    {
+        id: "1821844087883360",
+        label: "เหลืองเดินเล่น",
+        swatch: "linear-gradient(135deg, #fde68a 0%, #facc15 100%)",
+        preview: "linear-gradient(135deg, #fde68a 0%, #facc15 100%)",
+        textColor: "#713f12",
+    },
+    {
+        id: "160419724814650",
+        label: "พีชพาสเทล",
+        swatch: "linear-gradient(135deg, #fdba74 0%, #fca5a5 100%)",
+        preview: "linear-gradient(135deg, #fdba74 0%, #fca5a5 100%)",
+        textColor: "#7c2d12",
+    },
+    {
+        id: "248623902401250",
+        label: "ยิ้ม 3D",
+        swatch: "linear-gradient(135deg, #fde68a 0%, #fb7185 100%)",
+        preview: "linear-gradient(135deg, #fde68a 0%, #fb7185 100%)",
+        textColor: "#7c2d12",
+    },
+    {
+        id: "1868855943417360",
+        label: "ฮา 3D",
+        swatch: "linear-gradient(135deg, #fef08a 0%, #f59e0b 55%, #f97316 100%)",
+        preview: "linear-gradient(135deg, #fef08a 0%, #f59e0b 55%, #f97316 100%)",
+        textColor: "#78350f",
+    },
+    {
+        id: "255989551804163",
+        label: "ตาชมพู",
+        swatch: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 100%)",
+        preview: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 100%)",
+        textColor: "#831843",
+    },
+    {
+        id: "174496469882866",
+        label: "เลมอน",
+        swatch: "linear-gradient(135deg, #fef9c3 0%, #fde047 100%)",
+        preview: "linear-gradient(135deg, #fef9c3 0%, #fde047 100%)",
+        textColor: "#713f12",
+    },
+    {
+        id: "862667370603267",
+        label: "ไข่ครีม",
+        swatch: "linear-gradient(135deg, #fff7ed 0%, #fde68a 100%)",
+        preview: "linear-gradient(135deg, #fff7ed 0%, #fde68a 100%)",
+        textColor: "#78350f",
+    },
+    {
+        id: "143093446467972",
+        label: "เมฆน้ำเงิน",
+        swatch: "linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%)",
+        preview: "linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%)",
+        textColor: "#eff6ff",
+    },
+    {
+        id: "161409924510923",
+        label: "จรวดหัวใจ",
+        swatch: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 50%, #ec4899 100%)",
+        preview: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 50%, #ec4899 100%)",
+        textColor: "#f8fafc",
+    },
+    {
+        id: "217761075370932",
+        label: "น้ำเงินสด",
+        swatch: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+        preview: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+        textColor: "#eff6ff",
+    },
+    {
+        id: "931584293685988",
+        label: "คลื่นน้ำเงิน",
+        swatch: "linear-gradient(135deg, #93c5fd 0%, #3b82f6 45%, #312e81 100%)",
+        preview: "linear-gradient(135deg, #93c5fd 0%, #3b82f6 45%, #312e81 100%)",
+        textColor: "#eff6ff",
+    },
+    {
+        id: "100114277230063",
+        label: "ทะเลลึก",
+        swatch: "linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0f766e 100%)",
+        preview: "linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0f766e 100%)",
+        textColor: "#ecfeff",
+    },
+    {
+        id: "643122496026756",
+        label: "ชมพูฟุ้ง",
+        swatch: "linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)",
+        preview: "linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)",
+        textColor: "#831843",
+    },
+    {
+        id: "228164237768720",
+        label: "หัวใจเทา",
+        swatch: "linear-gradient(135deg, #1f2937 0%, #4b5563 100%)",
+        preview: "linear-gradient(135deg, #1f2937 0%, #4b5563 100%)",
+        textColor: "#f9fafb",
+    },
+    {
+        id: "249307305544279",
+        label: "แดงน้ำเงิน",
+        swatch: "linear-gradient(135deg, #ef4444 0%, #3b82f6 100%)",
+        preview: "linear-gradient(135deg, #ef4444 0%, #3b82f6 100%)",
+        textColor: "#f8fafc",
+    },
+    {
+        id: "219266485227663",
+        label: "แมเจนตา",
+        swatch: "linear-gradient(135deg, #ec4899 0%, #db2777 100%)",
+        preview: "linear-gradient(135deg, #ec4899 0%, #db2777 100%)",
+        textColor: "#fff7fb",
+    },
+    {
+        id: "1365883126823705",
+        label: "น้ำเงินเข้ม",
+        swatch: "linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)",
+        preview: "linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)",
+        textColor: "#eff6ff",
+    },
 ];
 
 function getTextModeState() {
@@ -170,7 +331,7 @@ function getConfiguredTextBackgroundPresets() {
         ...defaults,
         ...customPresets.map((presetId) => ({
             id: presetId,
-            label: `เพิ่มเอง ${presetId.slice(-4)}`,
+            label: `พิเศษ ${presetId.slice(-4)}`,
             ...getTextBackgroundTheme(presetId),
             isCustom: true,
         })),
@@ -300,7 +461,6 @@ function renderTextBackgroundPicker() {
     const help = document.getElementById("textBackgroundHelp");
     const summary = document.getElementById("textBackgroundSummary");
     const source = document.getElementById("textBackgroundSource");
-    const manageBtn = document.getElementById("textBackgroundManageBtn");
     if (!grid || !help || !summary || !source) return;
 
     syncTextBackgroundSelection();
@@ -310,20 +470,13 @@ function renderTextBackgroundPicker() {
     const activePreset = getTextBackgroundOptionById(activePresetId);
     const builtInCount = getDefaultTextBackgroundOptions().length;
     const customCount = getSavedCustomTextBackgroundPresets().length;
-    const state = getTextModeState();
+    const totalCount = builtInCount + customCount;
 
     summary.textContent = activePreset
         ? `เลือกแล้ว: ${activePreset.label}`
         : "โพสต์แบบพื้นหลังปกติ";
-    source.textContent = customCount > 0
-        ? `มีพื้นหลังพร้อมใช้ ${builtInCount + customCount} แบบ`
-        : `มีพื้นหลังพร้อมใช้ ${builtInCount} แบบ`;
-    help.textContent = getTextModeState().isBackgroundManagerOpen
-        ? "ถ้ามีรหัสพื้นหลังแบบอื่นจาก Facebook วางเพิ่มได้ที่นี่ แล้วจะมาโผล่ให้เลือกทันที"
-        : "เลือกพื้นหลังจากหน้านี้ได้เลย ถ้าอยากเพิ่มแบบอื่นค่อยกด “เพิ่มแบบอื่น”";
-    if (manageBtn) {
-        manageBtn.textContent = state.isBackgroundManagerOpen ? "ซ่อนส่วนเพิ่มเอง" : "เพิ่มแบบอื่น";
-    }
+    source.textContent = `มีพื้นหลังพร้อมใช้ ${totalCount} แบบ`;
+    help.textContent = "แตะการ์ดเพื่อเลือกพื้นหลังได้จากหน้านี้เลย";
 
     const items = [
         {
@@ -347,12 +500,9 @@ function renderTextBackgroundPicker() {
         >
             <span class="text-background-swatch" style="background: ${item.swatch};"></span>
             <span class="text-background-option-check">${item.id === activePresetId ? "✓" : item.id ? "A" : "∅"}</span>
-            ${item.isCustom ? '<span class="text-background-option-flag">เพิ่มเอง</span>' : ""}
             <span class="text-background-option-label">${item.label}</span>
         </button>
     `).join("");
-
-    renderTextBackgroundManager();
 }
 
 function renderTextComposerPreview() {
