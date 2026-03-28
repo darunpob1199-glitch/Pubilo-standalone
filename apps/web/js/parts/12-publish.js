@@ -661,13 +661,56 @@ function getSelectedTargetPages() {
     );
 }
 
-function getTargetTriggerText(selectedPages) {
-    if (!selectedPages.length) return "ยังไม่ได้เลือก";
-    if (selectedPages.length === 1) return selectedPages[0].name || selectedPages[0].id;
-    if (selectedPages.length === 2) {
-        return `${selectedPages[0].name || selectedPages[0].id}, ${selectedPages[1].name || selectedPages[1].id}`;
+function getRoutingSelectionSummary(selectedPages, currentPageId) {
+    if (!currentPageId) {
+        return {
+            totalCount: 0,
+            triggerText: "เลือกเพจหลักก่อน",
+            metaText: "ยังไม่เลือกเพจหลัก",
+        };
     }
-    return `${selectedPages.length} เพจพร้อมโพสต์`;
+
+    const totalCount = 1 + selectedPages.length;
+
+    if (totalCount === 1) {
+        return {
+            totalCount,
+            triggerText: "โพสต์ที่เพจนี้เท่านั้น",
+            metaText: "รวม 1 เพจ",
+        };
+    }
+
+    return {
+        totalCount,
+        triggerText: `โพสต์พร้อมกัน ${totalCount} เพจ`,
+        metaText: `รวม ${totalCount} เพจ`,
+    };
+}
+
+function getOrderedPagesForPicker(pages, currentPageId) {
+    if (!currentPageId) return pages;
+
+    const selectedSet = new Set(selectedTargetPageIds.map(String));
+    const primaryPages = [];
+    const selectedPages = [];
+    const otherPages = [];
+
+    pages.forEach((page) => {
+        const pageId = String(page.id);
+        if (pageId === currentPageId) {
+            primaryPages.push(page);
+            return;
+        }
+
+        if (selectedSet.has(pageId)) {
+            selectedPages.push(page);
+            return;
+        }
+
+        otherPages.push(page);
+    });
+
+    return [...primaryPages, ...selectedPages, ...otherPages];
 }
 
 function setPageDropdownOpen(isOpen) {
@@ -845,8 +888,9 @@ function renderMultiPageListItems() {
             String(page.id || "").toLowerCase().includes(query)
         );
     });
+    const orderedPages = getOrderedPagesForPicker(filteredPages, currentPageId);
 
-    if (!filteredPages.length) {
+    if (!orderedPages.length) {
         multiPageList.innerHTML = `
             <div class="multi-page-empty">
                 <strong>ไม่พบเพจที่ค้นหา</strong>
@@ -856,7 +900,7 @@ function renderMultiPageListItems() {
         return;
     }
 
-    filteredPages.forEach((page) => {
+    orderedPages.forEach((page) => {
         const normalizedPageId = String(page.id);
         const hasPrimarySelection = !!currentPageId;
         const isPrimary = normalizedPageId === currentPageId;
@@ -942,16 +986,11 @@ function renderMultiPageTargetPicker() {
     syncSelectedTargetPageIds();
     const selectedPages = getSelectedTargetPages();
     const currentPageId = getCurrentSelectedPageId();
+    const routingSummary = getRoutingSelectionSummary(selectedPages, currentPageId);
 
-    const visibleSelectedCount = currentPageId ? selectedPages.length : 0;
-
-    multiPageTriggerValue.textContent = currentPageId
-        ? getTargetTriggerText(selectedPages)
-        : "เลือกเพจหลักก่อน";
-    multiPageCountBadge.textContent = String(visibleSelectedCount);
-    multiPageSelectedMeta.textContent = currentPageId
-        ? `${selectedPages.length} เพจ`
-        : "ยังไม่เลือกเพจหลัก";
+    multiPageTriggerValue.textContent = routingSummary.triggerText;
+    multiPageCountBadge.textContent = String(routingSummary.totalCount);
+    multiPageSelectedMeta.textContent = routingSummary.metaText;
 
     renderSelectedTargetStrip(currentPageId ? selectedPages : []);
     renderMultiPageListItems();
