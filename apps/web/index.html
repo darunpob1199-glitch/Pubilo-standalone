@@ -615,12 +615,23 @@
                         <div class="form-group">
                             <label class="form-label">พื้นหลังข้อความ</label>
                             <div class="text-background-toolbar">
-                                <div class="text-background-summary" id="textBackgroundSummary">โพสต์ที่เพจนี้เท่านั้น</div>
-                                <span class="text-background-note" id="textBackgroundSource">ใช้ preset IDs จาก Settings</span>
+                                <div class="text-background-toolbar-copy">
+                                    <div class="text-background-summary" id="textBackgroundSummary">โพสต์แบบพื้นหลังปกติ</div>
+                                    <div class="text-background-source" id="textBackgroundSource">มีพื้นหลังพร้อมใช้</div>
+                                </div>
+                                <button type="button" class="text-background-manage-btn" id="textBackgroundManageBtn">เพิ่มแบบอื่น</button>
+                            </div>
+                            <div class="text-background-manager" id="textBackgroundManager" hidden>
+                                <div class="text-background-manager-row">
+                                    <input class="form-input" id="textBackgroundPresetInput"
+                                        placeholder="วางรหัสพื้นหลังเพิ่มเติม (ถ้ามี)">
+                                    <button type="button" class="text-background-add-btn" id="textBackgroundPresetAddBtn">เพิ่ม</button>
+                                </div>
+                                <div class="text-background-saved-list" id="textBackgroundSavedList"></div>
                             </div>
                             <div class="text-background-grid" id="textBackgroundGrid"></div>
                             <small class="text-background-help" id="textBackgroundHelp">
-                                เปิด Colors Background และเพิ่ม Preset IDs ใน Settings ก่อน แล้วค่อยกลับมาเลือกพื้นหลังที่นี่
+                                เลือกพื้นหลังได้จากหน้านี้เลย ถ้าอยากเพิ่มแบบอื่นค่อยกด “เพิ่มแบบอื่น”
                             </small>
                         </div>
                     </div>
@@ -1215,13 +1226,13 @@
                                 <label id="colorBgGroup"
                                     style="display: none; align-items: center; gap: 0.5rem; margin-top: 0.75rem; cursor: pointer;">
                                     <input type="checkbox" id="colorBgEnabled" style="width: 18px; height: 18px;">
-                                    <span style="font-size: 0.9rem;">🎨 Colors Background</span>
+                                    <span style="font-size: 0.9rem;">🎨 พื้นหลังข้อความ (ขั้นสูง)</span>
                                 </label>
                                 <div id="colorBgPresetsGroup" style="display: none; margin-top: 0.5rem;">
                                     <div id="presetsList" style="display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
                                     <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
                                         <input type="text" id="newPresetInput" class="form-input"
-                                            placeholder="Preset ID"
+                                            placeholder="รหัสพื้นหลังเพิ่มเติม"
                                             style="padding: 0.4rem; flex: 1; font-size: 0.85rem;">
                                         <button type="button" id="addPresetBtn" class="btn"
                                             style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">+</button>

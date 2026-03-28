@@ -3,22 +3,99 @@
 let lastPublishedUrl = null;
 const TEXT_BACKGROUND_STORAGE_KEY_PREFIX = "fewfeed_textBackgroundPreset_";
 
-const TEXT_BACKGROUND_THEMES = [
-    { swatch: "linear-gradient(135deg, #f7f6ff 0%, #dbeafe 100%)", preview: "linear-gradient(135deg, #f7f6ff 0%, #dbeafe 100%)", textColor: "#111827" },
-    { swatch: "linear-gradient(135deg, #dbeafe 0%, #93c5fd 45%, #c4b5fd 100%)", preview: "linear-gradient(135deg, #dbeafe 0%, #93c5fd 45%, #c4b5fd 100%)", textColor: "#111827" },
-    { swatch: "linear-gradient(135deg, #fee2e2 0%, #fecdd3 50%, #f9a8d4 100%)", preview: "linear-gradient(135deg, #fee2e2 0%, #fecdd3 50%, #f9a8d4 100%)", textColor: "#111827" },
-    { swatch: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%)", preview: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%)", textColor: "#f8fafc" },
-    { swatch: "linear-gradient(135deg, #fef3c7 0%, #fdba74 100%)", preview: "linear-gradient(135deg, #fef3c7 0%, #fdba74 100%)", textColor: "#111827" },
-    { swatch: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #34d399 100%)", preview: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #34d399 100%)", textColor: "#052e16" },
-    { swatch: "linear-gradient(135deg, #f5d0fe 0%, #c4b5fd 45%, #93c5fd 100%)", preview: "linear-gradient(135deg, #f5d0fe 0%, #c4b5fd 45%, #93c5fd 100%)", textColor: "#111827" },
-    { swatch: "linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%)", preview: "linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%)", textColor: "#0f172a" },
-    { swatch: "linear-gradient(135deg, #111827 0%, #374151 100%)", preview: "linear-gradient(135deg, #111827 0%, #374151 100%)", textColor: "#f9fafb" },
-    { swatch: "linear-gradient(135deg, #ffe4e6 0%, #fef3c7 45%, #d9f99d 100%)", preview: "linear-gradient(135deg, #ffe4e6 0%, #fef3c7 45%, #d9f99d 100%)", textColor: "#111827" },
+const DEFAULT_TEXT_BACKGROUND_OPTIONS = [
+    {
+        id: "1881421442117417",
+        label: "ดำ",
+        swatch: "linear-gradient(135deg, #0f172a 0%, #111827 100%)",
+        preview: "linear-gradient(135deg, #0f172a 0%, #111827 100%)",
+        textColor: "#f8fafc",
+    },
+    {
+        id: "145893972683590",
+        label: "ม่วงเข้ม",
+        swatch: "linear-gradient(135deg, #111827 0%, #312e81 50%, #581c87 100%)",
+        preview: "linear-gradient(135deg, #111827 0%, #312e81 50%, #581c87 100%)",
+        textColor: "#f8fafc",
+    },
+    {
+        id: "1777259169190672",
+        label: "ชมพูนีออน",
+        swatch: "linear-gradient(135deg, #6d28d9 0%, #ec4899 55%, #fb7185 100%)",
+        preview: "linear-gradient(135deg, #6d28d9 0%, #ec4899 55%, #fb7185 100%)",
+        textColor: "#fff7fb",
+    },
+    {
+        id: "688479024672716",
+        label: "เขียวฟ้า",
+        swatch: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #22d3ee 100%)",
+        preview: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #22d3ee 100%)",
+        textColor: "#052e16",
+    },
+    {
+        id: "1941912679424590",
+        label: "กราไฟต์",
+        swatch: "linear-gradient(135deg, #475569 0%, #1f2937 100%)",
+        preview: "linear-gradient(135deg, #475569 0%, #1f2937 100%)",
+        textColor: "#f8fafc",
+    },
+    {
+        id: "901751159967576",
+        label: "ส้มแดง",
+        swatch: "linear-gradient(135deg, #fb923c 0%, #ef4444 100%)",
+        preview: "linear-gradient(135deg, #fb923c 0%, #ef4444 100%)",
+        textColor: "#fff7ed",
+    },
+    {
+        id: "204187940028597",
+        label: "แดงสด",
+        swatch: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+        preview: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+        textColor: "#fff7f7",
+    },
+    {
+        id: "301029513638534",
+        label: "เขียวมิ้นท์",
+        swatch: "linear-gradient(135deg, #99f6e4 0%, #14b8a6 100%)",
+        preview: "linear-gradient(135deg, #99f6e4 0%, #14b8a6 100%)",
+        textColor: "#042f2e",
+    },
+    {
+        id: "175493843120364",
+        label: "ลูกกวาด",
+        swatch: "linear-gradient(135deg, #fbcfe8 0%, #fef3c7 50%, #bfdbfe 100%)",
+        preview: "linear-gradient(135deg, #fbcfe8 0%, #fef3c7 50%, #bfdbfe 100%)",
+        textColor: "#111827",
+    },
+    {
+        id: "177465482945164",
+        label: "ม่วงอ่อน",
+        swatch: "linear-gradient(135deg, #ddd6fe 0%, #c4b5fd 100%)",
+        preview: "linear-gradient(135deg, #ddd6fe 0%, #c4b5fd 100%)",
+        textColor: "#312e81",
+    },
+    {
+        id: "518948401838663",
+        label: "หัวใจชมพู",
+        swatch: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 100%)",
+        preview: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 100%)",
+        textColor: "#831843",
+    },
+    {
+        id: "1679248482160767",
+        label: "ฟ้าอ่อน",
+        swatch: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+        preview: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+        textColor: "#0c4a6e",
+    },
 ];
 
 function getTextModeState() {
     if (!modeState.text) {
-        modeState.text = { selectedBackgroundPresetId: "" };
+        modeState.text = {
+            selectedBackgroundPresetId: "",
+            isBackgroundManagerOpen: false,
+        };
     }
     return modeState.text;
 }
@@ -37,19 +114,73 @@ function hashTextPresetId(value) {
 }
 
 function getTextBackgroundTheme(presetId) {
-    const index = hashTextPresetId(presetId) % TEXT_BACKGROUND_THEMES.length;
-    return TEXT_BACKGROUND_THEMES[index];
+    const option = DEFAULT_TEXT_BACKGROUND_OPTIONS.find((item) => item.id === String(presetId || "").trim());
+    if (option) {
+        return {
+            swatch: option.swatch,
+            preview: option.preview,
+            textColor: option.textColor,
+        };
+    }
+
+    const fallbacks = [
+        { swatch: "linear-gradient(135deg, #f7f6ff 0%, #dbeafe 100%)", preview: "linear-gradient(135deg, #f7f6ff 0%, #dbeafe 100%)", textColor: "#111827" },
+        { swatch: "linear-gradient(135deg, #dbeafe 0%, #93c5fd 45%, #c4b5fd 100%)", preview: "linear-gradient(135deg, #dbeafe 0%, #93c5fd 45%, #c4b5fd 100%)", textColor: "#111827" },
+        { swatch: "linear-gradient(135deg, #fee2e2 0%, #fecdd3 50%, #f9a8d4 100%)", preview: "linear-gradient(135deg, #fee2e2 0%, #fecdd3 50%, #f9a8d4 100%)", textColor: "#111827" },
+        { swatch: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%)", preview: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%)", textColor: "#f8fafc" },
+        { swatch: "linear-gradient(135deg, #fef3c7 0%, #fdba74 100%)", preview: "linear-gradient(135deg, #fef3c7 0%, #fdba74 100%)", textColor: "#111827" },
+        { swatch: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #34d399 100%)", preview: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #34d399 100%)", textColor: "#052e16" },
+        { swatch: "linear-gradient(135deg, #f5d0fe 0%, #c4b5fd 45%, #93c5fd 100%)", preview: "linear-gradient(135deg, #f5d0fe 0%, #c4b5fd 45%, #93c5fd 100%)", textColor: "#111827" },
+        { swatch: "linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%)", preview: "linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%)", textColor: "#0f172a" },
+        { swatch: "linear-gradient(135deg, #111827 0%, #374151 100%)", preview: "linear-gradient(135deg, #111827 0%, #374151 100%)", textColor: "#f9fafb" },
+        { swatch: "linear-gradient(135deg, #ffe4e6 0%, #fef3c7 45%, #d9f99d 100%)", preview: "linear-gradient(135deg, #ffe4e6 0%, #fef3c7 45%, #d9f99d 100%)", textColor: "#111827" },
+    ];
+    const index = hashTextPresetId(presetId) % fallbacks.length;
+    return fallbacks[index];
 }
 
-function getConfiguredTextBackgroundPresets() {
+function escapeTextBackgroundHtml(value) {
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function getDefaultTextBackgroundOptions() {
+    return DEFAULT_TEXT_BACKGROUND_OPTIONS.map((option) => ({ ...option }));
+}
+
+function getSavedCustomTextBackgroundPresets() {
+    const builtInIds = new Set(getDefaultTextBackgroundOptions().map((item) => item.id));
     return Array.isArray(currentPresets)
-        ? currentPresets.map((preset) => String(preset || "").trim()).filter(Boolean)
+        ? currentPresets
+            .map((preset) => String(preset || "").trim())
+            .filter(Boolean)
+            .filter((presetId) => !builtInIds.has(presetId))
         : [];
 }
 
-function isTextBackgroundEnabledForComposer() {
-    const toggle = document.getElementById("colorBgEnabled");
-    return !!toggle?.checked;
+function getConfiguredTextBackgroundPresets() {
+    const defaults = getDefaultTextBackgroundOptions();
+    const customPresets = getSavedCustomTextBackgroundPresets();
+
+    return [
+        ...defaults,
+        ...customPresets.map((presetId) => ({
+            id: presetId,
+            label: `เพิ่มเอง ${presetId.slice(-4)}`,
+            ...getTextBackgroundTheme(presetId),
+            isCustom: true,
+        })),
+    ];
+}
+
+function getTextBackgroundOptionById(presetId) {
+    return getConfiguredTextBackgroundPresets().find(
+        (option) => option.id === String(presetId || "").trim(),
+    ) || null;
 }
 
 function getStoredTextBackgroundPresetId(pageId) {
@@ -84,19 +215,84 @@ function syncTextBackgroundSelection() {
     const pageId = getCurrentPageId();
     const state = getTextModeState();
     const presets = getConfiguredTextBackgroundPresets();
+    const presetIds = new Set(presets.map((preset) => preset.id));
 
-    if (!pageId || !isTextBackgroundEnabledForComposer() || !presets.length) {
+    if (!presets.length) {
         state.selectedBackgroundPresetId = "";
         return;
     }
 
     const currentPresetId = String(state.selectedBackgroundPresetId || "").trim();
-    if (currentPresetId && presets.includes(currentPresetId)) {
+    if (currentPresetId && presetIds.has(currentPresetId)) {
         return;
     }
 
     const storedPresetId = getStoredTextBackgroundPresetId(pageId);
-    state.selectedBackgroundPresetId = presets.includes(storedPresetId) ? storedPresetId : "";
+    state.selectedBackgroundPresetId = storedPresetId && presetIds.has(storedPresetId) ? storedPresetId : "";
+}
+
+async function persistTextBackgroundCatalog(customPresetIds) {
+    const pageId = getCurrentPageId();
+    if (!pageId) {
+        throw new Error("กรุณาเลือกเพจหลักก่อน");
+    }
+
+    const normalizedIds = Array.from(
+        new Set(
+            (customPresetIds || [])
+                .map((presetId) => String(presetId || "").trim())
+                .filter(Boolean),
+        ),
+    );
+
+    const pageName = document.querySelector(".page-selector-name")?.textContent?.trim() || undefined;
+    const response = await fetch("/api/page-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            pageId,
+            pageName,
+            colorBgPresets: normalizedIds.join(","),
+        }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+        throw new Error(data.error || "บันทึกรหัสพื้นหลังไม่สำเร็จ");
+    }
+
+    currentPresets = normalizedIds;
+    if (typeof renderPresets === "function") {
+        renderPresets();
+    }
+}
+
+function renderTextBackgroundManager() {
+    const manager = document.getElementById("textBackgroundManager");
+    const input = document.getElementById("textBackgroundPresetInput");
+    const list = document.getElementById("textBackgroundSavedList");
+    if (!manager || !input || !list) return;
+
+    const state = getTextModeState();
+    manager.hidden = !state.isBackgroundManagerOpen;
+
+    const customPresets = getSavedCustomTextBackgroundPresets();
+    if (!customPresets.length) {
+        list.innerHTML = '<div class="text-background-empty">ยังไม่มีพื้นหลังเพิ่มเอง</div>';
+        return;
+    }
+
+    list.innerHTML = customPresets.map((presetId) => `
+        <span class="text-background-saved-chip">
+            <span>${escapeTextBackgroundHtml(presetId)}</span>
+            <button
+                type="button"
+                class="text-background-saved-remove"
+                data-preset-id="${escapeTextBackgroundHtml(presetId)}"
+                aria-label="ลบรหัสพื้นหลัง ${escapeTextBackgroundHtml(presetId)}"
+            >×</button>
+        </span>
+    `).join("");
+    input.value = "";
 }
 
 function renderTextBackgroundPicker() {
@@ -104,44 +300,42 @@ function renderTextBackgroundPicker() {
     const help = document.getElementById("textBackgroundHelp");
     const summary = document.getElementById("textBackgroundSummary");
     const source = document.getElementById("textBackgroundSource");
+    const manageBtn = document.getElementById("textBackgroundManageBtn");
     if (!grid || !help || !summary || !source) return;
 
     syncTextBackgroundSelection();
 
     const presets = getConfiguredTextBackgroundPresets();
-    const enabled = isTextBackgroundEnabledForComposer();
     const activePresetId = getActiveTextBackgroundPresetId();
-    const hasPresets = enabled && presets.length > 0;
+    const activePreset = getTextBackgroundOptionById(activePresetId);
+    const builtInCount = getDefaultTextBackgroundOptions().length;
+    const customCount = getSavedCustomTextBackgroundPresets().length;
+    const state = getTextModeState();
 
-    if (!enabled) {
-        help.textContent = "เปิด Colors Background ใน Settings ก่อน แล้วค่อยกลับมาเลือกพื้นหลังที่นี่";
-    } else if (!presets.length) {
-        help.textContent = "ยังไม่มี Preset IDs ใน Settings เพิ่ม preset ก่อนแล้ว picker นี้จะเปิดให้เลือก";
-    } else {
-        help.textContent = "เลือกพื้นหลังที่จะส่งเป็น text_format_preset_id ไปพร้อมโพสต์ข้อความ";
-    }
-
-    summary.textContent = hasPresets
-        ? activePresetId
-            ? `เลือกแล้ว: ${activePresetId}`
-            : "กำลังโพสต์แบบพื้นหลังปกติ"
+    summary.textContent = activePreset
+        ? `เลือกแล้ว: ${activePreset.label}`
         : "โพสต์แบบพื้นหลังปกติ";
-    source.textContent = hasPresets
-        ? `มี preset ใช้งาน ${presets.length} แบบ`
-        : "ใช้ preset IDs จาก Settings";
+    source.textContent = customCount > 0
+        ? `มีพื้นหลังพร้อมใช้ ${builtInCount + customCount} แบบ`
+        : `มีพื้นหลังพร้อมใช้ ${builtInCount} แบบ`;
+    help.textContent = getTextModeState().isBackgroundManagerOpen
+        ? "ถ้ามีรหัสพื้นหลังแบบอื่นจาก Facebook วางเพิ่มได้ที่นี่ แล้วจะมาโผล่ให้เลือกทันที"
+        : "เลือกพื้นหลังจากหน้านี้ได้เลย ถ้าอยากเพิ่มแบบอื่นค่อยกด “เพิ่มแบบอื่น”";
+    if (manageBtn) {
+        manageBtn.textContent = state.isBackgroundManagerOpen ? "ซ่อนส่วนเพิ่มเอง" : "เพิ่มแบบอื่น";
+    }
 
     const items = [
         {
             id: "",
             label: "ไม่ใช้พื้นหลัง",
             swatch: "linear-gradient(135deg, #ffffff 0%, #f3f4f6 100%)",
-            disabled: false,
         },
-        ...presets.map((presetId) => ({
-            id: presetId,
-            label: presetId,
-            swatch: getTextBackgroundTheme(presetId).swatch,
-            disabled: !enabled,
+        ...presets.map((preset) => ({
+            id: preset.id,
+            label: preset.label,
+            swatch: preset.swatch,
+            isCustom: !!preset.isCustom,
         })),
     ];
 
@@ -150,13 +344,15 @@ function renderTextBackgroundPicker() {
             type="button"
             class="text-background-option${item.id === activePresetId ? " is-selected" : ""}"
             data-preset-id="${item.id}"
-            ${item.disabled ? "disabled" : ""}
         >
             <span class="text-background-swatch" style="background: ${item.swatch};"></span>
             <span class="text-background-option-check">${item.id === activePresetId ? "✓" : item.id ? "A" : "∅"}</span>
+            ${item.isCustom ? '<span class="text-background-option-flag">เพิ่มเอง</span>' : ""}
             <span class="text-background-option-label">${item.label}</span>
         </button>
     `).join("");
+
+    renderTextBackgroundManager();
 }
 
 function renderTextComposerPreview() {
@@ -170,6 +366,7 @@ function renderTextComposerPreview() {
 
     const value = textarea.value.trim();
     const activePresetId = getActiveTextBackgroundPresetId();
+    const activePreset = getTextBackgroundOptionById(activePresetId);
     const theme = activePresetId ? getTextBackgroundTheme(activePresetId) : null;
 
     preview.textContent = value || "พิมพ์ข้อความในช่องด้านขวาเพื่อดูตัวอย่างโพสต์";
@@ -182,7 +379,7 @@ function renderTextComposerPreview() {
         ? "inset 0 0 0 1px rgba(255,255,255,0.18)"
         : "inset 0 0 0 1px rgba(15, 23, 42, 0.06)";
 
-    badge.textContent = activePresetId ? `พื้นหลัง ${activePresetId}` : "ไม่มีพื้นหลัง";
+    badge.textContent = activePreset ? activePreset.label : "ไม่มีพื้นหลัง";
 }
 
 function renderTextComposerUi() {
@@ -1306,6 +1503,79 @@ if (textBackgroundGrid) {
         if (!button || button.disabled) return;
         setActiveTextBackgroundPresetId(button.dataset.presetId || "");
         renderTextComposerUi();
+    });
+}
+
+const textBackgroundManageBtn = document.getElementById("textBackgroundManageBtn");
+if (textBackgroundManageBtn) {
+    textBackgroundManageBtn.addEventListener("click", () => {
+        const state = getTextModeState();
+        state.isBackgroundManagerOpen = !state.isBackgroundManagerOpen;
+        renderTextComposerUi();
+    });
+}
+
+const textBackgroundPresetAddBtn = document.getElementById("textBackgroundPresetAddBtn");
+if (textBackgroundPresetAddBtn) {
+    textBackgroundPresetAddBtn.addEventListener("click", async () => {
+        const input = document.getElementById("textBackgroundPresetInput");
+        const nextPresetId = String(input?.value || "").trim();
+        if (!nextPresetId) {
+            alert("ใส่รหัสพื้นหลังที่ต้องการเพิ่มก่อน");
+            return;
+        }
+
+        const currentCustomPresets = getSavedCustomTextBackgroundPresets();
+        if (currentCustomPresets.includes(nextPresetId) || getTextBackgroundOptionById(nextPresetId)) {
+            setActiveTextBackgroundPresetId(nextPresetId);
+            renderTextComposerUi();
+            return;
+        }
+
+        try {
+            textBackgroundPresetAddBtn.disabled = true;
+            textBackgroundPresetAddBtn.textContent = "กำลังเพิ่ม...";
+            await persistTextBackgroundCatalog([...currentCustomPresets, nextPresetId]);
+            setActiveTextBackgroundPresetId(nextPresetId);
+            renderTextComposerUi();
+        } catch (error) {
+            alert(error instanceof Error ? error.message : "เพิ่มรหัสพื้นหลังไม่สำเร็จ");
+        } finally {
+            textBackgroundPresetAddBtn.disabled = false;
+            textBackgroundPresetAddBtn.textContent = "เพิ่ม";
+        }
+    });
+}
+
+const textBackgroundPresetInput = document.getElementById("textBackgroundPresetInput");
+if (textBackgroundPresetInput) {
+    textBackgroundPresetInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            textBackgroundPresetAddBtn?.click();
+        }
+    });
+}
+
+const textBackgroundSavedList = document.getElementById("textBackgroundSavedList");
+if (textBackgroundSavedList) {
+    textBackgroundSavedList.addEventListener("click", async (event) => {
+        const button = event.target.closest(".text-background-saved-remove");
+        if (!button) return;
+
+        const presetId = String(button.dataset.presetId || "").trim();
+        if (!presetId) return;
+
+        const nextCustomPresets = getSavedCustomTextBackgroundPresets().filter((item) => item !== presetId);
+        try {
+            await persistTextBackgroundCatalog(nextCustomPresets);
+            if (getActiveTextBackgroundPresetId() === presetId) {
+                setActiveTextBackgroundPresetId("");
+            }
+            renderTextComposerUi();
+        } catch (error) {
+            alert(error instanceof Error ? error.message : "ลบรหัสพื้นหลังไม่สำเร็จ");
+        }
     });
 }
 
