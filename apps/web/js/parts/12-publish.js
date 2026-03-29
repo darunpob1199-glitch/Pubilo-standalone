@@ -2,10 +2,6 @@
 // ============================================
 let lastPublishedUrl = null;
 
-function getBasePublishButtonLabel(mode) {
-    return mode === "link" ? "SCHEDULE" : "PUBLISH";
-}
-
 function setupPublishHandler(mode) {
     const els = getModeElements(mode);
     if (!els.publishBtn) return;
@@ -20,14 +16,10 @@ function setupPublishHandler(mode) {
             els.publishBtn.classList.contains("published")
         ) {
             // Reset button after viewing
-<<<<<<< HEAD
             els.publishBtn.textContent =
                 typeof getPrimaryPublishLabel === "function"
                     ? getPrimaryPublishLabel(mode)
                     : "POST NOW";
-=======
-            els.publishBtn.textContent = getBasePublishButtonLabel(mode);
->>>>>>> 53169452cba77e98fce553f412c5281979a57319
             els.publishBtn.classList.remove("published");
             lastPublishedUrl = null;
             return;
@@ -544,14 +536,10 @@ function setupPublishHandler(mode) {
         } catch (err) {
             console.error("[FEWFEED] Error:", err.message);
             alert("Publish failed: " + err.message);
-<<<<<<< HEAD
             els.publishBtn.textContent =
                 typeof getPrimaryPublishLabel === "function"
                     ? getPrimaryPublishLabel(mode)
                     : "POST NOW";
-=======
-            els.publishBtn.textContent = getBasePublishButtonLabel(mode);
->>>>>>> 53169452cba77e98fce553f412c5281979a57319
             els.publishBtn.disabled = false;
         }
     });
@@ -645,6 +633,7 @@ function selectPage(index) {
         page.picture?.data?.url ||
         `https://graph.facebook.com/${page.id}/picture?type=small`;
     document.getElementById("previewAvatarImg").src = imgUrl;
+    localStorage.setItem("fewfeed_selectedPagePicture", imgUrl);
 
     // Update dropdown selection
     document
@@ -657,6 +646,19 @@ function selectPage(index) {
 
     // Load page-specific settings
     loadSettings();
+
+    // Persist selected page metadata so /api/pages can recover even when extension is unavailable.
+    fetch("/api/page-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            pageId: page.id,
+            pageName: page.name || "Page",
+            pictureUrl: imgUrl || "",
+        }),
+    }).catch((err) => {
+        console.warn("[FEWFEED] Failed to persist selected page metadata:", err);
+    });
 
     // If on settings page, reload settings panel
     if (window.location.hash === "#settings" && settingsPanel.style.display === "flex") {
@@ -672,6 +674,28 @@ function selectPage(index) {
     if (window.location.hash === "#published") {
         loadPublishedPosts();
     }
+}
+
+function hydratePageFromLocalStorageFallback() {
+    const savedPageId = localStorage.getItem("fewfeed_selectedPageId") || "";
+    if (!savedPageId) return false;
+
+    const savedPageName = localStorage.getItem("fewfeed_selectedPageName") || "Saved Page";
+    const savedPicture =
+        localStorage.getItem("fewfeed_selectedPagePicture") ||
+        `https://graph.facebook.com/${savedPageId}/picture?type=small`;
+
+    renderPagesDropdown([
+        {
+            id: savedPageId,
+            name: savedPageName,
+            picture: { data: { url: savedPicture } },
+            color: "#f59e0b",
+        },
+    ]);
+
+    console.log("[FEWFEED] Hydrated page selector from localStorage fallback");
+    return true;
 }
 
 // Render pages dropdown
@@ -1156,9 +1180,11 @@ async function fetchPages(accessToken) {
             }
         } else {
             console.log("[FEWFEED] No pages found in D1");
+            hydratePageFromLocalStorageFallback();
         }
     } catch (error) {
         console.error("[FEWFEED] Failed to fetch pages from API:", error);
+        hydratePageFromLocalStorageFallback();
     }
 }
 
@@ -1718,6 +1744,21 @@ function loadSavedData() {
             !!postToken,
         );
     }
+
+    hydratePageFromLocalStorageFallback();
+
+    // Try to refresh tokens from extension cache immediately on startup.
+    syncWithExtensionNow().then((synced) => {
+        if (synced) {
+            const nextAccessToken =
+                localStorage.getItem("fewfeed_accessToken") ||
+                localStorage.getItem("fewfeed_token") ||
+                "";
+            const nextPostToken = localStorage.getItem("fewfeed_postToken") || "";
+            fetchPages(nextAccessToken || nextPostToken);
+            fetchAdAccounts(nextAccessToken || nextPostToken);
+        }
+    }).catch(() => {});
 
     fetchPages(accessToken || postToken);
     fetchAdAccounts(accessToken || postToken);

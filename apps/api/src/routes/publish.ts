@@ -255,6 +255,55 @@ async function publishExistingUnpublishedPost(postId: string, pageToken: string,
     }
 }
 
+async function publishLinkCardViaFeed(params: {
+    pageId: string;
+    pageToken: string;
+    headers?: Record<string, string>;
+    message?: string;
+    linkUrl: string;
+    title?: string;
+    caption?: string;
+    description?: string;
+    pictureUrl?: string;
+    scheduledTime?: number | null;
+}): Promise<{ postId: string }> {
+    const body = new URLSearchParams({
+        access_token: params.pageToken,
+        link: params.linkUrl,
+    });
+
+    if (params.message) body.set('message', params.message);
+    if (params.title) body.set('name', params.title);
+    if (params.caption) body.set('caption', params.caption);
+    if (params.description) body.set('description', params.description);
+    if (params.pictureUrl) body.set('picture', params.pictureUrl);
+
+    if (params.scheduledTime) {
+        body.set('published', 'false');
+        body.set('scheduled_publish_time', String(params.scheduledTime));
+    }
+
+    const response = await fetch(`${FB_API}/${params.pageId}/feed`, {
+        method: 'POST',
+        headers: {
+            ...(params.headers || {}),
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+    });
+    const data = await response.json() as any;
+    if (data?.error) {
+        throw new Error(data.error.message || 'Failed to create feed link card post');
+    }
+
+    const postId = String(data?.id || data?.post_id || '');
+    if (!postId) {
+        throw new Error('Facebook did not return post id for feed link card');
+    }
+
+    return { postId };
+}
+
 async function wait(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -777,12 +826,16 @@ app.post('/', async (c) => {
         }
 
         if (isLinkAttachmentPost && accessToken && normalizedAdAccountId) {
-            try {
-                const pageTokenForPublish = freshPageToken || storedPageToken;
-                if (!pageTokenForPublish) {
-                    throw new Error('ไม่พบ Page Token สำหรับ publish post');
-                }
+            const pageTokenForPublish = freshPageToken || storedPageToken;
+            if (!pageTokenForPublish) {
+                return c.json({
+                    success: false,
+                    error: 'ไม่พบ Page Token สำหรับ publish post',
+                    errorType: 'MissingPageToken',
+                }, 400);
+            }
 
+            try {
                 const seedContext = await resolveAdSeedContext({
                     preferredAdAccountId: normalizedAdAccountId,
                     accessToken,
@@ -852,6 +905,42 @@ app.post('/', async (c) => {
                     rawMessage === 'No reusable adset found for this page in the selected ad account'
                         ? 'ไม่พบ adset เดิมของเพจนี้ใน ad accounts ที่ token นี้เข้าถึงได้ กรุณาเปิด Ads Manager/เคยสร้างโฆษณาของเพจนี้ก่อน แล้วลองอีกครั้ง'
                         : rawMessage;
+                const canFallbackToFeed =
+                    rawMessage === 'No reusable adset found for this page in the selected ad account' ||
+                    rawMessage.includes('object_story_id');
+
+                if (canFallbackToFeed) {
+                    try {
+                        const fallbackPost = await publishLinkCardViaFeed({
+                            pageId,
+                            pageToken: pageTokenForPublish,
+                            headers: facebookHeaders,
+                            message: finalMessage,
+                            linkUrl: previewUrl || finalLink,
+                            title: attachmentTitle || undefined,
+                            caption: previewSiteName || undefined,
+                            description: attachmentDescription || finalMessage || undefined,
+                            pictureUrl: hostedImageUrl || undefined,
+                            scheduledTime: scheduleTimestamp,
+                        });
+
+                        return c.json({
+                            success: true,
+                            postId: fallbackPost.postId,
+                            url: buildFacebookPostUrl(fallbackPost.postId, pageId),
+                            needsScheduling: false,
+                            ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                            _debug: {
+                                flow: 'feed-fallback',
+                                adCreativeError: rawMessage,
+                                adAccountId: normalizedAdAccountId,
+                            },
+                        });
+                    } catch (fallbackError) {
+                        console.warn('[publish] Feed fallback failed:', fallbackError);
+                    }
+                }
+
                 lastFacebookError = { message: friendlyMessage, type: 'AdCreativeFlowError' };
                 console.warn('[publish] Ad creative flow failed:', lastFacebookError);
                 return c.json({
