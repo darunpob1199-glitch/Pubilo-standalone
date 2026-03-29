@@ -932,6 +932,23 @@
                 <div class="post-tool-note is-hide">
                     ซ่อนโพสต์จำนวนมากโดยไม่ลบออกจากเพจ เหมาะกับการเคลียร์หน้าเพจก่อน แล้วค่อยย้อนดู history งานย้อนหลังได้
                 </div>
+                <div class="post-tool-guard-card">
+                    <div class="post-tool-guard-grid">
+                        <label class="post-tool-guard-option">
+                            <input type="checkbox" id="hidePostsKeepLatestToggle" checked />
+                            <span>กันโพสต์ล่าสุดไว้</span>
+                            <input class="post-tool-number-input" id="hidePostsKeepLatestInput" type="number" min="0" step="1" value="10" />
+                            <span>รายการ</span>
+                        </label>
+                        <label class="post-tool-guard-option">
+                            <input type="checkbox" id="hidePostsMinAgeToggle" checked />
+                            <span>ซ่อนเฉพาะโพสต์ที่เก่ากว่า</span>
+                            <input class="post-tool-number-input" id="hidePostsMinAgeInput" type="number" min="0" step="1" value="7" />
+                            <span>วัน</span>
+                        </label>
+                    </div>
+                    <div class="post-tool-guard-meta" id="hidePostsSafeguardMeta"></div>
+                </div>
                 <div class="pending-summary-bar" id="hidePostsSummaryBar"></div>
                 <div class="pending-filter-bar post-tool-filter-bar">
                     <div class="pending-filter-search">
@@ -967,6 +984,10 @@
                     <div class="post-tool-main">
                         <div class="pending-table-container" id="hidePostsTableContainer">
                             <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
+                        </div>
+                        <div class="post-tool-pagination">
+                            <div class="post-tool-pagination-meta" id="hidePostsLoadMoreMeta"></div>
+                            <button class="post-tool-secondary-btn" id="hidePostsLoadMoreBtn" type="button">โหลดเพิ่ม</button>
                         </div>
                     </div>
                     <aside class="post-tool-side">
@@ -1022,6 +1043,10 @@
                     <div class="post-tool-main">
                         <div class="pending-table-container" id="deletePostsTableContainer">
                             <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
+                        </div>
+                        <div class="post-tool-pagination">
+                            <div class="post-tool-pagination-meta" id="deletePostsLoadMoreMeta"></div>
+                            <button class="post-tool-secondary-btn" id="deletePostsLoadMoreBtn" type="button">โหลดเพิ่ม</button>
                         </div>
                     </div>
                     <aside class="post-tool-side">

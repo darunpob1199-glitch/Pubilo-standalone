@@ -11,6 +11,7 @@ type PublishedQueryInput = {
     pageId: string;
     limit: number;
     source: PublishedSource;
+    after?: string;
     pageToken?: string;
     accessToken?: string;
     cookieData?: string;
@@ -230,7 +231,7 @@ async function getStoredPageToken(env: Env, pageId: string): Promise<string> {
 }
 
 async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput) {
-    const { pageId, limit, pageToken, accessToken, cookieData } = input;
+    const { pageId, limit, after, pageToken, accessToken, cookieData } = input;
 
     if (!pageId) {
         return { success: false, error: 'Missing pageId' };
@@ -257,6 +258,9 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
             limit: String(Math.min(limit, 100)),
             access_token: authToken,
         });
+        if (String(after || '').trim()) {
+            params.set('after', String(after).trim());
+        }
 
         const response = await fetch(
             `${FB_API}/${pageId}/posts?${params.toString()}`,
@@ -279,8 +283,18 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
             ...row,
             page_id: pageId,
         }));
+        const nextCursor = String(data?.paging?.cursors?.after || '').trim();
+        const hasMore = Boolean(data?.paging?.next && nextCursor);
 
-        return { success: true, logs };
+        return {
+            success: true,
+            logs,
+            meta: {
+                source: 'facebook',
+                hasMore,
+                nextCursor: hasMore ? nextCursor : null,
+            },
+        };
     }
 
     return {
@@ -336,7 +350,15 @@ async function fetchHistoryPublishedPosts(env: Env, input: PublishedQueryInput) 
         deleteAllowed: true,
     }));
 
-    return { success: true, logs };
+    return {
+        success: true,
+        logs,
+        meta: {
+            source: 'history',
+            hasMore: false,
+            nextCursor: null,
+        },
+    };
 }
 
 function getPublishedSortTime(row: Record<string, any>): number {
@@ -409,6 +431,7 @@ async function handleListRequest(env: Env, input: PublishedQueryInput) {
                 Array.isArray(facebookResult.logs) ? facebookResult.logs : [],
                 Array.isArray(historyResult.logs) ? historyResult.logs : [],
             ),
+            meta: facebookResult.meta || historyResult.meta,
         };
     }
 
@@ -420,6 +443,7 @@ app.get('/', async (c) => {
         pageId: String(c.req.query('pageId') || c.req.query('page_id') || '').trim(),
         limit: Math.min(parseInt(c.req.query('limit') || '200', 10) || 200, 500),
         source: normalizeSource(c.req.query('source')),
+        after: String(c.req.query('after') || c.req.query('cursor') || '').trim(),
         pageToken: String(c.req.query('pageToken') || '').trim(),
         accessToken: String(c.req.query('accessToken') || '').trim(),
         cookieData: String(c.req.query('cookieData') || '').trim(),
@@ -439,6 +463,7 @@ app.post('/', async (c) => {
         pageId: String(body.pageId || '').trim(),
         limit: Math.min(parseInt(String(body.limit || '200'), 10) || 200, 500),
         source: normalizeSource(body.source),
+        after: String((body as Record<string, any>).after || (body as Record<string, any>).cursor || '').trim(),
         pageToken: String(body.pageToken || '').trim(),
         accessToken: String(body.accessToken || '').trim(),
         cookieData: String(body.cookieData || '').trim(),

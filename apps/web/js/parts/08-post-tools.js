@@ -36,12 +36,44 @@ function createPostToolState() {
             day: "all",
             customDate: "",
         },
+        pagination: {
+            nextCursor: "",
+            hasMore: false,
+            loadingMore: false,
+            lastBatchCount: 0,
+        },
+        safeguards: {
+            keepLatestEnabled: false,
+            keepLatestCount: 10,
+            minAgeEnabled: false,
+            minAgeDays: 7,
+        },
         loaded: false,
         loading: false,
         jobsLoading: false,
         pollHandle: null,
     };
 }
+
+function resetPostToolStateDefaults(toolKey) {
+    const state = postToolStates[toolKey];
+    if (!state) return;
+
+    state.filters.query = "";
+    state.filters.type = "all";
+    state.filters.day = "all";
+    state.filters.customDate = "";
+    state.pagination.nextCursor = "";
+    state.pagination.hasMore = false;
+    state.pagination.loadingMore = false;
+    state.pagination.lastBatchCount = 0;
+    state.safeguards.keepLatestEnabled = toolKey === "hide";
+    state.safeguards.keepLatestCount = 10;
+    state.safeguards.minAgeEnabled = toolKey === "hide";
+    state.safeguards.minAgeDays = 7;
+}
+
+Object.keys(postToolStates).forEach((toolKey) => resetPostToolStateDefaults(toolKey));
 
 function getPostToolDom(toolKey) {
     const config = postToolConfigs[toolKey];
@@ -61,6 +93,13 @@ function getPostToolDom(toolKey) {
         selectionMeta: document.getElementById(`${prefix}SelectionMeta`),
         selectVisibleBtn: document.getElementById(`${prefix}SelectVisibleBtn`),
         clearSelectionBtn: document.getElementById(`${prefix}ClearSelectionBtn`),
+        loadMoreBtn: document.getElementById(`${prefix}LoadMoreBtn`),
+        loadMoreMeta: document.getElementById(`${prefix}LoadMoreMeta`),
+        keepLatestToggle: document.getElementById(`${prefix}KeepLatestToggle`),
+        keepLatestInput: document.getElementById(`${prefix}KeepLatestInput`),
+        minAgeToggle: document.getElementById(`${prefix}MinAgeToggle`),
+        minAgeInput: document.getElementById(`${prefix}MinAgeInput`),
+        safeguardMeta: document.getElementById(`${prefix}SafeguardMeta`),
     };
 }
 
@@ -117,6 +156,54 @@ function getPostToolItemId(post) {
     return String(post.facebook_post_id || post.source_ref || post.id || "").trim();
 }
 
+function getPostToolPositiveInt(value, fallback) {
+    const parsed = parseInt(String(value || ""), 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function getPostToolProtectionReason(toolKey, post) {
+    if (toolKey !== "hide") return "";
+
+    const state = postToolStates[toolKey];
+    const itemId = getPostToolItemId(post);
+    if (!itemId) return "ไม่มี post id";
+
+    if (post.is_pinned === true) {
+        return "Pinned post";
+    }
+
+    if (post.is_hidden === true) {
+        return "ซ่อนไว้อยู่แล้ว";
+    }
+
+    if (state.safeguards.keepLatestEnabled) {
+        const keepLatestCount = getPostToolPositiveInt(state.safeguards.keepLatestCount, 10);
+        const overallIndex = state.posts.findIndex((item) => getPostToolItemId(item) === itemId);
+        if (keepLatestCount > 0 && overallIndex > -1 && overallIndex < keepLatestCount) {
+            return `กันโพสต์ล่าสุด ${keepLatestCount} รายการ`;
+        }
+    }
+
+    if (state.safeguards.minAgeEnabled) {
+        const minAgeDays = getPostToolPositiveInt(state.safeguards.minAgeDays, 7);
+        if (minAgeDays > 0) {
+            const publishedDate = parsePostToolDate(post.published_at || post.created_at);
+            if (publishedDate) {
+                const ageMs = Date.now() - publishedDate.getTime();
+                if (ageMs < minAgeDays * 24 * 60 * 60 * 1000) {
+                    return `อายุน้อยกว่า ${minAgeDays} วัน`;
+                }
+            }
+        }
+    }
+
+    return "";
+}
+
+function isPostToolSelectable(toolKey, post) {
+    return !getPostToolProtectionReason(toolKey, post);
+}
+
 function getPostToolFilteredPosts(toolKey) {
     const state = postToolStates[toolKey];
     const query = state.filters.query.trim().toLowerCase();
@@ -160,16 +247,58 @@ function getPostToolFilteredPosts(toolKey) {
     });
 }
 
-function renderPostToolSummary(toolKey) {
+function getPostToolEligibleFilteredPosts(toolKey) {
+    return getPostToolFilteredPosts(toolKey).filter((post) => isPostToolSelectable(toolKey, post));
+}
+
+function prunePostToolSelection(toolKey) {
+    const state = postToolStates[toolKey];
+    const validIds = new Set(
+        state.posts
+            .filter((post) => isPostToolSelectable(toolKey, post))
+            .map((post) => getPostToolItemId(post))
+            .filter(Boolean),
+    );
+
+    state.selectedIds.forEach((id) => {
+        if (!validIds.has(id)) {
+            state.selectedIds.delete(id);
+        }
+    });
+}
+
+function renderPostToolSummary(toolKey, filtered = getPostToolFilteredPosts(toolKey), eligible = getPostToolEligibleFilteredPosts(toolKey)) {
     const state = postToolStates[toolKey];
     const dom = getPostToolDom(toolKey);
     if (!dom.summaryBar) return;
 
-    const filtered = getPostToolFilteredPosts(toolKey);
-    const selectedCount = filtered.filter((post) => state.selectedIds.has(getPostToolItemId(post))).length;
+    const selectedCount = eligible.filter((post) => state.selectedIds.has(getPostToolItemId(post))).length;
     const todayKey = getPostToolDateKey(new Date());
     const todayCount = state.posts.filter((post) => getPostToolDateKey(post.published_at || post.created_at) === todayKey).length;
     const reelsCount = state.posts.filter((post) => getPostToolType(post) === "reels").length;
+    const protectedCount = state.posts.filter((post) => !isPostToolSelectable(toolKey, post)).length;
+
+    if (toolKey === "hide") {
+        dom.summaryBar.innerHTML = `
+            <div class="pending-stat">
+                <span class="pending-stat-label">โหลดแล้ว</span>
+                <span class="pending-stat-value">${state.posts.length}</span>
+            </div>
+            <div class="pending-stat">
+                <span class="pending-stat-label">พร้อมซ่อน</span>
+                <span class="pending-stat-value">${eligible.length}</span>
+            </div>
+            <div class="pending-stat">
+                <span class="pending-stat-label">กันไว้</span>
+                <span class="pending-stat-value">${protectedCount}</span>
+            </div>
+            <div class="pending-stat">
+                <span class="pending-stat-label">เลือกไว้</span>
+                <span class="pending-stat-value">${selectedCount}</span>
+            </div>
+        `;
+        return;
+    }
 
     dom.summaryBar.innerHTML = `
         <div class="pending-stat">
@@ -191,7 +320,7 @@ function renderPostToolSummary(toolKey) {
     `;
 }
 
-function renderPostToolFilterMeta(toolKey, filteredCount, totalCount) {
+function renderPostToolFilterMeta(toolKey, filteredCount, totalCount, eligibleCount = filteredCount) {
     const dom = getPostToolDom(toolKey);
     if (!dom.filterMeta) return;
 
@@ -201,7 +330,14 @@ function renderPostToolFilterMeta(toolKey, filteredCount, totalCount) {
     }
 
     if (postToolStates[toolKey].filters.customDate) {
-        dom.filterMeta.textContent = `วันที่ ${postToolStates[toolKey].filters.customDate} พบ ${filteredCount} รายการ`;
+        dom.filterMeta.textContent = toolKey === "hide" && filteredCount !== eligibleCount
+            ? `วันที่ ${postToolStates[toolKey].filters.customDate} พบ ${eligibleCount} รายการ (กันไว้ ${filteredCount - eligibleCount})`
+            : `วันที่ ${postToolStates[toolKey].filters.customDate} พบ ${filteredCount} รายการ`;
+        return;
+    }
+
+    if (toolKey === "hide" && filteredCount !== eligibleCount) {
+        dom.filterMeta.textContent = `แสดง ${eligibleCount} / ${totalCount} รายการ (กันไว้ ${filteredCount - eligibleCount})`;
         return;
     }
 
@@ -210,24 +346,27 @@ function renderPostToolFilterMeta(toolKey, filteredCount, totalCount) {
         : `แสดง ${filteredCount} / ${totalCount} รายการ`;
 }
 
-function renderPostToolSelectionMeta(toolKey, filtered) {
+function renderPostToolSelectionMeta(toolKey, filtered, eligible = filtered.filter((post) => isPostToolSelectable(toolKey, post))) {
     const state = postToolStates[toolKey];
     const dom = getPostToolDom(toolKey);
     if (!dom.selectionMeta) return;
 
     const selectedTotal = state.selectedIds.size;
-    const visibleSelected = filtered.filter((post) => state.selectedIds.has(getPostToolItemId(post))).length;
+    const visibleSelected = eligible.filter((post) => state.selectedIds.has(getPostToolItemId(post))).length;
+    const protectedVisible = Math.max(0, filtered.length - eligible.length);
     dom.selectionMeta.textContent = selectedTotal
-        ? `เลือกไว้ ${selectedTotal} รายการ (${visibleSelected} จากหน้าที่เห็น)`
-        : "ยังไม่ได้เลือกโพสต์";
+        ? `เลือกไว้ ${selectedTotal} รายการ (${visibleSelected} จากที่ทำงานได้)`
+        : protectedVisible > 0
+            ? `พร้อมทำงาน ${eligible.length} รายการ และกันไว้ ${protectedVisible} รายการ`
+            : "ยังไม่ได้เลือกโพสต์";
 }
 
-function updatePostToolActionButton(toolKey, filtered) {
+function updatePostToolActionButton(toolKey, eligible = getPostToolEligibleFilteredPosts(toolKey)) {
     const state = postToolStates[toolKey];
     const dom = getPostToolDom(toolKey);
     if (!dom.runBtn) return;
 
-    const selectedCount = filtered.filter((post) => state.selectedIds.has(getPostToolItemId(post))).length;
+    const selectedCount = eligible.filter((post) => state.selectedIds.has(getPostToolItemId(post))).length;
     dom.runBtn.disabled = selectedCount === 0 || state.loading;
     dom.runBtn.textContent = toolKey === "hide"
         ? `ซ่อนที่เลือก${selectedCount ? ` (${selectedCount})` : ""}`
@@ -242,6 +381,68 @@ function renderPostToolDayFilters(toolKey) {
     dom.dayFilters.querySelectorAll(".pending-filter-chip").forEach((chip) => {
         chip.classList.toggle("is-active", chip.dataset.filter === state.filters.day && !state.filters.customDate);
     });
+}
+
+function renderPostToolSafeguardMeta(toolKey, filtered = getPostToolFilteredPosts(toolKey), eligible = filtered.filter((post) => isPostToolSelectable(toolKey, post))) {
+    const state = postToolStates[toolKey];
+    const dom = getPostToolDom(toolKey);
+    if (!dom.safeguardMeta) return;
+
+    if (toolKey !== "hide") {
+        dom.safeguardMeta.textContent = "";
+        return;
+    }
+
+    const protectedVisible = Math.max(0, filtered.length - eligible.length);
+    const protectedTotal = state.posts.filter((post) => !isPostToolSelectable(toolKey, post)).length;
+    const parts = [];
+
+    if (state.safeguards.keepLatestEnabled) {
+        parts.push(`กันโพสต์ล่าสุด ${getPostToolPositiveInt(state.safeguards.keepLatestCount, 10)} รายการ`);
+    }
+    if (state.safeguards.minAgeEnabled) {
+        parts.push(`ซ่อนเฉพาะโพสต์ที่เก่ากว่า ${getPostToolPositiveInt(state.safeguards.minAgeDays, 7)} วัน`);
+    }
+
+    if (!parts.length) {
+        dom.safeguardMeta.textContent = "ยังไม่ได้เปิด safety rule ตอนนี้เลือกได้ตาม filter ตรง ๆ";
+        return;
+    }
+
+    dom.safeguardMeta.textContent = `${parts.join(" • ")} ตอนนี้กันไว้ ${protectedVisible} จาก ${filtered.length} รายการที่ตรง filter (${protectedTotal} จากทั้งหมดที่โหลด)`;
+}
+
+function renderPostToolPagination(toolKey) {
+    const state = postToolStates[toolKey];
+    const dom = getPostToolDom(toolKey);
+    if (!dom.loadMoreBtn || !dom.loadMoreMeta) return;
+
+    const shouldShow = state.loaded || state.loading || state.pagination.loadingMore || state.posts.length > 0;
+    dom.loadMoreBtn.style.display = shouldShow ? "inline-flex" : "none";
+    dom.loadMoreBtn.disabled = state.loading || state.pagination.loadingMore || !state.pagination.hasMore;
+    dom.loadMoreBtn.textContent = state.pagination.loadingMore ? "กำลังโหลด..." : "โหลดเพิ่ม";
+
+    if (!shouldShow) {
+        dom.loadMoreMeta.textContent = "";
+        return;
+    }
+
+    if (state.pagination.loadingMore) {
+        dom.loadMoreMeta.textContent = `กำลังโหลดโพสต์เพิ่ม ต่อจาก ${state.posts.length} รายการที่มีอยู่`;
+        return;
+    }
+
+    if (state.pagination.hasMore) {
+        dom.loadMoreMeta.textContent = `โหลดแล้ว ${state.posts.length} รายการ ยังมีโพสต์เก่ากว่านี้ให้โหลดต่อ`;
+        return;
+    }
+
+    if (state.loaded && state.posts.length > 0) {
+        dom.loadMoreMeta.textContent = `โหลดครบ ${state.posts.length} รายการในรอบนี้แล้ว`;
+        return;
+    }
+
+    dom.loadMoreMeta.textContent = state.loaded ? "ยังไม่มีโพสต์จากเพจนี้" : "";
 }
 
 function buildPostToolTable(toolKey, posts) {
@@ -263,6 +464,8 @@ function buildPostToolTable(toolKey, posts) {
     posts.forEach((post) => {
         const itemId = getPostToolItemId(post);
         const tr = document.createElement("tr");
+        const protectionReason = getPostToolProtectionReason(toolKey, post);
+        tr.className = protectionReason ? "post-tool-table-row is-protected" : "post-tool-table-row";
         tr.dataset.id = itemId;
 
         const checkboxTd = document.createElement("td");
@@ -270,6 +473,8 @@ function buildPostToolTable(toolKey, posts) {
         checkbox.type = "checkbox";
         checkbox.className = "post-tool-checkbox";
         checkbox.checked = state.selectedIds.has(itemId);
+        checkbox.disabled = Boolean(protectionReason);
+        checkbox.title = protectionReason || "";
         checkbox.addEventListener("change", () => {
             if (checkbox.checked) {
                 state.selectedIds.add(itemId);
@@ -277,9 +482,10 @@ function buildPostToolTable(toolKey, posts) {
                 state.selectedIds.delete(itemId);
             }
             const filtered = getPostToolFilteredPosts(toolKey);
-            renderPostToolSelectionMeta(toolKey, filtered);
-            updatePostToolActionButton(toolKey, filtered);
-            renderPostToolSummary(toolKey);
+            const eligible = filtered.filter((item) => isPostToolSelectable(toolKey, item));
+            renderPostToolSelectionMeta(toolKey, filtered, eligible);
+            updatePostToolActionButton(toolKey, eligible);
+            renderPostToolSummary(toolKey, filtered, eligible);
         });
         checkboxTd.appendChild(checkbox);
         tr.appendChild(checkboxTd);
@@ -315,6 +521,12 @@ function buildPostToolTable(toolKey, posts) {
         postId.className = "pending-table-url";
         postId.textContent = post.facebook_post_id || itemId;
         copyWrap.appendChild(postId);
+        if (protectionReason) {
+            const protectionBadge = document.createElement("div");
+            protectionBadge.className = "post-tool-protection-badge";
+            protectionBadge.textContent = protectionReason;
+            copyWrap.appendChild(protectionBadge);
+        }
         wrap.appendChild(copyWrap);
         postTd.appendChild(wrap);
         tr.appendChild(postTd);
@@ -361,10 +573,14 @@ function renderPostToolTable(toolKey) {
     if (!dom.tableContainer) return;
 
     const filtered = getPostToolFilteredPosts(toolKey);
-    renderPostToolFilterMeta(toolKey, filtered.length, state.posts.length);
-    renderPostToolSelectionMeta(toolKey, filtered);
-    updatePostToolActionButton(toolKey, filtered);
-    renderPostToolSummary(toolKey);
+    const eligible = filtered.filter((post) => isPostToolSelectable(toolKey, post));
+    prunePostToolSelection(toolKey);
+    renderPostToolFilterMeta(toolKey, filtered.length, state.posts.length, eligible.length);
+    renderPostToolSelectionMeta(toolKey, filtered, eligible);
+    updatePostToolActionButton(toolKey, eligible);
+    renderPostToolSummary(toolKey, filtered, eligible);
+    renderPostToolSafeguardMeta(toolKey, filtered, eligible);
+    renderPostToolPagination(toolKey);
 
     if (!state.posts.length) {
         dom.tableContainer.innerHTML = `<div class="pending-empty">${postToolConfigs[toolKey].empty}</div>`;
@@ -386,10 +602,28 @@ function syncPostToolInputs(toolKey) {
     if (dom.searchInput) dom.searchInput.value = state.filters.query;
     if (dom.typeFilter) dom.typeFilter.value = state.filters.type;
     if (dom.dateInput) dom.dateInput.value = state.filters.customDate;
+    if (dom.keepLatestToggle) dom.keepLatestToggle.checked = Boolean(state.safeguards.keepLatestEnabled);
+    if (dom.keepLatestInput) dom.keepLatestInput.value = String(getPostToolPositiveInt(state.safeguards.keepLatestCount, 10));
+    if (dom.minAgeToggle) dom.minAgeToggle.checked = Boolean(state.safeguards.minAgeEnabled);
+    if (dom.minAgeInput) dom.minAgeInput.value = String(getPostToolPositiveInt(state.safeguards.minAgeDays, 7));
     renderPostToolDayFilters(toolKey);
+    renderPostToolPagination(toolKey);
 }
 
-async function loadPostToolPosts(toolKey, { silent = false } = {}) {
+function mergePostToolPosts(existingPosts, incomingPosts) {
+    const merged = new Map();
+    existingPosts.forEach((post) => {
+        const itemId = getPostToolItemId(post);
+        if (itemId) merged.set(itemId, post);
+    });
+    incomingPosts.forEach((post) => {
+        const itemId = getPostToolItemId(post);
+        if (itemId) merged.set(itemId, post);
+    });
+    return Array.from(merged.values());
+}
+
+async function loadPostToolPosts(toolKey, { silent = false, append = false } = {}) {
     const state = postToolStates[toolKey];
     const dom = getPostToolDom(toolKey);
     const pageId = getCurrentPageId();
@@ -399,10 +633,13 @@ async function loadPostToolPosts(toolKey, { silent = false } = {}) {
         state.selectedIds.clear();
         state.loaded = false;
         state.pageId = "";
+        resetPostToolStateDefaults(toolKey);
         if (dom.summaryBar) dom.summaryBar.innerHTML = "";
         if (dom.tableContainer) {
             dom.tableContainer.innerHTML = '<div class="pending-empty">Please select a Page first</div>';
         }
+        renderPostToolSafeguardMeta(toolKey, [], []);
+        renderPostToolPagination(toolKey);
         return;
     }
 
@@ -411,14 +648,24 @@ async function loadPostToolPosts(toolKey, { silent = false } = {}) {
         state.posts = [];
         state.selectedIds.clear();
         state.loaded = false;
-        state.filters.customDate = "";
-        state.filters.query = "";
-        state.filters.type = "all";
-        state.filters.day = "all";
+        resetPostToolStateDefaults(toolKey);
     }
 
-    state.loading = true;
-    if (!silent && dom.tableContainer) {
+    if (append) {
+        if (!state.pagination.hasMore || !state.pagination.nextCursor) {
+            renderPostToolPagination(toolKey);
+            return;
+        }
+        if (state.pagination.loadingMore || state.loading) {
+            return;
+        }
+        state.pagination.loadingMore = true;
+    } else {
+        if (state.loading) return;
+        state.loading = true;
+    }
+
+    if (!silent && !append && dom.tableContainer) {
         dom.tableContainer.innerHTML = `
             <div class="pending-skeleton">
               <div class="pending-skeleton-row"><div class="sk-img"></div><div class="sk-text"></div><div class="sk-date"></div><div class="sk-badge"></div></div>
@@ -436,7 +683,8 @@ async function loadPostToolPosts(toolKey, { silent = false } = {}) {
             body: JSON.stringify({
                 pageId,
                 source: "facebook",
-                limit: 200,
+                limit: 100,
+                after: append ? state.pagination.nextCursor : "",
                 pageToken: auth.postToken,
                 accessToken: auth.accessToken,
                 cookieData: auth.cookieData,
@@ -445,22 +693,33 @@ async function loadPostToolPosts(toolKey, { silent = false } = {}) {
         const data = await response.json();
 
         if (!data.success) {
-            if (dom.tableContainer) {
+            if (append && dom.loadMoreMeta) {
+                dom.loadMoreMeta.textContent = `โหลดเพิ่มไม่สำเร็จ: ${data.error || "Unknown error"}`;
+            } else if (dom.tableContainer) {
                 dom.tableContainer.innerHTML = `<div class="pending-empty">Error: ${data.error}</div>`;
             }
             return;
         }
 
-        state.posts = Array.isArray(data.logs) ? data.logs : [];
+        const incomingPosts = Array.isArray(data.logs) ? data.logs : [];
+        state.posts = append ? mergePostToolPosts(state.posts, incomingPosts) : incomingPosts;
         state.loaded = true;
+        state.pagination.nextCursor = String(data.meta?.nextCursor || "").trim();
+        state.pagination.hasMore = Boolean(data.meta?.hasMore && state.pagination.nextCursor);
+        state.pagination.lastBatchCount = incomingPosts.length;
+        prunePostToolSelection(toolKey);
         syncPostToolInputs(toolKey);
         renderPostToolTable(toolKey);
     } catch (error) {
-        if (dom.tableContainer) {
+        if (append && dom.loadMoreMeta) {
+            dom.loadMoreMeta.textContent = `โหลดเพิ่มไม่สำเร็จ: ${error.message}`;
+        } else if (dom.tableContainer) {
             dom.tableContainer.innerHTML = `<div class="pending-empty">Error: ${error.message}</div>`;
         }
     } finally {
         state.loading = false;
+        state.pagination.loadingMore = false;
+        renderPostToolPagination(toolKey);
     }
 }
 
@@ -558,8 +817,8 @@ async function loadPostToolJobs(toolKey) {
 
 async function runPostToolAction(toolKey) {
     const state = postToolStates[toolKey];
-    const filtered = getPostToolFilteredPosts(toolKey);
-    const selectedPosts = filtered.filter((post) => state.selectedIds.has(getPostToolItemId(post)));
+    const eligible = getPostToolEligibleFilteredPosts(toolKey);
+    const selectedPosts = eligible.filter((post) => state.selectedIds.has(getPostToolItemId(post)));
 
     if (!selectedPosts.length) {
         alert("เลือกโพสต์ก่อน");
@@ -583,7 +842,10 @@ async function runPostToolAction(toolKey) {
                 action: postToolConfigs[toolKey].action,
                 postToken: auth.postToken,
                 hideToken: auth.hideToken,
-                requestedFilters: state.filters,
+                requestedFilters: {
+                    ...state.filters,
+                    safeguards: state.safeguards,
+                },
                 posts: selectedPosts.map((post) => ({
                     id: getPostToolItemId(post),
                     messageText: post.message_text || "",
@@ -646,7 +908,7 @@ function bindPostToolEvents(toolKey) {
     });
 
     dom.selectVisibleBtn?.addEventListener("click", () => {
-        getPostToolFilteredPosts(toolKey).forEach((post) => {
+        getPostToolEligibleFilteredPosts(toolKey).forEach((post) => {
             state.selectedIds.add(getPostToolItemId(post));
         });
         renderPostToolTable(toolKey);
@@ -654,6 +916,34 @@ function bindPostToolEvents(toolKey) {
 
     dom.clearSelectionBtn?.addEventListener("click", () => {
         state.selectedIds.clear();
+        renderPostToolTable(toolKey);
+    });
+
+    dom.loadMoreBtn?.addEventListener("click", () => {
+        loadPostToolPosts(toolKey, { silent: true, append: true });
+    });
+
+    dom.keepLatestToggle?.addEventListener("change", (event) => {
+        state.safeguards.keepLatestEnabled = Boolean(event.target.checked);
+        prunePostToolSelection(toolKey);
+        renderPostToolTable(toolKey);
+    });
+
+    dom.keepLatestInput?.addEventListener("input", (event) => {
+        state.safeguards.keepLatestCount = getPostToolPositiveInt(event.target.value, 10);
+        prunePostToolSelection(toolKey);
+        renderPostToolTable(toolKey);
+    });
+
+    dom.minAgeToggle?.addEventListener("change", (event) => {
+        state.safeguards.minAgeEnabled = Boolean(event.target.checked);
+        prunePostToolSelection(toolKey);
+        renderPostToolTable(toolKey);
+    });
+
+    dom.minAgeInput?.addEventListener("input", (event) => {
+        state.safeguards.minAgeDays = getPostToolPositiveInt(event.target.value, 7);
+        prunePostToolSelection(toolKey);
         renderPostToolTable(toolKey);
     });
 
