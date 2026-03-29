@@ -13,6 +13,12 @@ function handleNavigation() {
     } else if (hash === "published") {
         publishedNavItem.classList.add("active");
         showPublishedPanel();
+    } else if (hash === "hide-posts") {
+        if (hidePostsNavItem) hidePostsNavItem.classList.add("active");
+        showHidePostsPanel();
+    } else if (hash === "delete-posts") {
+        if (deletePostsNavItem) deletePostsNavItem.classList.add("active");
+        showDeletePostsPanel();
     } else if (hash === "quotes") {
         pendingNavItem.classList.add("active");
         showQuotesPanel();
@@ -65,6 +71,20 @@ publishedNavItem.addEventListener("click", (e) => {
     e.preventDefault();
     navigateTo("published");
 });
+
+if (hidePostsNavItem) {
+    hidePostsNavItem.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo("hide-posts");
+    });
+}
+
+if (deletePostsNavItem) {
+    deletePostsNavItem.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo("delete-posts");
+    });
+}
 
 // Earnings nav item click
 earningsNavItem.addEventListener("click", (e) => {

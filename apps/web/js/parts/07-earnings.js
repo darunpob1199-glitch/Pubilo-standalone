@@ -6,6 +6,8 @@ function showEarningsPanel() {
     });
     pendingPanel.style.display = "none";
     publishedPanel.style.display = "none";
+    if (hidePostsPanel) hidePostsPanel.style.display = "none";
+    if (deletePostsPanel) deletePostsPanel.style.display = "none";
     settingsPanel.style.display = "none";
     quotesPanel.style.display = "none";
     const tp = document.getElementById("textPanel");
@@ -118,6 +120,8 @@ function showPublishedPanel() {
         c.style.display = "none";
     });
     pendingPanel.style.display = "none";
+    if (hidePostsPanel) hidePostsPanel.style.display = "none";
+    if (deletePostsPanel) deletePostsPanel.style.display = "none";
     quotesPanel.style.display = "none";
     settingsPanel.style.display = "none";
     earningsPanel.style.display = "none";
@@ -625,6 +629,8 @@ function showSettingsPanel() {
     });
     pendingPanel.style.display = "none";
     publishedPanel.style.display = "none";
+    if (hidePostsPanel) hidePostsPanel.style.display = "none";
+    if (deletePostsPanel) deletePostsPanel.style.display = "none";
     quotesPanel.style.display = "none";
     earningsPanel.style.display = "none";
     textPanel.style.display = "none";

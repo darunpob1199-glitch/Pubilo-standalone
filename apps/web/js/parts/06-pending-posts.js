@@ -819,6 +819,8 @@ async function showPendingPanel(forceRefresh = false, view = "posts") {
     quotesPanel.style.display = "none";
     settingsPanel.style.display = "none";
     publishedPanel.style.display = "none";
+    if (hidePostsPanel) hidePostsPanel.style.display = "none";
+    if (deletePostsPanel) deletePostsPanel.style.display = "none";
     earningsPanel.style.display = "none";
     const tp = document.getElementById("textPanel");
     if (tp) tp.style.display = "none";
@@ -912,6 +914,8 @@ async function showPendingPanel(forceRefresh = false, view = "posts") {
 function showDashboard() {
     pendingPanel.style.display = "none";
     publishedPanel.style.display = "none";
+    if (hidePostsPanel) hidePostsPanel.style.display = "none";
+    if (deletePostsPanel) deletePostsPanel.style.display = "none";
     quotesPanel.style.display = "none";
     settingsPanel.style.display = "none";
     earningsPanel.style.display = "none";

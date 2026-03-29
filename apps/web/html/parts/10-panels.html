@@ -128,6 +128,114 @@
                     </div>
                 </div>
 
+                <div class="pending-panel post-tool-panel" id="hidePostsPanel" style="display: none">
+                    <div class="pending-panel-header">
+                        <h2>Hide Posts</h2>
+                        <div class="pending-panel-toolbar">
+                            <button class="pending-refresh-btn" id="hidePostsRefreshBtn" type="button">โหลดโพสต์</button>
+                            <button class="tool-primary-btn tool-primary-btn-hide" id="hidePostsRunBtn" type="button">ซ่อนที่เลือก</button>
+                        </div>
+                    </div>
+                    <div class="post-tool-note is-hide">
+                        ซ่อนโพสต์จำนวนมากโดยไม่ลบออกจากเพจ เหมาะกับการเคลียร์หน้าเพจก่อน แล้วค่อยย้อนดู history งานย้อนหลังได้
+                    </div>
+                    <div class="pending-summary-bar" id="hidePostsSummaryBar"></div>
+                    <div class="pending-filter-bar post-tool-filter-bar">
+                        <div class="pending-filter-search">
+                            <input class="pending-filter-input" id="hidePostsSearchInput" type="search" placeholder="ค้นหาข้อความหรือ post id" />
+                        </div>
+                        <select class="pending-filter-select" id="hidePostsTypeFilter">
+                            <option value="all">ทุกประเภท</option>
+                            <option value="link">Link</option>
+                            <option value="text">Text</option>
+                            <option value="image">Image</option>
+                            <option value="reels">Reels</option>
+                        </select>
+                        <div class="pending-quick-filters" id="hidePostsDayFilters">
+                            <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
+                            <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
+                            <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
+                            <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
+                        </div>
+                        <div class="pending-filter-search published-date-filter">
+                            <input class="pending-filter-input" id="hidePostsDateInput" type="date" />
+                        </div>
+                        <div class="pending-filter-meta" id="hidePostsFilterMeta"></div>
+                    </div>
+                    <div class="post-tool-selection-bar">
+                        <div class="post-tool-selection-meta" id="hidePostsSelectionMeta">ยังไม่ได้เลือกโพสต์</div>
+                        <div class="post-tool-selection-actions">
+                            <button class="post-tool-secondary-btn" id="hidePostsSelectVisibleBtn" type="button">เลือกที่เห็น</button>
+                            <button class="post-tool-secondary-btn" id="hidePostsClearSelectionBtn" type="button">ล้างที่เลือก</button>
+                        </div>
+                    </div>
+                    <div class="post-tool-body">
+                        <div class="post-tool-main">
+                            <div class="pending-table-container" id="hidePostsTableContainer">
+                                <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
+                            </div>
+                        </div>
+                        <aside class="post-tool-side">
+                            <div class="post-tool-side-header">Recent Jobs</div>
+                            <div class="post-tool-jobs" id="hidePostsJobs"></div>
+                        </aside>
+                    </div>
+                </div>
+
+                <div class="pending-panel post-tool-panel" id="deletePostsPanel" style="display: none">
+                    <div class="pending-panel-header">
+                        <h2>Delete Posts</h2>
+                        <div class="pending-panel-toolbar">
+                            <button class="pending-refresh-btn" id="deletePostsRefreshBtn" type="button">โหลดโพสต์</button>
+                            <button class="tool-primary-btn tool-primary-btn-delete" id="deletePostsRunBtn" type="button">ลบที่เลือก</button>
+                        </div>
+                    </div>
+                    <div class="post-tool-note is-delete">
+                        ลบโพสต์ออกจาก Facebook แบบ batch สำหรับเคลียร์เพจจำนวนมาก ปุ่มนี้ควรใช้หลังจากเช็ก filter และรายการที่เลือกแล้วเท่านั้น
+                    </div>
+                    <div class="pending-summary-bar" id="deletePostsSummaryBar"></div>
+                    <div class="pending-filter-bar post-tool-filter-bar">
+                        <div class="pending-filter-search">
+                            <input class="pending-filter-input" id="deletePostsSearchInput" type="search" placeholder="ค้นหาข้อความหรือ post id" />
+                        </div>
+                        <select class="pending-filter-select" id="deletePostsTypeFilter">
+                            <option value="all">ทุกประเภท</option>
+                            <option value="link">Link</option>
+                            <option value="text">Text</option>
+                            <option value="image">Image</option>
+                            <option value="reels">Reels</option>
+                        </select>
+                        <div class="pending-quick-filters" id="deletePostsDayFilters">
+                            <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
+                            <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
+                            <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
+                            <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
+                        </div>
+                        <div class="pending-filter-search published-date-filter">
+                            <input class="pending-filter-input" id="deletePostsDateInput" type="date" />
+                        </div>
+                        <div class="pending-filter-meta" id="deletePostsFilterMeta"></div>
+                    </div>
+                    <div class="post-tool-selection-bar">
+                        <div class="post-tool-selection-meta" id="deletePostsSelectionMeta">ยังไม่ได้เลือกโพสต์</div>
+                        <div class="post-tool-selection-actions">
+                            <button class="post-tool-secondary-btn" id="deletePostsSelectVisibleBtn" type="button">เลือกที่เห็น</button>
+                            <button class="post-tool-secondary-btn" id="deletePostsClearSelectionBtn" type="button">ล้างที่เลือก</button>
+                        </div>
+                    </div>
+                    <div class="post-tool-body">
+                        <div class="post-tool-main">
+                            <div class="pending-table-container" id="deletePostsTableContainer">
+                                <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
+                            </div>
+                        </div>
+                        <aside class="post-tool-side">
+                            <div class="post-tool-side-header">Recent Jobs</div>
+                            <div class="post-tool-jobs" id="deletePostsJobs"></div>
+                        </aside>
+                    </div>
+                </div>
+
                 <!-- Earnings Panel -->
                 <div
                     class="pending-panel"
