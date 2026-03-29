@@ -104,49 +104,53 @@ function formatPendingTime(timestamp) {
     });
 }
 
-function getPendingSourceState(post) {
-    const isWorkerQueue = String(post.id || "").startsWith("queue:") || post.source === "system";
-    if (isWorkerQueue) {
-        return {
-            label: post.sourceLabel || "Worker Queue",
-            className: "pending-source-badge is-worker",
-        };
+function normalizePendingWarning(warning) {
+    const raw = String(warning || "").trim();
+    if (!raw) return "";
+
+    const normalized = raw.toLowerCase();
+    if (normalized.includes("session has been invalidated") || normalized.includes("changed their password")) {
+        return "ตอนนี้การเชื่อมต่อ Facebook หลุดอยู่ ระบบเลยแสดงเฉพาะคิวที่ยืนยันได้จาก Pubilo ก่อน";
+    }
+    if (normalized.includes("rate limit") || normalized.includes("temporarily blocked") || normalized.includes("code 368")) {
+        return "Facebook จำกัดการดึงข้อมูลชั่วคราว รายการคิวบางส่วนอาจยังขึ้นไม่ครบในตอนนี้";
+    }
+    if (normalized.includes("missing page token")) {
+        return "ยังไม่มี token ของเพจนี้ จึงแสดงได้เฉพาะคิวที่บันทึกไว้ในระบบก่อน";
     }
 
-    return {
-        label: post.sourceLabel || "Facebook Scheduled",
-        className: "pending-source-badge is-facebook",
-    };
+    return "บางรายการจาก Facebook ยังโหลดไม่ครบ ระบบเลยแสดงเฉพาะคิวที่ยืนยันได้ตอนนี้";
 }
 
-function normalizePendingMeta(meta, posts = []) {
-    if (meta && typeof meta === "object") {
-        return {
-            total: Number(meta.total || posts.length || 0),
-            workerQueue: Number(meta.workerQueue || 0),
-            facebookScheduled: Number(meta.facebookScheduled || 0),
-            processing: Number(meta.processing || 0),
-        };
-    }
+function buildPendingStats(posts = []) {
+    const nowTs = Math.floor(Date.now() / 1000);
+    const soonThreshold = nowTs + (6 * 60 * 60);
+    const today = new Date();
+    const batchGroups = new Set();
+    let todayCount = 0;
+    let soonCount = 0;
 
-    const workerQueue = posts.filter((post) => String(post.id || "").startsWith("queue:") || post.source === "system").length;
-    const processing = posts.filter((post) => String(post.queueStatus || "").toLowerCase() === "processing").length;
+    posts.forEach((post) => {
+        const batchId = getValidBatchId(post);
+        if (batchId) batchGroups.add(batchId);
+        if (isSameLocalDay(post.scheduledTime, today)) todayCount += 1;
+        if (post.scheduledTime && post.scheduledTime <= soonThreshold) soonCount += 1;
+    });
 
     return {
         total: posts.length,
-        workerQueue,
-        facebookScheduled: Math.max(0, posts.length - workerQueue),
-        processing,
+        today: todayCount,
+        soon: soonCount,
+        batchGroups: batchGroups.size,
     };
 }
 
-function renderPendingOverview(meta, warning = "", pageId = "") {
+function renderPendingOverview(posts = [], warning = "", pageId = "") {
     const summaryEl = document.getElementById("pendingSummaryBar");
     const warningEl = document.getElementById("pendingWarningBox");
     if (!summaryEl || !warningEl) return;
 
-    const stats = normalizePendingMeta(meta, []);
-    const pageName = document.querySelector(".page-selector-name")?.textContent?.trim() || pageId || "เพจที่เลือก";
+    const stats = buildPendingStats(posts);
 
     summaryEl.innerHTML = `
         <div class="pending-stat">
@@ -154,33 +158,30 @@ function renderPendingOverview(meta, warning = "", pageId = "") {
             <strong class="pending-stat-value">${stats.total}</strong>
         </div>
         <div class="pending-stat">
-            <span class="pending-stat-label">Worker Queue</span>
-            <strong class="pending-stat-value">${stats.workerQueue}</strong>
+            <span class="pending-stat-label">วันนี้</span>
+            <strong class="pending-stat-value">${stats.today}</strong>
         </div>
         <div class="pending-stat">
-            <span class="pending-stat-label">Facebook Scheduled</span>
-            <strong class="pending-stat-value">${stats.facebookScheduled}</strong>
+            <span class="pending-stat-label">ใกล้ถึงเวลา</span>
+            <strong class="pending-stat-value">${stats.soon}</strong>
         </div>
         <div class="pending-stat">
-            <span class="pending-stat-label">Processing</span>
-            <strong class="pending-stat-value">${stats.processing}</strong>
+            <span class="pending-stat-label">หลายเพจ</span>
+            <strong class="pending-stat-value">${stats.batchGroups}</strong>
         </div>
     `;
 
     if (warning) {
         warningEl.innerHTML = `
-            <strong>โหลดได้เฉพาะ worker queue บางส่วน</strong>
-            <span>${warning}</span>
+            <strong>รายการอาจยังไม่ครบ</strong>
+            <span>${normalizePendingWarning(warning)}</span>
         `;
         warningEl.style.display = "flex";
         return;
     }
 
-    warningEl.innerHTML = `
-        <strong>${pageName}</strong>
-        <span>Worker Queue คือคิวที่ cron ใน worker จะดึงไปโพสต์ตามเวลา ส่วน Facebook Scheduled คือโพสต์ที่ Facebook รับตารางเวลาไว้แล้ว</span>
-    `;
-    warningEl.style.display = "flex";
+    warningEl.innerHTML = "";
+    warningEl.style.display = "none";
 }
 
 const pendingFilters = {
@@ -299,8 +300,8 @@ function buildPendingTable(posts, options = {}) {
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");
     const headers = showPage
-        ? ["Page", "Type", "Source", "Image", "Message", "Time", "Status", "Edit", "Delete"]
-        : ["Type", "Source", "Image", "Message", "Time", "Status", "Edit", "Delete"];
+        ? ["Page", "Type", "Image", "Message", "Time", "Status", "Edit", "Delete"]
+        : ["Type", "Image", "Message", "Time", "Status", "Edit", "Delete"];
     headers.forEach((text) => {
         const th = document.createElement("th");
         th.textContent = text;
@@ -357,15 +358,6 @@ function buildPendingTable(posts, options = {}) {
         typeTd.appendChild(typeSpan);
         tr.appendChild(typeTd);
 
-        // Source cell
-        const sourceTd = document.createElement("td");
-        const sourceBadge = document.createElement("span");
-        const sourceState = getPendingSourceState(post);
-        sourceBadge.className = sourceState.className;
-        sourceBadge.textContent = sourceState.label;
-        sourceTd.appendChild(sourceBadge);
-        tr.appendChild(sourceTd);
-
         // Image cell (clickable to show lightbox, hover to preview)
         const imgTd = document.createElement("td");
         if (post.imageUrl) {
@@ -417,11 +409,12 @@ function buildPendingTable(posts, options = {}) {
             statusLink.className = "pending-table-status";
             statusLink.style.background = "#dcfce7";
             statusLink.style.color = "#166534";
-            statusLink.textContent = "Scheduled";
+            statusLink.textContent = "ตั้งเวลาแล้ว";
             statusLink.href =
                 post.permalink ||
                 `https://www.facebook.com/${post.id}`;
             statusLink.target = "_blank";
+            statusLink.rel = "noopener noreferrer";
             statusLink.title = "View on Facebook";
             statusTd.appendChild(statusLink);
         } else {
@@ -431,11 +424,11 @@ function buildPendingTable(posts, options = {}) {
                 const isProcessing = String(post.queueStatus || "").toLowerCase() === "processing";
                 statusSpan.style.background = isProcessing ? "#fef3c7" : "#dbeafe";
                 statusSpan.style.color = isProcessing ? "#b45309" : "#1d4ed8";
-                statusSpan.textContent = isProcessing ? "Processing" : "Queued";
+                statusSpan.textContent = isProcessing ? "กำลังเตรียม" : "รอเวลา";
             } else {
                 statusSpan.style.background = "#dcfce7";
                 statusSpan.style.color = "#166534";
-                statusSpan.textContent = "Scheduled";
+                statusSpan.textContent = "ตั้งเวลาแล้ว";
             }
             statusTd.appendChild(statusSpan);
         }
@@ -670,7 +663,7 @@ function renderPendingPosts(posts) {
         emptyDiv.className = "pending-empty";
         emptyDiv.textContent = currentPendingPosts.length > 0
             ? "ไม่พบรายการที่ตรงกับ filter นี้"
-            : "No scheduled posts";
+            : "ยังไม่มีคิวโพสต์";
         pendingTableContainer.appendChild(emptyDiv);
     } else {
         // Sort based on user preference
@@ -850,7 +843,7 @@ async function showPendingPanel(forceRefresh = false, view = "posts") {
 
     if (!pageId) {
         currentPendingPosts = [];
-        renderPendingOverview({ total: 0, workerQueue: 0, facebookScheduled: 0, processing: 0 }, "", "");
+        renderPendingOverview([], "", "");
         updatePendingFilterMeta(0, 0);
         pendingTableContainer.innerHTML =
             '<div class="pending-empty">กรุณาเลือกเพจหลักก่อน</div>';
@@ -890,7 +883,7 @@ async function showPendingPanel(forceRefresh = false, view = "posts") {
         currentPendingPosts = scheduledPosts;
 
         renderPendingOverview(
-            scheduledMeta || normalizePendingMeta(null, scheduledPosts),
+            scheduledPosts,
             pendingWarning,
             pageId,
         );
@@ -900,7 +893,7 @@ async function showPendingPanel(forceRefresh = false, view = "posts") {
     } catch (err) {
         console.error("Failed to fetch posts:", err);
         currentPendingPosts = [];
-        renderPendingOverview({ total: 0, workerQueue: 0, facebookScheduled: 0, processing: 0 }, "โหลดคิวโพสต์ไม่สำเร็จ", pageId);
+        renderPendingOverview([], "โหลดคิวโพสต์ไม่สำเร็จ", pageId);
         updatePendingFilterMeta(0, 0);
         pendingTableContainer.textContent = "";
         const errorDiv = document.createElement("div");
