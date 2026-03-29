@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { recordPublishHistory } from '../lib/publish-history';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -83,8 +84,22 @@ app.post('/', async (c) => {
 
         // Log to auto_post_logs with Thai time
         const thaiTimestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
-        await c.env.DB.prepare(`INSERT INTO auto_post_logs (page_id, post_type, quote_text, status, facebook_post_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+        const logResult = await c.env.DB.prepare(`INSERT INTO auto_post_logs (page_id, post_type, quote_text, status, facebook_post_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
             .bind(pageId, 'text', message.slice(0, 500), 'success', postId, thaiTimestamp).run();
+        const logId = Number(logResult.meta?.last_row_id || 0);
+
+        await recordPublishHistory(c.env, {
+            externalKey: logId ? `auto-post-log:${logId}` : `publish:${pageId}:${postId}`,
+            pageId,
+            source: 'auto_post',
+            sourceRef: logId ? String(logId) : postId,
+            postType: 'text',
+            messageText: message,
+            mediaKind: 'text',
+            facebookPostId: postId,
+            facebookUrl: `https://www.facebook.com/${postId}`,
+            publishedAt: thaiTimestamp,
+        });
 
         // Queue share to other pages (will be processed by cron based on share_schedule_minutes)
         const queuedShares: { pageId: string; queued: boolean }[] = [];

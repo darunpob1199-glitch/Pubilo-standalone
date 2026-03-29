@@ -15,6 +15,7 @@ import { autoPostConfigRouter } from './routes/auto-post-config';
 import { autoHideConfigRouter } from './routes/auto-hide-config';
 import { uploadImageRouter } from './routes/upload-image';
 import { logsRouter } from './routes/logs';
+import { publishedPostsRouter } from './routes/published-posts';
 import { migrateRouter } from './routes/migrate';
 // Cron routes
 import { cronAutoPostRouter } from './routes/cron-auto-post';
@@ -146,6 +147,11 @@ async function processScheduledPublishQueue(env: Env, ctx: ExecutionContext): Pr
                     scheduledTime: null,
                     scheduleInSystem: false,
                     internalRun: true,
+                    historyExternalKey: `scheduled-queue:${job.id}`,
+                    historySource: 'scheduled_queue',
+                    historySourceRef: String(job.id),
+                    historyQueueJobId: job.id,
+                    historyScheduledTime: job.scheduled_time,
                 }),
             });
 
@@ -239,6 +245,7 @@ app.route('/api/upload-image', uploadImageRouter);
 app.route('/api/auto-post-logs', logsRouter);
 app.route('/api/view-logs', logsRouter);
 app.route('/api/logs', logsRouter);
+app.route('/api/published-posts', publishedPostsRouter);
 app.route('/api/migrate', migrateRouter);
 
 // Additional API Routes

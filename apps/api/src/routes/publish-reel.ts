@@ -6,6 +6,7 @@ import {
     markReelUploadPublishing,
     upsertReelUploadStage,
 } from '../lib/reel-uploads';
+import { recordPublishHistory } from '../lib/publish-history';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -418,6 +419,11 @@ app.post('/', async (c) => {
         const targetPageIds = normalizeTargetPageIds(getValue('targetPageIds'), pageId);
         const internalRun = isTruthyFlag(getValue('internalRun'));
         const incomingBatchId = String(getValue('batchId') || '').trim();
+        const historyExternalKey = String(getValue('historyExternalKey') || '').trim();
+        const historySource = String(getValue('historySource') || '').trim();
+        const historySourceRef = String(getValue('historySourceRef') || '').trim();
+        const historyQueueJobIdRaw = getValue('historyQueueJobId');
+        const historyScheduledTimeRaw = getValue('historyScheduledTime');
 
         if (!pageId) {
             return c.json({ success: false, error: 'Missing pageId' }, 400);
@@ -698,16 +704,44 @@ app.post('/', async (c) => {
                 });
             }
 
+            const facebookUrl = buildFacebookVideoUrl({
+                pageId,
+                videoId,
+                postId,
+                permalinkUrl,
+            });
+            const parsedQueueJobId = Number(historyQueueJobIdRaw);
+            const parsedScheduledTime = Number(historyScheduledTimeRaw);
+
+            await recordPublishHistory(c.env, {
+                externalKey: historyExternalKey || `reel:${videoKeyUsed || postId || videoId}`,
+                pageId,
+                source: historySource === 'scheduled_queue' ? 'scheduled_queue' : 'reel',
+                sourceRef: historySourceRef || videoKeyUsed || postId || videoId,
+                batchId: currentBatchId,
+                queueJobId: Number.isFinite(parsedQueueJobId) ? parsedQueueJobId : null,
+                postType: 'reels',
+                messageText: caption,
+                mediaKind: 'reels',
+                facebookPostId: postId || videoId,
+                facebookUrl,
+                scheduledTime: Number.isFinite(parsedScheduledTime) ? parsedScheduledTime : null,
+                warningMessage:
+                    affiliateCommentMessage && affiliateCommentResult && !affiliateCommentResult.success
+                        ? `Affiliate comment failed: ${affiliateCommentResult.error?.message || 'Unknown error'}`
+                        : deleteErrorMessage,
+                extraJson: JSON.stringify({
+                    videoId,
+                    hasPermalink: !!permalinkUrl,
+                    videoKey: videoKeyUsed || null,
+                }),
+            });
+
             return c.json({
                 success: true,
                 postId: postId || videoId,
                 videoId,
-                url: buildFacebookVideoUrl({
-                    pageId,
-                    videoId,
-                    postId,
-                    permalinkUrl,
-                }),
+                url: facebookUrl,
                 _debug: {
                     tokenSource:
                         authToken === freshPageToken

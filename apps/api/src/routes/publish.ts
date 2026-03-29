@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { recordPublishHistory } from '../lib/publish-history';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -736,6 +737,11 @@ app.post('/', async (c) => {
             internalRun,
             targetPageIds,
             batchId,
+            historyExternalKey,
+            historySource,
+            historySourceRef,
+            historyQueueJobId,
+            historyScheduledTime,
         } = body;
 
         if (!pageId) {
@@ -825,6 +831,49 @@ app.post('/', async (c) => {
         const currentBatchId = typeof batchId === 'string' && batchId.trim()
             ? batchId.trim()
             : crypto.randomUUID();
+        const resolvedPostType = isLinkAttachmentPost
+            ? 'link'
+            : finalImageUrl
+                ? 'image'
+                : 'text';
+        const resolvedMediaKind = isLinkAttachmentPost
+            ? 'link'
+            : finalImageUrl
+                ? 'image'
+                : 'text';
+        const historySourceName = historySource === 'scheduled_queue'
+            ? 'scheduled_queue'
+            : 'publish';
+        const historyScheduledValue = typeof historyScheduledTime === 'number'
+            ? historyScheduledTime
+            : scheduleTimestamp;
+
+        const recordPublishedSuccess = async (
+            postId: string,
+            facebookUrl: string,
+            extra: Record<string, unknown> = {},
+        ) => {
+            if (scheduleTimestamp) {
+                return;
+            }
+
+            await recordPublishHistory(c.env, {
+                externalKey: String(historyExternalKey || `publish:${pageId}:${postId}`).trim(),
+                pageId,
+                source: historySourceName,
+                sourceRef: String(historySourceRef || postId || '').trim(),
+                batchId: currentBatchId,
+                queueJobId: typeof historyQueueJobId === 'number' ? historyQueueJobId : null,
+                postType: resolvedPostType,
+                messageText: finalCaption || finalMessage || '',
+                mediaKind: resolvedMediaKind,
+                mediaUrl: hostedImageUrl || finalImageUrl || finalLink || '',
+                facebookPostId: postId,
+                facebookUrl,
+                scheduledTime: historyScheduledValue,
+                extraJson: Object.keys(extra).length ? JSON.stringify(extra) : null,
+            });
+        };
 
         if (!internalRun && publishTargetPageIds.length > 1) {
             if (shouldQueueInSystem) {
@@ -1052,10 +1101,17 @@ app.post('/', async (c) => {
                     await publishExistingUnpublishedPost(creativeResult.postId, pageTokenForPublish, facebookHeaders);
                 }
 
+                const publishedUrl = buildFacebookPostUrl(creativeResult.postId, pageId);
+                await recordPublishedSuccess(creativeResult.postId, publishedUrl, {
+                    flow: 'adcreative',
+                    creativeId: creativeResult.creativeId,
+                    materializedBy: creativeResult.materializedBy,
+                });
+
                 return c.json({
                     success: true,
                     postId: creativeResult.postId,
-                    url: buildFacebookPostUrl(creativeResult.postId, pageId),
+                    url: publishedUrl,
                     needsScheduling: !!scheduleTimestamp,
                     ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
                     _debug: {
@@ -1096,10 +1152,16 @@ app.post('/', async (c) => {
                             scheduledTime: scheduleTimestamp,
                         });
 
+                        const publishedUrl = buildFacebookPostUrl(fallbackPost.postId, pageId);
+                        await recordPublishedSuccess(fallbackPost.postId, publishedUrl, {
+                            flow: 'feed-fallback',
+                            adCreativeError: rawMessage,
+                        });
+
                         return c.json({
                             success: true,
                             postId: fallbackPost.postId,
-                            url: buildFacebookPostUrl(fallbackPost.postId, pageId),
+                            url: publishedUrl,
                             needsScheduling: false,
                             ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
                             _debug: {
@@ -1255,10 +1317,15 @@ app.post('/', async (c) => {
                 }
             }
             console.log('[publish] Success! Post ID:', postId);
+            const publishedUrl = buildFacebookPostUrl(postId, pageId);
+            await recordPublishedSuccess(postId, publishedUrl, {
+                flow: isLinkAttachmentPost ? 'facebook-link-post' : 'facebook-direct-post',
+                postMode: postMode || null,
+            });
             return c.json({
                 success: true,
                 postId,
-                url: buildFacebookPostUrl(postId, pageId),
+                url: publishedUrl,
                 needsScheduling: !!scheduleTimestamp,
                 ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
             });

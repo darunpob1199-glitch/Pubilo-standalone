@@ -109,6 +109,28 @@ CREATE TABLE IF NOT EXISTS auto_post_logs (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS publish_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    external_key TEXT NOT NULL UNIQUE,
+    page_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    source_ref TEXT,
+    batch_id TEXT,
+    queue_job_id INTEGER,
+    post_type TEXT,
+    message_text TEXT,
+    media_kind TEXT,
+    media_url TEXT,
+    media_thumb_url TEXT,
+    facebook_post_id TEXT,
+    facebook_url TEXT,
+    scheduled_time INTEGER,
+    published_at TEXT,
+    warning_message TEXT,
+    extra_json TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS share_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_page_id TEXT NOT NULL,
@@ -152,6 +174,8 @@ CREATE INDEX IF NOT EXISTS idx_prompts_page_type ON prompts (page_id, prompt_typ
 CREATE INDEX IF NOT EXISTS idx_quotes_created_at ON quotes (created_at);
 CREATE INDEX IF NOT EXISTS idx_auto_post_logs_page_id ON auto_post_logs (page_id);
 CREATE INDEX IF NOT EXISTS idx_auto_post_logs_created_at ON auto_post_logs (created_at);
+CREATE INDEX IF NOT EXISTS idx_publish_history_page_published ON publish_history (page_id, published_at);
+CREATE INDEX IF NOT EXISTS idx_publish_history_source_ref ON publish_history (source, source_ref);
 CREATE INDEX IF NOT EXISTS idx_share_queue_status_created_at ON share_queue (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_share_queue_target_page_id ON share_queue (target_page_id);
 CREATE INDEX IF NOT EXISTS idx_earnings_history_date ON earnings_history (date);

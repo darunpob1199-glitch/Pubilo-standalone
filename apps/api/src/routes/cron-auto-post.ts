@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { recordPublishHistory } from '../lib/publish-history';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -305,8 +306,22 @@ app.get('/', async (c) => {
 
             // Log to auto_post_logs with Thai time
             const thaiTimestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
-            await c.env.DB.prepare(`INSERT INTO auto_post_logs (page_id, post_type, quote_text, status, facebook_post_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+            const logResult = await c.env.DB.prepare(`INSERT INTO auto_post_logs (page_id, post_type, quote_text, status, facebook_post_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
                 .bind(config.page_id, nextPostType, unusedQuote.quote_text, 'success', facebookPostId, thaiTimestamp).run();
+            const logId = Number(logResult.meta?.last_row_id || 0);
+
+            await recordPublishHistory(c.env, {
+                externalKey: logId ? `auto-post-log:${logId}` : `publish:${config.page_id}:${facebookPostId}`,
+                pageId: config.page_id,
+                source: 'auto_post',
+                sourceRef: logId ? String(logId) : facebookPostId,
+                postType: nextPostType,
+                messageText: unusedQuote.quote_text,
+                mediaKind: nextPostType,
+                facebookPostId,
+                facebookUrl: `https://www.facebook.com/${facebookPostId}`,
+                publishedAt: thaiTimestamp,
+            });
 
             // Queue share if configured
             if (config.share_page_id && facebookPostId) {
