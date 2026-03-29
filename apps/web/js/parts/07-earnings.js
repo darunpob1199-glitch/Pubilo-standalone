@@ -130,7 +130,6 @@ function showPublishedPanel() {
     publishedPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
     document.body.style.overflow = "hidden";
-    syncPublishedSourceTabs();
     loadPublishedPosts();
 }
 
@@ -142,25 +141,13 @@ const publishedFilters = {
 };
 
 let currentPublishedPosts = [];
-let publishedSourceMode = "facebook";
-const publishedFacebookTab = document.getElementById("publishedFacebookTab");
-const publishedHistoryTab = document.getElementById("publishedHistoryTab");
-
-function syncPublishedSourceTabs() {
-    publishedFacebookTab?.classList.toggle("is-active", publishedSourceMode === "facebook");
-    publishedHistoryTab?.classList.toggle("is-active", publishedSourceMode === "history");
-}
 
 function getPublishedEmptyCopy() {
-    return publishedSourceMode === "facebook"
-        ? "ยังไม่พบโพสต์บน Facebook ของเพจนี้"
-        : "ยังไม่มีประวัติที่ Pubilo ยิงสำเร็จ";
+    return "ยังไม่พบโพสต์ของเพจนี้";
 }
 
 function getPublishedNoResultsCopy() {
-    return publishedSourceMode === "facebook"
-        ? "ไม่พบโพสต์บน Facebook ที่ตรงกับ filter นี้"
-        : "ไม่พบประวัติที่ตรงกับ filter นี้";
+    return "ไม่พบโพสต์ที่ตรงกับ filter นี้";
 }
 
 function parsePublishedDate(value) {
@@ -191,20 +178,46 @@ function getPublishedPostTypeKey(log) {
     return "link";
 }
 
-function getPublishedSourceClass(source) {
-    switch (String(source || "")) {
-        case "facebook":
-            return "is-facebook";
-        case "scheduled_queue":
-            return "is-scheduled";
-        case "reel":
-            return "is-reel";
-        case "auto_post":
-            return "is-auto";
-        case "publish":
-        default:
-            return "is-manual";
+function normalizePublishedFacebookUrl(value) {
+    const normalized = String(value || "").trim();
+    if (!normalized) return "";
+    if (normalized.startsWith("http://") || normalized.startsWith("https://")) return normalized;
+    if (normalized.startsWith("/")) return `https://www.facebook.com${normalized}`;
+    return `https://www.facebook.com/${normalized.replace(/^\/+/, "")}`;
+}
+
+function buildPublishedFacebookUrl(log) {
+    const explicit = normalizePublishedFacebookUrl(log.facebook_url);
+    if (explicit) return explicit;
+
+    const pageId = String(log.page_id || getCurrentPageId() || "").trim();
+    const postId = String(log.facebook_post_id || "").trim();
+    const postType = getPublishedPostTypeKey(log);
+    if (!postId) return "";
+
+    const normalizedPostId = postId.replace(/^fb:/, "");
+
+    if (postType === "reels") {
+        const reelId = normalizedPostId.includes("_")
+            ? normalizedPostId.split("_").pop()
+            : normalizedPostId;
+        return reelId ? `https://www.facebook.com/reel/${reelId}/` : "";
     }
+
+    if (normalizedPostId.includes("_")) {
+        const parts = normalizedPostId.split("_").filter(Boolean);
+        const objectId = parts[parts.length - 1];
+        const ownerId = pageId || parts[0];
+        if (ownerId && objectId) {
+            return `https://www.facebook.com/${ownerId}/posts/${objectId}`;
+        }
+    }
+
+    if (pageId) {
+        return `https://www.facebook.com/${pageId}/posts/${normalizedPostId}`;
+    }
+
+    return `https://www.facebook.com/${normalizedPostId}`;
 }
 
 function renderPublishedOverview(logs) {
@@ -221,17 +234,13 @@ function renderPublishedOverview(logs) {
         const date = parsePublishedDate(log.published_at || log.created_at);
         return date && date.getTime() >= sevenDaysAgo;
     }).length;
-    const batchCount = logs.filter((log) => String(log.batch_id || "").trim()).length;
-
-    const totalLabel = publishedSourceMode === "facebook" ? "Facebook ทั้งหมด" : "ทั้งหมด";
-    const lastCardLabel = publishedSourceMode === "facebook" ? "Text / Reels" : "Reels / Batch";
-    const lastCardValue = publishedSourceMode === "facebook"
-        ? `${textCount} / ${reelsCount}`
-        : `${reelsCount} / ${batchCount}`;
+    const imageCount = logs.filter((log) => getPublishedPostTypeKey(log) === "image").length;
+    const lastCardLabel = "Image / Reels";
+    const lastCardValue = `${imageCount} / ${reelsCount}`;
 
     summaryEl.innerHTML = `
         <div class="pending-stat">
-            <span class="pending-stat-label">${totalLabel}</span>
+            <span class="pending-stat-label">ทั้งหมด</span>
             <span class="pending-stat-value">${logs.length}</span>
         </div>
         <div class="pending-stat">
@@ -241,6 +250,10 @@ function renderPublishedOverview(logs) {
         <div class="pending-stat">
             <span class="pending-stat-label">7 วันล่าสุด</span>
             <span class="pending-stat-value">${last7DaysCount}</span>
+        </div>
+        <div class="pending-stat">
+            <span class="pending-stat-label">Text / Link</span>
+            <span class="pending-stat-value">${textCount} / ${Math.max(logs.length - textCount - imageCount - reelsCount, 0)}</span>
         </div>
         <div class="pending-stat">
             <span class="pending-stat-label">${lastCardLabel}</span>
@@ -266,13 +279,11 @@ function getPublishedFilterResult(logs) {
     const filtered = logs.filter((log) => {
         const typeKey = getPublishedPostTypeKey(log);
         const message = String(log.message_text || "").trim();
-        const sourceLabel = String(log.sourceLabel || "").trim();
-        const batchId = String(log.batch_id || "").trim();
         const haystack = [
             message,
             log.facebook_post_id || "",
-            sourceLabel,
-            batchId,
+            log.facebook_url || "",
+            log.page_id || "",
         ].join(" ").toLowerCase();
 
         if (query && !haystack.includes(query)) {
@@ -343,7 +354,7 @@ function buildPublishedTable(logs) {
 
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");
-    ["Type", "Source", "Message", "Published", "Link", "Delete"].forEach((text) => {
+    ["Type", "Message", "Published", "Link"].forEach((text) => {
         const th = document.createElement("th");
         th.textContent = text;
         headerRow.appendChild(th);
@@ -370,13 +381,6 @@ function buildPublishedTable(logs) {
         typeSpan.title = pType;
         typeTd.appendChild(typeSpan);
         tr.appendChild(typeTd);
-
-        const sourceTd = document.createElement("td");
-        const sourceBadge = document.createElement("span");
-        sourceBadge.className = `published-source-badge ${getPublishedSourceClass(log.source)}`;
-        sourceBadge.textContent = log.sourceLabel || "Manual";
-        sourceTd.appendChild(sourceBadge);
-        tr.appendChild(sourceTd);
 
         const msgTd = document.createElement("td");
         const msgWrap = document.createElement("div");
@@ -414,11 +418,12 @@ function buildPublishedTable(logs) {
         tr.appendChild(timeTd);
 
         const linkTd = document.createElement("td");
-        const facebookUrl = String(log.facebook_url || "").trim() || (log.facebook_post_id ? `https://facebook.com/${log.facebook_post_id}` : "");
+        const facebookUrl = buildPublishedFacebookUrl(log);
         if (facebookUrl) {
             const link = document.createElement("a");
             link.href = facebookUrl;
             link.target = "_blank";
+            link.rel = "noopener noreferrer";
             link.className = "pending-table-link";
             link.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
             link.title = "เปิดโพสต์บน Facebook";
@@ -428,22 +433,6 @@ function buildPublishedTable(logs) {
             linkTd.style.color = "#94a3b8";
         }
         tr.appendChild(linkTd);
-
-        const deleteTd = document.createElement("td");
-        if (publishedSourceMode === "history" && log.deleteAllowed !== false && log.id) {
-            const deleteBtn = document.createElement("button");
-            deleteBtn.className = "pending-table-delete";
-            deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
-            deleteBtn.title = "Delete";
-            deleteBtn.onclick = () => deletePublishedLog(log.id);
-            deleteTd.appendChild(deleteBtn);
-        } else {
-            const disabled = document.createElement("span");
-            disabled.className = "published-delete-disabled";
-            disabled.textContent = "-";
-            deleteTd.appendChild(disabled);
-        }
-        tr.appendChild(deleteTd);
 
         tbody.appendChild(tr);
     });
@@ -514,7 +503,7 @@ async function loadPublishedPosts() {
             body: JSON.stringify({
                 pageId,
                 limit: 200,
-                source: publishedSourceMode,
+                source: "merged",
                 accessToken: adsToken,
                 pageToken,
                 cookieData: cookie,
@@ -536,46 +525,11 @@ async function loadPublishedPosts() {
     }
 }
 
-async function deletePublishedLog(logId) {
-    if (!confirm("ต้องการลบรายการโพสต์นี้?")) return;
-    try {
-        const response = await fetch(`/api/published-posts/${logId}`, { method: "DELETE" });
-        const data = await response.json();
-        if (data.success) {
-            loadPublishedPosts();
-        } else {
-            alert("Error: " + data.error);
-        }
-    } catch (err) {
-        alert("Error: " + err.message);
-    }
-}
-
 const publishedRefreshBtn = document.getElementById("publishedRefreshBtn");
 const publishedSearchInput = document.getElementById("publishedSearchInput");
 const publishedTypeFilter = document.getElementById("publishedTypeFilter");
 const publishedDayFilters = document.getElementById("publishedDayFilters");
 const publishedDateInput = document.getElementById("publishedDateInput");
-
-if (publishedFacebookTab && !publishedFacebookTab.dataset.bound) {
-    publishedFacebookTab.dataset.bound = "true";
-    publishedFacebookTab.addEventListener("click", () => {
-        if (publishedSourceMode === "facebook") return;
-        publishedSourceMode = "facebook";
-        syncPublishedSourceTabs();
-        loadPublishedPosts();
-    });
-}
-
-if (publishedHistoryTab && !publishedHistoryTab.dataset.bound) {
-    publishedHistoryTab.dataset.bound = "true";
-    publishedHistoryTab.addEventListener("click", () => {
-        if (publishedSourceMode === "history") return;
-        publishedSourceMode = "history";
-        syncPublishedSourceTabs();
-        loadPublishedPosts();
-    });
-}
 
 if (publishedRefreshBtn && !publishedRefreshBtn.dataset.bound) {
     publishedRefreshBtn.dataset.bound = "true";

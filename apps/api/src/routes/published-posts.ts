@@ -5,7 +5,7 @@ import { backfillLegacyPublishHistory, ensurePublishHistoryTable } from '../lib/
 const app = new Hono<{ Bindings: Env }>();
 const FB_API = 'https://graph.facebook.com/v21.0';
 
-type PublishedSource = 'facebook' | 'history';
+type PublishedSource = 'merged' | 'facebook' | 'history';
 
 type PublishedQueryInput = {
     pageId: string;
@@ -17,7 +17,10 @@ type PublishedQueryInput = {
 };
 
 function normalizeSource(value?: string | null): PublishedSource {
-    return String(value || '').trim().toLowerCase() === 'history' ? 'history' : 'facebook';
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'history') return 'history';
+    if (normalized === 'facebook') return 'facebook';
+    return 'merged';
 }
 
 function normalizeFacebookUrl(value?: string | null): string | null {
@@ -26,6 +29,45 @@ function normalizeFacebookUrl(value?: string | null): string | null {
     if (normalized.startsWith('http://') || normalized.startsWith('https://')) return normalized;
     if (normalized.startsWith('/')) return `https://www.facebook.com${normalized}`;
     return `https://www.facebook.com/${normalized.replace(/^\/+/, '')}`;
+}
+
+function buildFacebookPostUrl(params: {
+    pageId?: string | null;
+    postId?: string | null;
+    permalink?: string | null;
+    postType?: string | null;
+}): string | null {
+    const permalink = normalizeFacebookUrl(params.permalink);
+    if (permalink) return permalink;
+
+    const pageId = String(params.pageId || '').trim();
+    const postId = String(params.postId || '').trim();
+    const postType = String(params.postType || '').trim().toLowerCase();
+    if (!postId) return null;
+
+    const normalizedPostId = postId.replace(/^fb:/, '');
+
+    if (postType.includes('reel') || postType.includes('video')) {
+        const reelId = normalizedPostId.includes('_')
+            ? normalizedPostId.split('_').pop()
+            : normalizedPostId;
+        return reelId ? `https://www.facebook.com/reel/${reelId}/` : null;
+    }
+
+    if (normalizedPostId.includes('_')) {
+        const parts = normalizedPostId.split('_').filter(Boolean);
+        const objectId = parts[parts.length - 1];
+        const ownerId = pageId || parts[0];
+        if (ownerId && objectId) {
+            return `https://www.facebook.com/${ownerId}/posts/${objectId}`;
+        }
+    }
+
+    if (pageId) {
+        return `https://www.facebook.com/${pageId}/posts/${normalizedPostId}`;
+    }
+
+    return `https://www.facebook.com/${normalizedPostId}`;
 }
 
 function buildFacebookHeaders(cookieData?: string): Record<string, string> | undefined {
@@ -158,7 +200,12 @@ function mapFacebookPosts(data: any): Array<Record<string, any>> {
             media_url: normalizeFacebookUrl(post.full_picture || ''),
             media_thumb_url: normalizeFacebookUrl(post.full_picture || ''),
             facebook_post_id: String(post.id || ''),
-            facebook_url: normalizeFacebookUrl(post.permalink_url || ''),
+            facebook_url: buildFacebookPostUrl({
+                pageId: String(post.from?.id || ''),
+                postId: String(post.id || ''),
+                permalink: post.permalink_url,
+                postType,
+            }),
             scheduled_time: null,
             published_at: String(post.created_time || '').trim() || null,
             warning_message: null,
@@ -279,7 +326,12 @@ async function fetchHistoryPublishedPosts(env: Env, input: PublishedQueryInput) 
     const results = await env.DB.prepare(query).bind(pageId, pageId, limit).all<Record<string, any>>();
     const logs = (results.results || []).map((row) => ({
         ...row,
-        facebook_url: normalizeFacebookUrl(row.facebook_url),
+        facebook_url: buildFacebookPostUrl({
+            pageId: row.page_id,
+            postId: row.facebook_post_id,
+            permalink: row.facebook_url,
+            postType: row.post_type,
+        }),
         sourceLabel: mapSourceLabel(row.source),
         deleteAllowed: true,
     }));
@@ -287,11 +339,80 @@ async function fetchHistoryPublishedPosts(env: Env, input: PublishedQueryInput) 
     return { success: true, logs };
 }
 
+function getPublishedSortTime(row: Record<string, any>): number {
+    const raw = String(row.published_at || row.created_at || '').trim();
+    if (!raw) return 0;
+    const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
+        ? raw.replace(' ', 'T')
+        : raw;
+    const timestamp = Date.parse(normalized);
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getPublishedMergeKey(row: Record<string, any>): string {
+    const postId = String(row.facebook_post_id || '').trim();
+    if (postId) return `post:${postId}`;
+
+    const facebookUrl = normalizeFacebookUrl(row.facebook_url);
+    if (facebookUrl) return `url:${facebookUrl}`;
+
+    const sourceRef = String(row.source_ref || row.id || '').trim();
+    return `ref:${sourceRef}`;
+}
+
+function mergePublishedLogs(facebookLogs: Array<Record<string, any>>, historyLogs: Array<Record<string, any>>) {
+    const merged = new Map<string, Record<string, any>>();
+
+    facebookLogs.forEach((row) => {
+        merged.set(getPublishedMergeKey(row), { ...row, deleteAllowed: false });
+    });
+
+    historyLogs.forEach((row) => {
+        const key = getPublishedMergeKey(row);
+        const existing = merged.get(key);
+
+        if (!existing) {
+            merged.set(key, { ...row, deleteAllowed: false });
+            return;
+        }
+
+        merged.set(key, {
+            ...existing,
+            warning_message: existing.warning_message || row.warning_message,
+            batch_id: existing.batch_id || row.batch_id,
+            queue_job_id: existing.queue_job_id || row.queue_job_id,
+            source_ref: existing.source_ref || row.source_ref,
+            media_url: existing.media_url || row.media_url,
+            media_thumb_url: existing.media_thumb_url || row.media_thumb_url,
+            facebook_url: existing.facebook_url || row.facebook_url,
+        });
+    });
+
+    return Array.from(merged.values()).sort((a, b) => getPublishedSortTime(b) - getPublishedSortTime(a));
+}
+
 async function handleListRequest(env: Env, input: PublishedQueryInput) {
     if (input.source === 'history') {
         return fetchHistoryPublishedPosts(env, input);
     }
-    return fetchFacebookPublishedPosts(env, input);
+    if (input.source === 'facebook') {
+        return fetchFacebookPublishedPosts(env, input);
+    }
+
+    const historyResult = await fetchHistoryPublishedPosts(env, input);
+    const facebookResult = await fetchFacebookPublishedPosts(env, input);
+
+    if (facebookResult.success) {
+        return {
+            success: true,
+            logs: mergePublishedLogs(
+                Array.isArray(facebookResult.logs) ? facebookResult.logs : [],
+                Array.isArray(historyResult.logs) ? historyResult.logs : [],
+            ),
+        };
+    }
+
+    return historyResult;
 }
 
 app.get('/', async (c) => {
