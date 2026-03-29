@@ -217,6 +217,55 @@ function mapFacebookPosts(data: any): Array<Record<string, any>> {
     });
 }
 
+function collectPinnedPostIds(payload: any): string[] {
+    const sources = [
+        payload?.data,
+        payload?.pinned_posts?.data,
+        payload?.pinned_post?.data,
+    ];
+    const seen = new Set<string>();
+    const postIds: string[] = [];
+
+    sources.forEach((source) => {
+        if (!Array.isArray(source)) return;
+        source.forEach((item: any) => {
+            const postId = String(item?.id || '').trim();
+            if (!postId || seen.has(postId)) return;
+            seen.add(postId);
+            postIds.push(postId);
+        });
+    });
+
+    return postIds;
+}
+
+async function fetchPinnedPostIds(
+    pageId: string,
+    authToken: string,
+    headers?: Record<string, string>,
+): Promise<Set<string>> {
+    const pinnedIds = new Set<string>();
+    const endpoints = [
+        `${FB_API}/${pageId}/pinned_posts?fields=id&limit=10&access_token=${encodeURIComponent(authToken)}`,
+        `${FB_API}/${pageId}?fields=pinned_posts.limit(10){id}&access_token=${encodeURIComponent(authToken)}`,
+    ];
+
+    for (const endpoint of endpoints) {
+        try {
+            const response = await fetch(endpoint, headers ? { headers } : undefined);
+            const payload = await response.json() as any;
+            if (payload?.error) continue;
+
+            collectPinnedPostIds(payload).forEach((postId) => pinnedIds.add(postId));
+            if (pinnedIds.size > 0) return pinnedIds;
+        } catch (error) {
+            console.warn('[published-posts] pinned posts lookup failed:', error);
+        }
+    }
+
+    return pinnedIds;
+}
+
 async function getStoredPageToken(env: Env, pageId: string): Promise<string> {
     if (!pageId) return '';
 
@@ -279,16 +328,21 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
             continue;
         }
 
-        const logs = mapFacebookPosts(data).map((row) => ({
+        const logs: Array<Record<string, any>> = mapFacebookPosts(data).map((row) => ({
             ...row,
             page_id: pageId,
+        }));
+        const pinnedIds = await fetchPinnedPostIds(pageId, authToken, headers);
+        const normalizedLogs = logs.map((row) => ({
+            ...row,
+            is_pinned: pinnedIds.has(String(row.facebook_post_id || '').trim()),
         }));
         const nextCursor = String(data?.paging?.cursors?.after || '').trim();
         const hasMore = Boolean(data?.paging?.next && nextCursor);
 
         return {
             success: true,
-            logs,
+            logs: normalizedLogs,
             meta: {
                 source: 'facebook',
                 hasMore,

@@ -644,6 +644,150 @@
                 font-weight: 700;
             }
 
+            .post-tool-link-btn.is-retry {
+                color: #15803d;
+            }
+
+            .post-tool-job-action-buttons {
+                display: flex;
+                align-items: center;
+                gap: 0.65rem;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+
+            .post-tool-job-detail {
+                padding-top: 0.2rem;
+                border-top: 1px solid #eef2f7;
+            }
+
+            .post-tool-job-detail-list {
+                display: flex;
+                flex-direction: column;
+                gap: 0.55rem;
+            }
+
+            .post-tool-job-detail-toolbar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 0.75rem;
+                margin-bottom: 0.65rem;
+            }
+
+            .post-tool-job-detail-summary {
+                color: #475569;
+                font-size: 0.76rem;
+                font-weight: 700;
+            }
+
+            .post-tool-job-detail-actions,
+            .post-tool-job-detail-status-wrap {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                flex-wrap: wrap;
+            }
+
+            .post-tool-job-detail-item {
+                padding: 0.7rem 0.75rem;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
+                background: #f8fafc;
+            }
+
+            .post-tool-job-detail-item.is-failed {
+                background: #fef2f2;
+                border-color: #fecaca;
+            }
+
+            .post-tool-job-detail-item.is-success {
+                background: #f0fdf4;
+                border-color: #bbf7d0;
+            }
+
+            .post-tool-job-detail-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 0.5rem;
+                margin-bottom: 0.35rem;
+            }
+
+            .post-tool-job-item-status {
+                display: inline-flex;
+                align-items: center;
+                padding: 0.16rem 0.45rem;
+                border-radius: 999px;
+                font-size: 0.7rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                background: #e2e8f0;
+                color: #475569;
+            }
+
+            .post-tool-job-item-checkbox {
+                width: 15px;
+                height: 15px;
+                accent-color: #2563eb;
+                cursor: pointer;
+                flex-shrink: 0;
+            }
+
+            .post-tool-job-item-checkbox-spacer {
+                display: inline-block;
+                width: 15px;
+                height: 15px;
+                flex-shrink: 0;
+            }
+
+            .post-tool-job-item-status.is-failed {
+                background: #fee2e2;
+                color: #b91c1c;
+            }
+
+            .post-tool-job-item-status.is-success {
+                background: #dcfce7;
+                color: #166534;
+            }
+
+            .post-tool-job-item-status.is-pending,
+            .post-tool-job-item-status.is-processing {
+                background: #fef3c7;
+                color: #b45309;
+            }
+
+            .post-tool-job-item-time,
+            .post-tool-job-item-sub {
+                color: #64748b;
+                font-size: 0.74rem;
+            }
+
+            .post-tool-job-item-title {
+                color: #0f172a;
+                font-size: 0.82rem;
+                font-weight: 600;
+                line-height: 1.45;
+                margin-bottom: 0.2rem;
+            }
+
+            .post-tool-job-item-error {
+                margin-top: 0.35rem;
+                color: #b91c1c;
+                font-size: 0.74rem;
+                line-height: 1.45;
+            }
+
+            .post-tool-job-detail-empty {
+                color: #64748b;
+                font-size: 0.78rem;
+                padding: 0.1rem 0;
+            }
+
+            .post-tool-job-detail-empty.is-error {
+                color: #b91c1c;
+            }
+
             .post-tool-row {
                 display: flex;
                 align-items: center;
@@ -722,6 +866,20 @@
                 .post-tool-pagination {
                     flex-direction: column;
                     align-items: stretch;
+                }
+
+                .post-tool-job-actions,
+                .post-tool-job-head,
+                .post-tool-job-detail-toolbar {
+                    align-items: flex-start;
+                }
+
+                .post-tool-job-action-buttons {
+                    justify-content: flex-start;
+                }
+
+                .post-tool-job-detail-toolbar {
+                    flex-direction: column;
                 }
             }
 

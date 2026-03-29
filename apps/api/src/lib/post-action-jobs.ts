@@ -294,6 +294,74 @@ export async function listPostActionJobs(env: Env, params: {
     return rows.results || [];
 }
 
+export async function getPostActionJobDetail(env: Env, jobId: number) {
+    await ensurePostActionTables(env);
+
+    const job = await env.DB.prepare(`
+        SELECT
+            id,
+            page_id,
+            action,
+            status,
+            total_count,
+            processed_count,
+            success_count,
+            failed_count,
+            requested_filters_json,
+            last_error,
+            created_at,
+            updated_at,
+            started_at,
+            finished_at
+        FROM post_action_jobs
+        WHERE id = ?
+        LIMIT 1
+    `).bind(jobId).first<Record<string, any>>();
+
+    if (!job?.id) {
+        throw new Error('Job not found');
+    }
+
+    const itemsResult = await env.DB.prepare(`
+        SELECT
+            id,
+            post_id,
+            post_message,
+            post_type,
+            post_created_at,
+            post_permalink,
+            post_picture_url,
+            status,
+            error_message,
+            processed_at,
+            created_at
+        FROM post_action_items
+        WHERE job_id = ?
+        ORDER BY
+            CASE status
+                WHEN 'failed' THEN 0
+                WHEN 'pending' THEN 1
+                WHEN 'success' THEN 2
+                ELSE 3
+            END,
+            id ASC
+    `).bind(jobId).all<Record<string, any>>();
+
+    return {
+        job: {
+            ...job,
+            requested_filters: (() => {
+                try {
+                    return job.requested_filters_json ? JSON.parse(String(job.requested_filters_json)) : null;
+                } catch {
+                    return null;
+                }
+            })(),
+        },
+        items: itemsResult.results || [],
+    };
+}
+
 export async function cancelPostActionJob(env: Env, jobId: number) {
     await ensurePostActionTables(env);
 
@@ -311,6 +379,80 @@ export async function cancelPostActionJob(env: Env, jobId: number) {
             error_message = 'Cancelled by user',
             processed_at = CURRENT_TIMESTAMP
         WHERE job_id = ? AND status = 'pending'
+    `).bind(jobId).run();
+
+    await refreshPostActionJobStats(env, jobId);
+}
+
+export async function retryFailedPostActionJob(env: Env, jobId: number, itemIds?: number[]) {
+    await ensurePostActionTables(env);
+
+    const job = await env.DB.prepare(`
+        SELECT id, status, failed_count
+        FROM post_action_jobs
+        WHERE id = ?
+        LIMIT 1
+    `).bind(jobId).first<{ id?: number; status?: string | null; failed_count?: number | null }>();
+
+    if (!job?.id) {
+        throw new Error('Job not found');
+    }
+
+    const status = String(job.status || '').trim();
+    if (status === 'pending' || status === 'processing') {
+        throw new Error('Job is already running');
+    }
+
+    const failedCount = Number(job.failed_count || 0);
+    if (failedCount <= 0) {
+        throw new Error('No failed items to retry');
+    }
+
+    const targetItemIds = Array.isArray(itemIds)
+        ? itemIds.filter((id) => Number.isFinite(id) && id > 0)
+        : [];
+
+    if (targetItemIds.length > 0) {
+        const placeholders = targetItemIds.map(() => '?').join(', ');
+        const availableFailed = await env.DB.prepare(`
+            SELECT id
+            FROM post_action_items
+            WHERE job_id = ?
+              AND status = 'failed'
+              AND id IN (${placeholders})
+        `).bind(jobId, ...targetItemIds).all<{ id: number }>();
+
+        const matchedIds = (availableFailed.results || []).map((row) => Number(row.id)).filter((id) => id > 0);
+        if (!matchedIds.length) {
+            throw new Error('No matching failed items to retry');
+        }
+
+        const matchedPlaceholders = matchedIds.map(() => '?').join(', ');
+        await env.DB.prepare(`
+            UPDATE post_action_items
+            SET status = 'pending',
+                error_message = NULL,
+                processed_at = NULL
+            WHERE job_id = ?
+              AND id IN (${matchedPlaceholders})
+        `).bind(jobId, ...matchedIds).run();
+    } else {
+        await env.DB.prepare(`
+            UPDATE post_action_items
+            SET status = 'pending',
+                error_message = NULL,
+                processed_at = NULL
+            WHERE job_id = ? AND status = 'failed'
+        `).bind(jobId).run();
+    }
+
+    await env.DB.prepare(`
+        UPDATE post_action_jobs
+        SET status = 'pending',
+            last_error = NULL,
+            updated_at = CURRENT_TIMESTAMP,
+            finished_at = NULL
+        WHERE id = ?
     `).bind(jobId).run();
 
     await refreshPostActionJobStats(env, jobId);

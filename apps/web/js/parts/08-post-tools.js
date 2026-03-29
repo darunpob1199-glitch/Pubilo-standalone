@@ -29,6 +29,9 @@ function createPostToolState() {
         pageId: "",
         posts: [],
         jobs: [],
+        jobDetails: {},
+        expandedJobIds: new Set(),
+        failedSelections: {},
         selectedIds: new Set(),
         filters: {
             query: "",
@@ -67,6 +70,9 @@ function resetPostToolStateDefaults(toolKey) {
     state.pagination.hasMore = false;
     state.pagination.loadingMore = false;
     state.pagination.lastBatchCount = 0;
+    state.jobDetails = {};
+    state.expandedJobIds = new Set();
+    state.failedSelections = {};
     state.safeguards.keepLatestEnabled = toolKey === "hide";
     state.safeguards.keepLatestCount = 10;
     state.safeguards.minAgeEnabled = toolKey === "hide";
@@ -159,6 +165,39 @@ function getPostToolItemId(post) {
 function getPostToolPositiveInt(value, fallback) {
     const parsed = parseInt(String(value || ""), 10);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function escapePostToolHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function getPostToolFailedSelection(toolKey, jobId) {
+    const state = postToolStates[toolKey];
+    if (!state.failedSelections[jobId]) {
+        state.failedSelections[jobId] = new Set();
+    }
+    return state.failedSelections[jobId];
+}
+
+function prunePostToolFailedSelection(toolKey, jobId, items = []) {
+    const selection = getPostToolFailedSelection(toolKey, jobId);
+    const validIds = new Set(
+        items
+            .filter((item) => String(item.status || "") === "failed")
+            .map((item) => Number(item.id))
+            .filter((id) => Number.isFinite(id) && id > 0),
+    );
+
+    Array.from(selection).forEach((id) => {
+        if (!validIds.has(id)) {
+            selection.delete(id);
+        }
+    });
 }
 
 function getPostToolProtectionReason(toolKey, post) {
@@ -443,6 +482,119 @@ function renderPostToolPagination(toolKey) {
     }
 
     dom.loadMoreMeta.textContent = state.loaded ? "ยังไม่มีโพสต์จากเพจนี้" : "";
+}
+
+async function loadPostToolJobDetail(toolKey, jobId, { force = false } = {}) {
+    const state = postToolStates[toolKey];
+    const detailState = state.jobDetails[jobId] || {
+        loading: false,
+        loaded: false,
+        error: "",
+        job: null,
+        items: [],
+    };
+
+    if (detailState.loading) return;
+    if (detailState.loaded && !force) return;
+
+    detailState.loading = true;
+    detailState.error = "";
+    state.jobDetails[jobId] = detailState;
+    renderPostToolJobs(toolKey);
+
+    try {
+        const response = await fetch(`/api/post-action-jobs/${jobId}`);
+        const data = await response.json();
+
+        if (!data.success) {
+            throw new Error(data.error || "Failed to load job detail");
+        }
+
+        state.jobDetails[jobId] = {
+            loading: false,
+            loaded: true,
+            error: "",
+            job: data.job || null,
+            items: Array.isArray(data.items) ? data.items : [],
+        };
+        prunePostToolFailedSelection(toolKey, jobId, state.jobDetails[jobId].items);
+    } catch (error) {
+        state.jobDetails[jobId] = {
+            loading: false,
+            loaded: false,
+            error: error.message || String(error),
+            job: null,
+            items: [],
+        };
+    }
+
+    renderPostToolJobs(toolKey);
+}
+
+async function refreshExpandedPostToolJobDetails(toolKey) {
+    const state = postToolStates[toolKey];
+    const expandedIds = Array.from(state.expandedJobIds || []);
+    if (!expandedIds.length) return;
+
+    await Promise.all(expandedIds.map((jobId) => loadPostToolJobDetail(toolKey, jobId, { force: true })));
+}
+
+function renderPostToolJobItems(toolKey, jobId, detailState) {
+    if (!detailState) {
+        return '<div class="post-tool-job-detail-empty">ยังไม่ได้โหลดรายละเอียด</div>';
+    }
+
+    if (detailState.loading) {
+        return '<div class="post-tool-job-detail-empty">กำลังโหลดรายละเอียด...</div>';
+    }
+
+    if (detailState.error) {
+        return `<div class="post-tool-job-detail-empty is-error">${escapePostToolHtml(detailState.error)}</div>`;
+    }
+
+    const items = Array.isArray(detailState.items) ? detailState.items : [];
+    if (!items.length) {
+        return '<div class="post-tool-job-detail-empty">ไม่มีรายการใน job นี้</div>';
+    }
+
+    const failedItems = items.filter((item) => String(item.status || "") === "failed");
+    const failedSelection = getPostToolFailedSelection(toolKey, jobId);
+    const selectedFailedCount = Array.from(failedSelection).filter((id) => failedItems.some((item) => Number(item.id) === id)).length;
+
+    return `
+        <div class="post-tool-job-detail-toolbar">
+            <span class="post-tool-job-detail-summary">fail ${failedItems.length} รายการ${selectedFailedCount ? ` • เลือกไว้ ${selectedFailedCount}` : ""}</span>
+            <div class="post-tool-job-detail-actions">
+                ${failedItems.length ? `<button type="button" class="post-tool-link-btn" data-job-select-failed="${jobId}" data-tool="${toolKey}">เลือก fail ทั้งหมด</button>` : ""}
+                ${selectedFailedCount ? `<button type="button" class="post-tool-link-btn" data-job-clear-failed="${jobId}" data-tool="${toolKey}">ล้างที่เลือก</button>` : ""}
+                ${selectedFailedCount ? `<button type="button" class="post-tool-link-btn is-retry" data-job-retry-selected="${jobId}" data-tool="${toolKey}">retry selected</button>` : ""}
+            </div>
+        </div>
+        <div class="post-tool-job-detail-list">
+            ${items.map((item) => {
+                const message = String(item.post_message || item.post_id || "").trim();
+                const title = message.length > 80 ? `${message.slice(0, 80)}...` : message;
+                const errorText = String(item.error_message || "").trim();
+                const itemId = Number(item.id || 0);
+                const isFailed = String(item.status || "") === "failed";
+                const isChecked = isFailed && failedSelection.has(itemId);
+                return `
+                    <div class="post-tool-job-detail-item is-${escapePostToolHtml(item.status || "unknown")}">
+                        <div class="post-tool-job-detail-head">
+                            <div class="post-tool-job-detail-status-wrap">
+                                ${isFailed ? `<input type="checkbox" class="post-tool-job-item-checkbox" data-job-item-toggle="${jobId}:${itemId}" data-tool="${toolKey}" ${isChecked ? "checked" : ""} />` : `<span class="post-tool-job-item-checkbox-spacer"></span>`}
+                                <span class="post-tool-job-item-status is-${escapePostToolHtml(item.status || "unknown")}">${escapePostToolHtml(item.status || "unknown")}</span>
+                            </div>
+                            <span class="post-tool-job-item-time">${escapePostToolHtml(String(item.processed_at || item.created_at || "-"))}</span>
+                        </div>
+                        <div class="post-tool-job-item-title">${escapePostToolHtml(title || item.post_id || "-")}</div>
+                        <div class="post-tool-job-item-sub">${escapePostToolHtml(String(item.post_type || "link"))} • ${escapePostToolHtml(String(item.post_id || "-"))}</div>
+                        ${errorText ? `<div class="post-tool-job-item-error">${escapePostToolHtml(errorText)}</div>` : ""}
+                    </div>
+                `;
+            }).join("")}
+        </div>
+    `;
 }
 
 function buildPostToolTable(toolKey, posts) {
@@ -736,6 +888,16 @@ function renderPostToolJobs(toolKey) {
     dom.jobsContainer.innerHTML = state.jobs.map((job) => {
         const progress = job.total_count ? Math.min(100, Math.round((job.processed_count / job.total_count) * 100)) : 0;
         const canCancel = job.status === "pending" || job.status === "processing";
+        const canRetry = !canCancel && Number(job.failed_count || 0) > 0;
+        const isExpanded = state.expandedJobIds.has(job.id);
+        const detailState = state.jobDetails[job.id];
+        const detailHtml = isExpanded
+            ? `
+                <div class="post-tool-job-detail">
+                    ${renderPostToolJobItems(toolKey, job.id, detailState)}
+                </div>
+            `
+            : "";
         return `
             <div class="post-tool-job">
                 <div class="post-tool-job-top">
@@ -751,11 +913,127 @@ function renderPostToolJobs(toolKey) {
                 </div>
                 <div class="post-tool-job-actions">
                     <span>#${job.id}</span>
-                    ${canCancel ? `<button type="button" class="post-tool-link-btn" data-job-cancel="${job.id}" data-tool="${toolKey}">ยกเลิก</button>` : ""}
+                    <div class="post-tool-job-action-buttons">
+                        <button type="button" class="post-tool-link-btn" data-job-detail="${job.id}" data-tool="${toolKey}">
+                            ${isExpanded ? "ซ่อนรายละเอียด" : "ดูรายละเอียด"}
+                        </button>
+                        ${canRetry ? `<button type="button" class="post-tool-link-btn is-retry" data-job-retry="${job.id}" data-tool="${toolKey}">retry failed</button>` : ""}
+                        ${canCancel ? `<button type="button" class="post-tool-link-btn" data-job-cancel="${job.id}" data-tool="${toolKey}">ยกเลิก</button>` : ""}
+                    </div>
                 </div>
+                ${detailHtml}
             </div>
         `;
     }).join("");
+
+    dom.jobsContainer.querySelectorAll("[data-job-detail]").forEach((button) => {
+        button.addEventListener("click", async () => {
+            const jobId = Number(button.dataset.jobDetail || 0);
+            if (!jobId) return;
+
+            if (state.expandedJobIds.has(jobId)) {
+                state.expandedJobIds.delete(jobId);
+                renderPostToolJobs(toolKey);
+                return;
+            }
+
+            state.expandedJobIds.add(jobId);
+            renderPostToolJobs(toolKey);
+            await loadPostToolJobDetail(toolKey, jobId);
+        });
+    });
+
+    dom.jobsContainer.querySelectorAll("[data-job-item-toggle]").forEach((input) => {
+        input.addEventListener("change", () => {
+            const [jobIdRaw, itemIdRaw] = String(input.dataset.jobItemToggle || "").split(":");
+            const jobId = Number(jobIdRaw || 0);
+            const itemId = Number(itemIdRaw || 0);
+            if (!jobId || !itemId) return;
+
+            const selection = getPostToolFailedSelection(toolKey, jobId);
+            if (input.checked) {
+                selection.add(itemId);
+            } else {
+                selection.delete(itemId);
+            }
+            renderPostToolJobs(toolKey);
+        });
+    });
+
+    dom.jobsContainer.querySelectorAll("[data-job-select-failed]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const jobId = Number(button.dataset.jobSelectFailed || 0);
+            if (!jobId) return;
+            const detailState = state.jobDetails[jobId];
+            const selection = getPostToolFailedSelection(toolKey, jobId);
+            selection.clear();
+            (detailState?.items || [])
+                .filter((item) => String(item.status || "") === "failed")
+                .forEach((item) => {
+                    const itemId = Number(item.id || 0);
+                    if (itemId > 0) selection.add(itemId);
+                });
+            renderPostToolJobs(toolKey);
+        });
+    });
+
+    dom.jobsContainer.querySelectorAll("[data-job-clear-failed]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const jobId = Number(button.dataset.jobClearFailed || 0);
+            if (!jobId) return;
+            getPostToolFailedSelection(toolKey, jobId).clear();
+            renderPostToolJobs(toolKey);
+        });
+    });
+
+    dom.jobsContainer.querySelectorAll("[data-job-retry]").forEach((button) => {
+        button.addEventListener("click", async () => {
+            const jobId = Number(button.dataset.jobRetry || 0);
+            if (!jobId) return;
+            if (!confirm("จะ retry เฉพาะรายการที่ fail ใน job นี้ใช่ไหม")) return;
+            try {
+                const response = await fetch(`/api/post-action-jobs/${jobId}/retry-failed`, {
+                    method: "POST",
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || "Retry failed");
+                }
+                state.expandedJobIds.add(jobId);
+                await loadPostToolJobs(toolKey);
+                await loadPostToolJobDetail(toolKey, jobId, { force: true });
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        });
+    });
+
+    dom.jobsContainer.querySelectorAll("[data-job-retry-selected]").forEach((button) => {
+        button.addEventListener("click", async () => {
+            const jobId = Number(button.dataset.jobRetrySelected || 0);
+            if (!jobId) return;
+            const selectedIds = Array.from(getPostToolFailedSelection(toolKey, jobId));
+            if (!selectedIds.length) return;
+            if (!confirm(`จะ retry ${selectedIds.length} รายการที่ fail ใน job นี้ใช่ไหม`)) return;
+            try {
+                const response = await fetch(`/api/post-action-jobs/${jobId}/retry-failed`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ itemIds: selectedIds }),
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || "Retry selected failed");
+                }
+                getPostToolFailedSelection(toolKey, jobId).clear();
+                state.expandedJobIds.add(jobId);
+                await loadPostToolJobs(toolKey);
+                await loadPostToolJobDetail(toolKey, jobId, { force: true });
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        });
+    });
 
     dom.jobsContainer.querySelectorAll("[data-job-cancel]").forEach((button) => {
         button.addEventListener("click", async () => {
@@ -766,7 +1044,10 @@ function renderPostToolJobs(toolKey) {
                 await fetch(`/api/post-action-jobs/${jobId}/cancel`, {
                     method: "POST",
                 });
-                loadPostToolJobs(toolKey);
+                await loadPostToolJobs(toolKey);
+                if (state.expandedJobIds.has(jobId)) {
+                    await loadPostToolJobDetail(toolKey, jobId, { force: true });
+                }
             } catch (_) {
                 // Ignore network errors here and let polling recover.
             }
@@ -781,6 +1062,7 @@ function updatePostToolPolling(toolKey) {
     if (hasRunningJob && !state.pollHandle) {
         state.pollHandle = setInterval(async () => {
             await loadPostToolJobs(toolKey);
+            await refreshExpandedPostToolJobDetails(toolKey);
             const stillRunning = postToolStates[toolKey].jobs.some((job) => job.status === "pending" || job.status === "processing");
             if (!stillRunning) {
                 clearInterval(state.pollHandle);
@@ -799,6 +1081,8 @@ async function loadPostToolJobs(toolKey) {
     const pageId = getCurrentPageId();
     if (!pageId) {
         state.jobs = [];
+        state.jobDetails = {};
+        state.expandedJobIds = new Set();
         renderPostToolJobs(toolKey);
         return;
     }

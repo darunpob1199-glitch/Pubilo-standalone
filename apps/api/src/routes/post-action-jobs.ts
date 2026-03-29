@@ -3,8 +3,10 @@ import type { Env } from '../index';
 import {
     cancelPostActionJob,
     createPostActionJob,
+    getPostActionJobDetail,
     listPostActionJobs,
     processPendingPostActionJobs,
+    retryFailedPostActionJob,
     type PostActionType,
 } from '../lib/post-action-jobs';
 
@@ -85,6 +87,43 @@ app.post('/', async (c) => {
         return c.json({ success: true, jobId });
     } catch (error) {
         return c.json({ success: false, error: String(error) }, 500);
+    }
+});
+
+app.get('/:id', async (c) => {
+    const jobId = Number(c.req.param('id') || 0);
+
+    if (!Number.isFinite(jobId) || jobId <= 0) {
+        return c.json({ success: false, error: 'Invalid job id' }, 400);
+    }
+
+    try {
+        const detail = await getPostActionJobDetail(c.env, jobId);
+        return c.json({ success: true, ...detail });
+    } catch (error) {
+        const message = String(error);
+        const status = message.includes('not found') ? 404 : 500;
+        return c.json({ success: false, error: message }, status);
+    }
+});
+
+app.post('/:id/retry-failed', async (c) => {
+    const jobId = Number(c.req.param('id') || 0);
+
+    if (!Number.isFinite(jobId) || jobId <= 0) {
+        return c.json({ success: false, error: 'Invalid job id' }, 400);
+    }
+
+    try {
+        const body = await c.req.json().catch(() => ({})) as Record<string, any>;
+        const itemIds = Array.isArray(body.itemIds) ? body.itemIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0) : [];
+        await retryFailedPostActionJob(c.env, jobId, itemIds);
+        c.executionCtx.waitUntil(processPendingPostActionJobs(c.env, { jobIds: [jobId], perJobLimit: 20, maxJobs: 1 }));
+        return c.json({ success: true, jobId });
+    } catch (error) {
+        const message = String(error);
+        const status = message.includes('not found') ? 404 : 400;
+        return c.json({ success: false, error: message }, status);
     }
 });
 
