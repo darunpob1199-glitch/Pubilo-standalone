@@ -126,6 +126,7 @@ function showPublishedPanel() {
     publishedPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
     document.body.style.overflow = "hidden";
+    syncPublishedSourceTabs();
     loadPublishedPosts();
 }
 
@@ -137,6 +138,26 @@ const publishedFilters = {
 };
 
 let currentPublishedPosts = [];
+let publishedSourceMode = "facebook";
+const publishedFacebookTab = document.getElementById("publishedFacebookTab");
+const publishedHistoryTab = document.getElementById("publishedHistoryTab");
+
+function syncPublishedSourceTabs() {
+    publishedFacebookTab?.classList.toggle("is-active", publishedSourceMode === "facebook");
+    publishedHistoryTab?.classList.toggle("is-active", publishedSourceMode === "history");
+}
+
+function getPublishedEmptyCopy() {
+    return publishedSourceMode === "facebook"
+        ? "ยังไม่พบโพสต์บน Facebook ของเพจนี้"
+        : "ยังไม่มีประวัติที่ Pubilo ยิงสำเร็จ";
+}
+
+function getPublishedNoResultsCopy() {
+    return publishedSourceMode === "facebook"
+        ? "ไม่พบโพสต์บน Facebook ที่ตรงกับ filter นี้"
+        : "ไม่พบประวัติที่ตรงกับ filter นี้";
+}
 
 function parsePublishedDate(value) {
     if (!value) return null;
@@ -168,6 +189,8 @@ function getPublishedPostTypeKey(log) {
 
 function getPublishedSourceClass(source) {
     switch (String(source || "")) {
+        case "facebook":
+            return "is-facebook";
         case "scheduled_queue":
             return "is-scheduled";
         case "reel":
@@ -188,6 +211,7 @@ function renderPublishedOverview(logs) {
     const now = Date.now();
     const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
     const reelsCount = logs.filter((log) => getPublishedPostTypeKey(log) === "reels").length;
+    const textCount = logs.filter((log) => getPublishedPostTypeKey(log) === "text").length;
     const todayCount = logs.filter((log) => getPublishedDateKey(log.published_at || log.created_at) === todayKey).length;
     const last7DaysCount = logs.filter((log) => {
         const date = parsePublishedDate(log.published_at || log.created_at);
@@ -195,9 +219,15 @@ function renderPublishedOverview(logs) {
     }).length;
     const batchCount = logs.filter((log) => String(log.batch_id || "").trim()).length;
 
+    const totalLabel = publishedSourceMode === "facebook" ? "Facebook ทั้งหมด" : "ทั้งหมด";
+    const lastCardLabel = publishedSourceMode === "facebook" ? "Text / Reels" : "Reels / Batch";
+    const lastCardValue = publishedSourceMode === "facebook"
+        ? `${textCount} / ${reelsCount}`
+        : `${reelsCount} / ${batchCount}`;
+
     summaryEl.innerHTML = `
         <div class="pending-stat">
-            <span class="pending-stat-label">ทั้งหมด</span>
+            <span class="pending-stat-label">${totalLabel}</span>
             <span class="pending-stat-value">${logs.length}</span>
         </div>
         <div class="pending-stat">
@@ -209,8 +239,8 @@ function renderPublishedOverview(logs) {
             <span class="pending-stat-value">${last7DaysCount}</span>
         </div>
         <div class="pending-stat">
-            <span class="pending-stat-label">Reels / Batch</span>
-            <span class="pending-stat-value">${reelsCount} / ${batchCount}</span>
+            <span class="pending-stat-label">${lastCardLabel}</span>
+            <span class="pending-stat-value">${lastCardValue}</span>
         </div>
     `;
 }
@@ -277,7 +307,7 @@ function updatePublishedFilterMeta(filteredCount, totalCount) {
     if (!metaEl) return;
 
     if (!totalCount) {
-        metaEl.textContent = "ยังไม่มีโพสต์ที่ยิงสำเร็จ";
+        metaEl.textContent = getPublishedEmptyCopy();
         return;
     }
 
@@ -396,12 +426,19 @@ function buildPublishedTable(logs) {
         tr.appendChild(linkTd);
 
         const deleteTd = document.createElement("td");
-        const deleteBtn = document.createElement("button");
-        deleteBtn.className = "pending-table-delete";
-        deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
-        deleteBtn.title = "Delete";
-        deleteBtn.onclick = () => deletePublishedLog(log.id);
-        deleteTd.appendChild(deleteBtn);
+        if (publishedSourceMode === "history" && log.deleteAllowed !== false && log.id) {
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className = "pending-table-delete";
+            deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+            deleteBtn.title = "Delete";
+            deleteBtn.onclick = () => deletePublishedLog(log.id);
+            deleteTd.appendChild(deleteBtn);
+        } else {
+            const disabled = document.createElement("span");
+            disabled.className = "published-delete-disabled";
+            disabled.textContent = "-";
+            deleteTd.appendChild(disabled);
+        }
         tr.appendChild(deleteTd);
 
         tbody.appendChild(tr);
@@ -417,8 +454,8 @@ function renderPublishedPostsWithFilters() {
 
     if (!filtered.length) {
         publishedTableContainer.innerHTML = currentPublishedPosts.length
-            ? '<div class="pending-empty">ไม่พบรายการที่ตรงกับ filter นี้</div>'
-            : '<div class="pending-empty">No published posts yet</div>';
+            ? `<div class="pending-empty">${getPublishedNoResultsCopy()}</div>`
+            : `<div class="pending-empty">${getPublishedEmptyCopy()}</div>`;
         return;
     }
 
@@ -441,6 +478,16 @@ function syncPublishedFilterInputs() {
 async function loadPublishedPosts() {
     const pageId = getCurrentPageId();
     const summaryEl = document.getElementById("publishedSummaryBar");
+    const adsToken =
+        fbToken ||
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        "";
+    const pageToken =
+        (typeof getPageToken === "function" ? getPageToken() : "") ||
+        document.getElementById("pageTokenInputPanel")?.value?.trim() ||
+        "";
+    const cookie = fbCookie || localStorage.getItem("fewfeed_cookie") || "";
 
     if (!pageId) {
         if (summaryEl) summaryEl.innerHTML = "";
@@ -457,7 +504,18 @@ async function loadPublishedPosts() {
     `;
 
     try {
-        const response = await fetch(`/api/published-posts?pageId=${pageId}&limit=200`);
+        const response = await fetch("/api/published-posts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                pageId,
+                limit: 200,
+                source: publishedSourceMode,
+                accessToken: adsToken,
+                pageToken,
+                cookieData: cookie,
+            }),
+        });
         const data = await response.json();
 
         if (!data.success) {
@@ -494,6 +552,26 @@ const publishedSearchInput = document.getElementById("publishedSearchInput");
 const publishedTypeFilter = document.getElementById("publishedTypeFilter");
 const publishedDayFilters = document.getElementById("publishedDayFilters");
 const publishedDateInput = document.getElementById("publishedDateInput");
+
+if (publishedFacebookTab && !publishedFacebookTab.dataset.bound) {
+    publishedFacebookTab.dataset.bound = "true";
+    publishedFacebookTab.addEventListener("click", () => {
+        if (publishedSourceMode === "facebook") return;
+        publishedSourceMode = "facebook";
+        syncPublishedSourceTabs();
+        loadPublishedPosts();
+    });
+}
+
+if (publishedHistoryTab && !publishedHistoryTab.dataset.bound) {
+    publishedHistoryTab.dataset.bound = "true";
+    publishedHistoryTab.addEventListener("click", () => {
+        if (publishedSourceMode === "history") return;
+        publishedSourceMode = "history";
+        syncPublishedSourceTabs();
+        loadPublishedPosts();
+    });
+}
 
 if (publishedRefreshBtn && !publishedRefreshBtn.dataset.bound) {
     publishedRefreshBtn.dataset.bound = "true";

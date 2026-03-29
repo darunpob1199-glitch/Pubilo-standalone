@@ -2426,6 +2426,12 @@
                 color: #be185d;
             }
 
+            .published-source-badge.is-facebook {
+                background: #eff6ff;
+                border-color: #93c5fd;
+                color: #1d4ed8;
+            }
+
             .published-message-cell {
                 display: flex;
                 flex-direction: column;
@@ -2447,6 +2453,12 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
+            }
+
+            .published-delete-disabled {
+                color: #94a3b8;
+                font-size: 0.85rem;
+                font-weight: 600;
             }
 
             .pending-table-container .pending-table th {
