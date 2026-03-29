@@ -26,7 +26,7 @@ async function fetchScheduledPostsFromFacebook() {
         console.log(
             "[FEWFEED] Pages not loaded yet - showing skeleton",
         );
-        return { loading: true };
+        return { loading: true, posts: [], meta: null, warning: "" };
     }
 
     try {
@@ -45,13 +45,15 @@ async function fetchScheduledPostsFromFacebook() {
         console.log("[FEWFEED] Scheduled posts response:", data);
 
         if (data.success && data.posts) {
-            return data.posts.map((post) => ({
+            const posts = data.posts.map((post) => ({
                 id: post.id,
                 queueId: post.queueId || null,
                 pageId: post.pageId || "",
                 pageName: post.pageName || "",
                 batchId: post.batch_id || post.batchId || "",
                 queueStatus: post.queueStatus || "",
+                source: post.source || "",
+                sourceLabel: post.sourceLabel || "",
                 postType: post.type || post.postType || post.status_type || "link",
                 imageUrl: post.image_url || post.imageUrl || "",
                 fullImageUrl: post.image_url || post.fullImageUrl || post.imageUrl || "",
@@ -59,19 +61,35 @@ async function fetchScheduledPostsFromFacebook() {
                 scheduledTime: post.scheduled_publish_time || post.scheduledTime || 0,
                 permalink: post.permalink || "",
             }));
+
+            return {
+                posts,
+                meta: data.meta || null,
+                warning: data.warning || "",
+            };
         } else {
             console.error(
                 "[FEWFEED] Failed to fetch scheduled posts:",
                 data.error,
             );
-            return { error: data.error || "ไม่สามารถดึงข้อมูลได้" };
+            return {
+                error: data.error || "ไม่สามารถดึงข้อมูลได้",
+                posts: [],
+                meta: null,
+                warning: "",
+            };
         }
     } catch (err) {
         console.error(
             "[FEWFEED] Error fetching scheduled posts:",
             err,
         );
-        return { error: "Connection error" };
+        return {
+            error: "Connection error",
+            posts: [],
+            meta: null,
+            warning: "",
+        };
     }
 }
 
@@ -86,6 +104,192 @@ function formatPendingTime(timestamp) {
     });
 }
 
+function getPendingSourceState(post) {
+    const isWorkerQueue = String(post.id || "").startsWith("queue:") || post.source === "system";
+    if (isWorkerQueue) {
+        return {
+            label: post.sourceLabel || "Worker Queue",
+            className: "pending-source-badge is-worker",
+        };
+    }
+
+    return {
+        label: post.sourceLabel || "Facebook Scheduled",
+        className: "pending-source-badge is-facebook",
+    };
+}
+
+function normalizePendingMeta(meta, posts = []) {
+    if (meta && typeof meta === "object") {
+        return {
+            total: Number(meta.total || posts.length || 0),
+            workerQueue: Number(meta.workerQueue || 0),
+            facebookScheduled: Number(meta.facebookScheduled || 0),
+            processing: Number(meta.processing || 0),
+        };
+    }
+
+    const workerQueue = posts.filter((post) => String(post.id || "").startsWith("queue:") || post.source === "system").length;
+    const processing = posts.filter((post) => String(post.queueStatus || "").toLowerCase() === "processing").length;
+
+    return {
+        total: posts.length,
+        workerQueue,
+        facebookScheduled: Math.max(0, posts.length - workerQueue),
+        processing,
+    };
+}
+
+function renderPendingOverview(meta, warning = "", pageId = "") {
+    const summaryEl = document.getElementById("pendingSummaryBar");
+    const warningEl = document.getElementById("pendingWarningBox");
+    if (!summaryEl || !warningEl) return;
+
+    const stats = normalizePendingMeta(meta, []);
+    const pageName = document.querySelector(".page-selector-name")?.textContent?.trim() || pageId || "เพจที่เลือก";
+
+    summaryEl.innerHTML = `
+        <div class="pending-stat">
+            <span class="pending-stat-label">ทั้งหมด</span>
+            <strong class="pending-stat-value">${stats.total}</strong>
+        </div>
+        <div class="pending-stat">
+            <span class="pending-stat-label">Worker Queue</span>
+            <strong class="pending-stat-value">${stats.workerQueue}</strong>
+        </div>
+        <div class="pending-stat">
+            <span class="pending-stat-label">Facebook Scheduled</span>
+            <strong class="pending-stat-value">${stats.facebookScheduled}</strong>
+        </div>
+        <div class="pending-stat">
+            <span class="pending-stat-label">Processing</span>
+            <strong class="pending-stat-value">${stats.processing}</strong>
+        </div>
+    `;
+
+    if (warning) {
+        warningEl.innerHTML = `
+            <strong>โหลดได้เฉพาะ worker queue บางส่วน</strong>
+            <span>${warning}</span>
+        `;
+        warningEl.style.display = "flex";
+        return;
+    }
+
+    warningEl.innerHTML = `
+        <strong>${pageName}</strong>
+        <span>Worker Queue คือคิวที่ cron ใน worker จะดึงไปโพสต์ตามเวลา ส่วน Facebook Scheduled คือโพสต์ที่ Facebook รับตารางเวลาไว้แล้ว</span>
+    `;
+    warningEl.style.display = "flex";
+}
+
+const pendingFilters = {
+    query: "",
+    type: "all",
+    quick: "all",
+};
+
+let currentPendingPosts = [];
+
+function getPendingPostTypeKey(post) {
+    const type = String(post.postType || "").toLowerCase();
+    if (type.includes("reel")) return "reels";
+    if (type.includes("image")) return "image";
+    if (type.includes("text")) return "text";
+    return "link";
+}
+
+function isSameLocalDay(timestamp, compareDate = new Date()) {
+    if (!timestamp) return false;
+    const date = new Date(timestamp * 1000);
+    return (
+        date.getFullYear() === compareDate.getFullYear() &&
+        date.getMonth() === compareDate.getMonth() &&
+        date.getDate() === compareDate.getDate()
+    );
+}
+
+function getPendingFilterResult(posts) {
+    const nowTs = Math.floor(Date.now() / 1000);
+    const soonThreshold = nowTs + (6 * 60 * 60);
+    const query = pendingFilters.query.trim().toLowerCase();
+
+    const batchCounts = new Map();
+    posts.forEach((post) => {
+        const batchId = getValidBatchId(post);
+        if (!batchId) return;
+        batchCounts.set(batchId, (batchCounts.get(batchId) || 0) + 1);
+    });
+
+    const filtered = posts.filter((post) => {
+        const postTypeKey = getPendingPostTypeKey(post);
+        const batchId = getValidBatchId(post);
+        const isBatch = !!batchId && (batchCounts.get(batchId) || 0) > 1;
+        const haystack = [
+            post.message || "",
+            post.pageName || "",
+            post.pageId || "",
+            batchId || "",
+        ].join(" ").toLowerCase();
+
+        if (query && !haystack.includes(query)) {
+            return false;
+        }
+
+        if (pendingFilters.type !== "all" && postTypeKey !== pendingFilters.type) {
+            return false;
+        }
+
+        switch (pendingFilters.quick) {
+            case "soon":
+                return !!post.scheduledTime && post.scheduledTime <= soonThreshold;
+            case "today":
+                return isSameLocalDay(post.scheduledTime);
+            case "batch":
+                return isBatch;
+            case "single":
+                return !isBatch;
+            default:
+                return true;
+        }
+    });
+
+    return {
+        filtered,
+        total: posts.length,
+    };
+}
+
+function updatePendingFilterMeta(filteredCount, totalCount) {
+    const metaEl = document.getElementById("pendingFilterMeta");
+    if (!metaEl) return;
+
+    if (!totalCount) {
+        metaEl.textContent = "ยังไม่มีคิวโพสต์";
+        return;
+    }
+
+    if (filteredCount === totalCount) {
+        metaEl.textContent = `แสดง ${totalCount} รายการ`;
+        return;
+    }
+
+    metaEl.textContent = `แสดง ${filteredCount} / ${totalCount} รายการ`;
+}
+
+function syncPendingQuickFiltersUi() {
+    const chips = document.querySelectorAll("#pendingQuickFilters .pending-filter-chip");
+    chips.forEach((chip) => {
+        chip.classList.toggle("is-active", chip.dataset.filter === pendingFilters.quick);
+    });
+}
+
+function renderPendingPostsWithFilters() {
+    const { filtered, total } = getPendingFilterResult(currentPendingPosts);
+    updatePendingFilterMeta(filtered.length, total);
+    renderPendingPosts(filtered);
+}
+
 // Build pending table using DOM methods (safe from XSS)
 function buildPendingTable(posts, options = {}) {
     const { showPage = false } = options;
@@ -95,8 +299,8 @@ function buildPendingTable(posts, options = {}) {
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");
     const headers = showPage
-        ? ["Page", "Type", "Image", "Message", "Time", "Status", "Edit", "Delete"]
-        : ["Type", "Image", "Message", "Time", "Status", "Edit", "Delete"];
+        ? ["Page", "Type", "Source", "Image", "Message", "Time", "Status", "Edit", "Delete"]
+        : ["Type", "Source", "Image", "Message", "Time", "Status", "Edit", "Delete"];
     headers.forEach((text) => {
         const th = document.createElement("th");
         th.textContent = text;
@@ -152,6 +356,15 @@ function buildPendingTable(posts, options = {}) {
         typeSpan.title = typeLabels[pType] || pType;
         typeTd.appendChild(typeSpan);
         tr.appendChild(typeTd);
+
+        // Source cell
+        const sourceTd = document.createElement("td");
+        const sourceBadge = document.createElement("span");
+        const sourceState = getPendingSourceState(post);
+        sourceBadge.className = sourceState.className;
+        sourceBadge.textContent = sourceState.label;
+        sourceTd.appendChild(sourceBadge);
+        tr.appendChild(sourceTd);
 
         // Image cell (clickable to show lightbox, hover to preview)
         const imgTd = document.createElement("td");
@@ -308,7 +521,9 @@ function editScheduledTime(postId, currentTime) {
             const result = await response.json();
             if (result.success) {
                 modal.remove();
-                showPendingPanel();
+                invalidatePostsCache(getCurrentPageId());
+                showPendingPanel(true);
+                updatePendingCount();
             } else {
                 alert("Error: " + (result.error || "Failed to update"));
             }
@@ -353,7 +568,7 @@ function deleteScheduledPost(postId) {
                 modal.remove();
                 // Invalidate cache after successful delete
                 invalidatePostsCache(getCurrentPageId());
-                showPendingPanel();
+                showPendingPanel(true);
                 updatePendingCount();
             } else {
                 alert("Error: " + (result.error || "Failed to delete"));
@@ -453,7 +668,9 @@ function renderPendingPosts(posts) {
     if (!posts || posts.length === 0) {
         const emptyDiv = document.createElement("div");
         emptyDiv.className = "pending-empty";
-        emptyDiv.textContent = "No scheduled posts";
+        emptyDiv.textContent = currentPendingPosts.length > 0
+            ? "ไม่พบรายการที่ตรงกับ filter นี้"
+            : "No scheduled posts";
         pendingTableContainer.appendChild(emptyDiv);
     } else {
         // Sort based on user preference
@@ -516,6 +733,48 @@ function postsChanged(oldPosts, newPosts) {
     return oldIds !== newIds;
 }
 
+const pendingRefreshBtn = document.getElementById("pendingRefreshBtn");
+const pendingSearchInput = document.getElementById("pendingSearchInput");
+const pendingTypeFilter = document.getElementById("pendingTypeFilter");
+const pendingQuickFilters = document.getElementById("pendingQuickFilters");
+
+if (pendingRefreshBtn && !pendingRefreshBtn.dataset.bound) {
+    pendingRefreshBtn.dataset.bound = "true";
+    pendingRefreshBtn.addEventListener("click", () => {
+        invalidatePostsCache(getCurrentPageId());
+        showPendingPanel(true);
+        updatePendingCount();
+    });
+}
+
+if (pendingSearchInput && !pendingSearchInput.dataset.bound) {
+    pendingSearchInput.dataset.bound = "true";
+    pendingSearchInput.addEventListener("input", (event) => {
+        pendingFilters.query = event.target.value || "";
+        renderPendingPostsWithFilters();
+    });
+}
+
+if (pendingTypeFilter && !pendingTypeFilter.dataset.bound) {
+    pendingTypeFilter.dataset.bound = "true";
+    pendingTypeFilter.addEventListener("change", (event) => {
+        pendingFilters.type = event.target.value || "all";
+        renderPendingPostsWithFilters();
+    });
+}
+
+if (pendingQuickFilters && !pendingQuickFilters.dataset.bound) {
+    pendingQuickFilters.dataset.bound = "true";
+    pendingQuickFilters.addEventListener("click", (event) => {
+        const chip = event.target.closest(".pending-filter-chip");
+        if (!chip) return;
+        pendingFilters.quick = chip.dataset.filter || "all";
+        syncPendingQuickFiltersUi();
+        renderPendingPostsWithFilters();
+    });
+    syncPendingQuickFiltersUi();
+}
+
 async function showPendingPanel(forceRefresh = false) {
     // Hide all mode containers
     document.querySelectorAll(".mode-container").forEach((c) => {
@@ -537,7 +796,14 @@ async function showPendingPanel(forceRefresh = false) {
 
     const pageId = getCurrentPageId();
 
+    if (pendingSearchInput) pendingSearchInput.value = pendingFilters.query;
+    if (pendingTypeFilter) pendingTypeFilter.value = pendingFilters.type;
+    syncPendingQuickFiltersUi();
+
     if (!pageId) {
+        currentPendingPosts = [];
+        renderPendingOverview({ total: 0, workerQueue: 0, facebookScheduled: 0, processing: 0 }, "", "");
+        updatePendingFilterMeta(0, 0);
         pendingTableContainer.innerHTML =
             '<div class="pending-empty">กรุณาเลือกเพจหลักก่อน</div>';
         return;
@@ -558,8 +824,14 @@ async function showPendingPanel(forceRefresh = false) {
 
         // Process scheduled posts
         let scheduledPosts = [];
+        let scheduledMeta = null;
+        let pendingWarning = "";
         if (scheduledResult && !scheduledResult.loading && !scheduledResult.error) {
-            scheduledPosts = Array.isArray(scheduledResult) ? scheduledResult : [];
+            scheduledPosts = Array.isArray(scheduledResult.posts) ? scheduledResult.posts : [];
+            scheduledMeta = scheduledResult.meta || null;
+            pendingWarning = scheduledResult.warning || "";
+        } else if (scheduledResult?.error) {
+            pendingWarning = scheduledResult.error;
         }
 
         // Cache for pending count
@@ -567,11 +839,21 @@ async function showPendingPanel(forceRefresh = false) {
             setCachedPosts(pageId, scheduledPosts);
         }
 
-        // Render list
-        renderPendingPosts(scheduledPosts);
+        currentPendingPosts = scheduledPosts;
+
+        renderPendingOverview(
+            scheduledMeta || normalizePendingMeta(null, scheduledPosts),
+            pendingWarning,
+            pageId,
+        );
+
+        renderPendingPostsWithFilters();
 
     } catch (err) {
         console.error("Failed to fetch posts:", err);
+        currentPendingPosts = [];
+        renderPendingOverview({ total: 0, workerQueue: 0, facebookScheduled: 0, processing: 0 }, "โหลดคิวโพสต์ไม่สำเร็จ", pageId);
+        updatePendingFilterMeta(0, 0);
         pendingTableContainer.textContent = "";
         const errorDiv = document.createElement("div");
         errorDiv.className = "pending-empty";

@@ -1153,6 +1153,10 @@ if (sortToggleBtn) {
     sortToggleBtn.addEventListener("click", () => {
         sortNewestFirst = !sortNewestFirst;
         updateSortButton();
+        if (typeof renderPendingPostsWithFilters === "function") {
+            renderPendingPostsWithFilters();
+            return;
+        }
         // Re-render with new sort order
         const pageId = getCurrentPageId();
         const cachedPosts = getCachedPosts(pageId);
@@ -1218,7 +1222,9 @@ async function updatePendingCount() {
         }
         const scheduledPosts =
             await fetchScheduledPostsFromFacebook();
-        const count = Array.isArray(scheduledPosts) ? scheduledPosts.length : 0;
+        const count = Array.isArray(scheduledPosts?.posts)
+            ? scheduledPosts.posts.length
+            : 0;
         pendingBadge.textContent = count;
         pendingBadge.style.display = count > 0 ? "inline" : "none";
     } catch (err) {

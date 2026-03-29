@@ -39,10 +39,42 @@
                 >
                     <div class="pending-panel-header">
                         <h2>Pending Posts</h2>
-                        <button class="sort-toggle-btn" id="sortToggleBtn">
-                            <span class="sort-icon">↓</span>
-                            <span class="sort-label">ล่าสุดก่อน</span>
-                        </button>
+                        <div class="pending-panel-toolbar">
+                            <button class="pending-refresh-btn" id="pendingRefreshBtn" type="button">
+                                รีเฟรช
+                            </button>
+                            <button class="sort-toggle-btn" id="sortToggleBtn" type="button">
+                                <span class="sort-icon">↓</span>
+                                <span class="sort-label">ล่าสุดก่อน</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="pending-summary-bar" id="pendingSummaryBar"></div>
+                    <div class="pending-warning-box" id="pendingWarningBox" style="display: none"></div>
+                    <div class="pending-filter-bar">
+                        <div class="pending-filter-search">
+                            <input
+                                class="pending-filter-input"
+                                id="pendingSearchInput"
+                                type="search"
+                                placeholder="ค้นหาข้อความ ชื่อเพจ หรือ batch"
+                            />
+                        </div>
+                        <select class="pending-filter-select" id="pendingTypeFilter">
+                            <option value="all">ทุกประเภท</option>
+                            <option value="link">Link</option>
+                            <option value="text">Text</option>
+                            <option value="image">Image</option>
+                            <option value="reels">Reels</option>
+                        </select>
+                        <div class="pending-quick-filters" id="pendingQuickFilters">
+                            <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
+                            <button type="button" class="pending-filter-chip" data-filter="soon">ใกล้ถึงเวลา</button>
+                            <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
+                            <button type="button" class="pending-filter-chip" data-filter="batch">Batch</button>
+                            <button type="button" class="pending-filter-chip" data-filter="single">เดี่ยว</button>
+                        </div>
+                        <div class="pending-filter-meta" id="pendingFilterMeta"></div>
                     </div>
                     <div
                         class="pending-table-container"

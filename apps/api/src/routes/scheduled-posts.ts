@@ -205,6 +205,7 @@ async function fetchSystemQueuedPosts(env: Env, pageId: string) {
             full_picture: imageUrl,
             permalink_url: '',
             source: 'system',
+            sourceLabel: 'Worker Queue',
             // Backward-compatible aliases for the legacy web dashboard.
             scheduledTime: row.scheduled_time,
             postType: payload.postMode || 'link',
@@ -213,6 +214,19 @@ async function fetchSystemQueuedPosts(env: Env, pageId: string) {
             permalink: '',
         };
     });
+}
+
+function buildScheduledPostsMeta(posts: Array<Record<string, any>>) {
+    const workerQueue = posts.filter((post) => post.source === 'system').length;
+    const facebookScheduled = posts.filter((post) => post.source === 'facebook').length;
+    const processing = posts.filter((post) => String(post.queueStatus || '').toLowerCase() === 'processing').length;
+
+    return {
+        total: posts.length,
+        workerQueue,
+        facebookScheduled,
+        processing,
+    };
 }
 
 async function handleScheduledPosts(
@@ -278,12 +292,16 @@ async function handleScheduledPosts(
 
                 return {
                     id: post.id,
+                    pageId,
+                    pageName: systemQueuedPosts[0]?.pageName || `เพจ ${pageId}`,
                     message: post.message || '',
                     scheduled_publish_time: scheduledTime,
                     created_time: post.created_time,
                     type,
                     image_url: imageUrl,
                     permalink,
+                    source: 'facebook',
+                    sourceLabel: 'Facebook Scheduled',
                     // Backward-compatible aliases for the legacy web dashboard.
                     scheduledTime,
                     postType: type,
@@ -292,13 +310,19 @@ async function handleScheduledPosts(
                 };
             });
 
-            return c.json({ success: true, posts: [...systemQueuedPosts, ...posts] });
+            const mergedPosts = [...systemQueuedPosts, ...posts];
+            return c.json({
+                success: true,
+                posts: mergedPosts,
+                meta: buildScheduledPostsMeta(mergedPosts),
+            });
         }
 
         if (systemQueuedPosts.length > 0) {
             return c.json({
                 success: true,
                 posts: systemQueuedPosts,
+                meta: buildScheduledPostsMeta(systemQueuedPosts),
                 warning: lastFacebookError?.message || 'Facebook API error',
             });
         }

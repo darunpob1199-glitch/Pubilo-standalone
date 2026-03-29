@@ -3,8 +3,6 @@
 let lastPublishedUrl = null;
 const TEXT_BACKGROUND_STORAGE_KEY_PREFIX = "fewfeed_textBackgroundPreset_";
 
-<<<<<<< HEAD
-=======
 const DEFAULT_TEXT_BACKGROUND_OPTIONS = [
     {
         id: "1881421442117417",
@@ -540,8 +538,6 @@ function renderTextComposerUi() {
 }
 
 window.renderTextComposerUi = renderTextComposerUi;
-
->>>>>>> d34cba4019b48c6e7abd84099bc74874cbf106a7
 function setupPublishHandler(mode) {
     const els = getModeElements(mode);
     if (!els.publishBtn) return;

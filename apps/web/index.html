@@ -822,10 +822,42 @@
             <div class="pending-panel" id="pendingPanel" style="display: none">
                 <div class="pending-panel-header">
                     <h2>Pending Posts</h2>
-                    <button class="sort-toggle-btn" id="sortToggleBtn">
-                        <span class="sort-icon">↓</span>
-                        <span class="sort-label">ล่าสุดก่อน</span>
-                    </button>
+                    <div class="pending-panel-toolbar">
+                        <button class="pending-refresh-btn" id="pendingRefreshBtn" type="button">
+                            รีเฟรช
+                        </button>
+                        <button class="sort-toggle-btn" id="sortToggleBtn" type="button">
+                            <span class="sort-icon">↓</span>
+                            <span class="sort-label">ล่าสุดก่อน</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="pending-summary-bar" id="pendingSummaryBar"></div>
+                <div class="pending-warning-box" id="pendingWarningBox" style="display: none"></div>
+                <div class="pending-filter-bar">
+                    <div class="pending-filter-search">
+                        <input
+                            class="pending-filter-input"
+                            id="pendingSearchInput"
+                            type="search"
+                            placeholder="ค้นหาข้อความ ชื่อเพจ หรือ batch"
+                        />
+                    </div>
+                    <select class="pending-filter-select" id="pendingTypeFilter">
+                        <option value="all">ทุกประเภท</option>
+                        <option value="link">Link</option>
+                        <option value="text">Text</option>
+                        <option value="image">Image</option>
+                        <option value="reels">Reels</option>
+                    </select>
+                    <div class="pending-quick-filters" id="pendingQuickFilters">
+                        <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
+                        <button type="button" class="pending-filter-chip" data-filter="soon">ใกล้ถึงเวลา</button>
+                        <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
+                        <button type="button" class="pending-filter-chip" data-filter="batch">Batch</button>
+                        <button type="button" class="pending-filter-chip" data-filter="single">เดี่ยว</button>
+                    </div>
+                    <div class="pending-filter-meta" id="pendingFilterMeta"></div>
                 </div>
                 <div class="pending-table-container" id="pendingTableContainer">
                     <div class="pending-empty">No pending posts</div>
@@ -1731,19 +1763,6 @@
 
     <script src="/js/config.js?v=6.3"></script>
     <script src="/js/parts/01-thumb-preview.js?v=6.1"></script>
-<<<<<<< HEAD
-    <script src="/js/parts/02-dom-elements.js?v=6.1"></script>
-    <script src="/js/parts/03-validation.js?v=6.2"></script>
-    <script src="/js/parts/04-settings.js?v=6.7"></script>
-    <script src="/js/parts/05-auto-post.js?v=6.3"></script>
-    <script src="/js/parts/06-pending-posts.js?v=6.5"></script>
-    <script src="/js/parts/07-earnings.js?v=6.1"></script>
-    <script src="/js/parts/08-quotes.js?v=6.1"></script>
-    <script src="/js/parts/09-navigation.js?v=6.2"></script>
-    <script src="/js/parts/10-lazada.js?v=6.1"></script>
-    <script src="/js/parts/11-image-generation.js?v=7.6"></script>
-    <script src="/js/parts/12-publish.js?v=7.8"></script>
-=======
     <script src="/js/parts/02-dom-elements.js?v=6.3"></script>
     <script src="/js/parts/03-validation.js?v=6.4"></script>
     <script src="/js/parts/04-settings.js?v=6.9"></script>
@@ -1755,7 +1774,6 @@
     <script src="/js/parts/10-lazada.js?v=6.3"></script>
     <script src="/js/parts/11-image-generation.js?v=7.8"></script>
     <script src="/js/parts/12-publish.js?v=7.9"></script>
->>>>>>> d34cba4019b48c6e7abd84099bc74874cbf106a7
 
     <!-- Lightbox Modal -->
     <div class="lightbox-overlay" id="lightboxOverlay">
