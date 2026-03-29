@@ -45,6 +45,24 @@ function validateLinkMode() {
                     : 'POST NOW';
             }
         }
+    } else if (currentMode === "image") {
+        const imagePublishBtn = document.getElementById("imagePublishBtn");
+        const imageState = modeState?.image || {};
+        const hasImage = !!imageState.selectedImage;
+        const isValid = hasImage;
+
+        if (imagePublishBtn) {
+            imagePublishBtn.disabled = !isValid;
+            imagePublishBtn.classList.toggle("disabled", !isValid);
+            imagePublishBtn.style.opacity = isValid ? "1" : "0.5";
+            imagePublishBtn.style.cursor = isValid ? "pointer" : "not-allowed";
+
+            if (!imagePublishBtn.classList.contains("published")) {
+                imagePublishBtn.textContent = typeof getPrimaryPublishLabel === "function"
+                    ? getPrimaryPublishLabel("image")
+                    : "POST NOW";
+            }
+        }
     } else {
         // Other modes don't require link URL/Description validation here
         // (They have their own validation or are always enabled for now)

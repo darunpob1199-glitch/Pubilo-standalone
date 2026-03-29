@@ -693,6 +693,20 @@
                             <textarea class="form-textarea" id="imagePrimaryText"
                                 placeholder="Write something about your post..."></textarea>
                         </div>
+                        <div class="form-group">
+                            <label class="form-label" for="imageManualScheduleInput">ตั้งเวลาโพสต์เอง</label>
+                            <div class="schedule-row">
+                                <input class="form-input" type="datetime-local" id="imageManualScheduleInput">
+                                <button class="schedule-clear-btn" type="button" id="imageManualScheduleClearBtn">ล้าง</button>
+                            </div>
+                            <small id="imageManualScheduleHint" style="
+                                        color: #888;
+                                        margin-top: 4px;
+                                        display: block;
+                                    ">
+                                ถ้ากรอกไว้ ระบบจะใช้เวลานี้ก่อน auto schedule ใน Settings
+                            </small>
+                        </div>
                     </div>
                 </div>
             </div>

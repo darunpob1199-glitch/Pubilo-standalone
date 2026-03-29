@@ -758,20 +758,31 @@ function setupPublishHandler(mode) {
                 return;
             }
 
-            // ========== IMAGE MODE: Use Graph API directly ==========
+            // ========== IMAGE MODE: Use unified publish flow ==========
             if (mode === "image") {
-                const freshPageToken = await getFreshPageTokenFromExtension(pageId, fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token"));
-                const pageToken = freshPageToken || getPageToken();
-                if (!pageToken) {
-                    throw new Error("ไม่มี Page Token กรุณาใส่ใน Settings > 🔑 Page Token");
-                }
-
-                if (targetPageIds.length > 0) {
-                    throw new Error("โหมด Image ยังไม่รองรับโพสต์หลายเพจในรอบนี้ ใช้ Link, News หรือ Reels ก่อน");
-                }
-
-                const message = els.primaryText?.value || "";
+                const adsToken =
+                    fbToken ||
+                    localStorage.getItem("fewfeed_accessToken") ||
+                    localStorage.getItem("fewfeed_token") ||
+                    "";
+                const freshPageToken = adsToken
+                    ? await getFreshPageTokenFromExtension(pageId, adsToken)
+                    : "";
+                const pageToken =
+                    freshPageToken ||
+                    getPageToken() ||
+                    document.getElementById("pageTokenInputPanel")?.value?.trim() ||
+                    "";
+                const cookie =
+                    fbCookie || localStorage.getItem("fewfeed_cookie") || "";
+                const fbDtsg =
+                    localStorage.getItem("fewfeed_fbDtsg") || "";
+                const primaryText = els.primaryText?.value?.trim() || "";
                 let imageUrl = state.selectedImage;
+
+                if (!imageUrl) {
+                    throw new Error("กรุณาเลือกภาพก่อนโพสต์");
+                }
 
                 // Compress and upload base64 image
                 if (imageUrl.startsWith("data:")) {
@@ -799,50 +810,50 @@ function setupPublishHandler(mode) {
                     scheduledTime?.toISOString?.() || null,
                 );
 
-                console.log("[FEWFEED] Publishing image via Graph API...");
+                console.log("[FEWFEED] Publishing image via /api/publish...");
 
-                // Build form data for Graph API
-                const formData = new FormData();
-                formData.append("url", imageUrl);
-                if (message) formData.append("message", message);
-                formData.append("access_token", pageToken);
-
-                // If scheduling, set published=false and scheduled_publish_time
-                if (scheduledTime) {
-                    formData.append("published", "false");
-                    formData.append("scheduled_publish_time", Math.floor(scheduledTime.getTime() / 1000));
-                }
-
-                const response = await fetch(`https://graph.facebook.com/v21.0/${pageId}/photos`, {
+                const response = await fetch("/api/publish", {
                     method: "POST",
-                    body: formData,
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        pageId,
+                        postMode: "image",
+                        imageUrl,
+                        primaryText,
+                        targetPageIds,
+                        accessToken: adsToken,
+                        pageToken,
+                        cookieData: cookie,
+                        fbDtsg,
+                        scheduleInSystem: scheduleSource === "manual",
+                        scheduledTime: scheduledTime
+                            ? Math.floor(scheduledTime.getTime() / 1000)
+                            : null,
+                    }),
                 });
 
                 const data = await response.json();
-                console.log("[FEWFEED] Graph API response:", data);
+                console.log("[IMAGE] Publish response:", data);
 
-                if (data.error) {
-                    throw new Error(data.error.message);
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || "Failed to publish image post");
                 }
 
-                // Success!
-                const postId = data.post_id || data.id;
-                lastPublishedUrl = `https://www.facebook.com/${postId}`;
+                lastPublishedUrl =
+                    data.url ||
+                    (data.postId
+                        ? `https://www.facebook.com/${data.postId}`
+                        : null);
 
                 els.publishBtn.textContent = "✓";
                 els.publishBtn.classList.add("published");
                 els.publishBtn.disabled = false;
 
-                // Refresh scheduled times from Facebook
-                if (scheduledTime) {
-                    await refreshScheduledPostTimes();
-                    updateNextScheduleDisplay();
-
-                    // Navigate to pending page after 1 second, then clear image silently
+                if (data.queued || data.needsScheduling) {
+                    invalidatePostsCache(getCurrentPageId());
                     setTimeout(() => {
                         window.location.hash = "#pending";
                         handleNavigation();
-                        // Clear the uploaded image after navigation
                         state.selectedImage = null;
                         state.currentView = "upload";
                         linkModeImageReady = false;
@@ -856,22 +867,7 @@ function setupPublishHandler(mode) {
                                 ? getPrimaryPublishLabel(mode)
                                 : "POST NOW";
                         els.publishBtn.classList.remove("published");
-
-                        // Clear form fields silently (Link URL, Primary Text, Caption/พิกัด)
-                        const linkUrlField = document.getElementById("linkUrl");
-                        const primaryTextField = document.getElementById("primaryText");
-                        const captionField = document.getElementById("caption");
-                        const descField = document.getElementById("description");
-                        const linkDescField = document.getElementById("linkDescriptionInput");
-                        if (linkUrlField) linkUrlField.value = "";
-                        if (primaryTextField) primaryTextField.value = "";
-                        if (captionField) captionField.value = "";
-                        if (descField) descField.value = "";
-                        if (linkDescField) linkDescField.value = "";
-                        // Clear the preview description (พิกัด) - but keep domain display
-                        const previewDesc = document.getElementById("previewDescription");
-                        if (previewDesc) previewDesc.textContent = "";
-                        // Re-validate after clearing
+                        if (els.primaryText) els.primaryText.value = "";
                         validateLinkMode();
                     }, 1000);
                 }

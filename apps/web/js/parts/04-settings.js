@@ -60,6 +60,9 @@ const newsManualScheduleClearBtn = document.getElementById("newsManualScheduleCl
 const textManualScheduleInput = document.getElementById("textManualScheduleInput");
 const textManualScheduleHint = document.getElementById("textManualScheduleHint");
 const textManualScheduleClearBtn = document.getElementById("textManualScheduleClearBtn");
+const imageManualScheduleInput = document.getElementById("imageManualScheduleInput");
+const imageManualScheduleHint = document.getElementById("imageManualScheduleHint");
+const imageManualScheduleClearBtn = document.getElementById("imageManualScheduleClearBtn");
 
 // Sync minute checkboxes with hidden input
 function syncMinuteGridToInput(grid, input) {
@@ -123,6 +126,14 @@ function getManualScheduleElements(mode = postMode) {
         };
     }
 
+    if (mode === "image") {
+        return {
+            input: imageManualScheduleInput,
+            hint: imageManualScheduleHint,
+            clearBtn: imageManualScheduleClearBtn,
+        };
+    }
+
     if (mode === "news") {
         return {
             input: newsManualScheduleInput,
@@ -159,7 +170,7 @@ function setManualScheduleHint(mode, message, isError = false) {
 }
 
 function updateManualScheduleMin(mode = null) {
-    const modes = mode ? [mode] : ["link", "news", "text"];
+    const modes = mode ? [mode] : ["link", "news", "text", "image"];
     const minValue = formatDateTimeLocalValue(getMinimumManualScheduleTime());
 
     modes.forEach((currentMode) => {
@@ -246,6 +257,8 @@ function bindManualScheduleControls(mode) {
                 validateNewsMode();
             } else if (mode === "text") {
                 validateTextMode();
+            } else if (mode === "image") {
+                validateLinkMode();
             } else if (mode === "link") {
                 validateLinkMode();
             }
@@ -264,6 +277,8 @@ function bindManualScheduleControls(mode) {
                 validateNewsMode();
             } else if (mode === "text") {
                 validateTextMode();
+            } else if (mode === "image") {
+                validateLinkMode();
             } else if (mode === "link") {
                 validateLinkMode();
             }
@@ -364,6 +379,7 @@ let cachedPageSettings = {
 bindManualScheduleControls("link");
 bindManualScheduleControls("news");
 bindManualScheduleControls("text");
+bindManualScheduleControls("image");
 refreshManualScheduleUi("link");
 refreshManualScheduleUi("news");
 refreshManualScheduleUi("text");
@@ -514,6 +530,10 @@ function updatePublishButton() {
     const newsPublishBtn = document.getElementById("newsPublishBtn");
     if (newsPublishBtn && !newsPublishBtn.classList.contains("published")) {
         newsPublishBtn.textContent = getPrimaryPublishLabel("news");
+    }
+    const imagePublishBtn = document.getElementById("imagePublishBtn");
+    if (imagePublishBtn && !imagePublishBtn.classList.contains("published")) {
+        imagePublishBtn.textContent = getPrimaryPublishLabel("image");
     }
 }
 
