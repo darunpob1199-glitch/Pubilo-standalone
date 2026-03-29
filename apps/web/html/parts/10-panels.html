@@ -88,6 +88,40 @@
                 <div class="pending-panel" id="publishedPanel" style="display: none">
                     <div class="pending-panel-header">
                         <h2>Published</h2>
+                        <div class="pending-panel-toolbar">
+                            <button class="pending-refresh-btn" id="publishedRefreshBtn" type="button">
+                                รีเฟรช
+                            </button>
+                        </div>
+                    </div>
+                    <div class="pending-summary-bar" id="publishedSummaryBar"></div>
+                    <div class="pending-filter-bar published-filter-bar">
+                        <div class="pending-filter-search">
+                            <input
+                                class="pending-filter-input"
+                                id="publishedSearchInput"
+                                type="search"
+                                placeholder="ค้นหาข้อความ post id หรือ batch"
+                            />
+                        </div>
+                        <select class="pending-filter-select" id="publishedTypeFilter">
+                            <option value="all">ทุกประเภท</option>
+                            <option value="link">Link</option>
+                            <option value="text">Text</option>
+                            <option value="image">Image</option>
+                            <option value="reels">Reels</option>
+                        </select>
+                        <div class="pending-quick-filters" id="publishedDayFilters">
+                            <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
+                            <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
+                            <button type="button" class="pending-filter-chip" data-filter="yesterday">เมื่อวาน</button>
+                            <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
+                            <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
+                        </div>
+                        <div class="pending-filter-search published-date-filter">
+                            <input class="pending-filter-input" id="publishedDateInput" type="date" />
+                        </div>
+                        <div class="pending-filter-meta" id="publishedFilterMeta"></div>
                     </div>
                     <div class="pending-table-container" id="publishedTableContainer">
                         <div class="pending-empty">No published posts</div>

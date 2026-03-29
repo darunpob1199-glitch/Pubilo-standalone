@@ -841,6 +841,7 @@ app.post('/', async (c) => {
             : finalImageUrl
                 ? 'image'
                 : 'text';
+        const historyMediaUrl = hostedImageUrl || (finalImageUrl.startsWith('http') ? finalImageUrl : '') || finalLink || '';
         const historySourceName = historySource === 'scheduled_queue'
             ? 'scheduled_queue'
             : 'publish';
@@ -867,7 +868,7 @@ app.post('/', async (c) => {
                 postType: resolvedPostType,
                 messageText: finalCaption || finalMessage || '',
                 mediaKind: resolvedMediaKind,
-                mediaUrl: hostedImageUrl || finalImageUrl || finalLink || '',
+                mediaUrl: historyMediaUrl,
                 facebookPostId: postId,
                 facebookUrl,
                 scheduledTime: historyScheduledValue,

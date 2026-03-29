@@ -108,22 +108,7 @@ document.getElementById("refreshEarningsBtn")?.addEventListener("click", loadEar
 
 // Show quotes panel
 function showQuotesPanel() {
-    // Hide all mode containers
-    document.querySelectorAll(".mode-container").forEach((c) => {
-        c.classList.remove("active");
-    });
-    pendingPanel.style.display = "none";
-    publishedPanel.style.display = "none";
-    settingsPanel.style.display = "none";
-    earningsPanel.style.display = "none";
-    const tp = document.getElementById("textPanel");
-    if (tp) tp.style.display = "none";
-    quotesPanel.style.display = "flex";
-    appLayout.classList.add("pending-mode");
-    // Lock body scroll
-    document.body.style.overflow = "hidden";
-    // Load quotes
-    loadQuotes();
+    showPendingPanel(false, "quotes");
 }
 
 // Show published panel
@@ -144,57 +129,187 @@ function showPublishedPanel() {
     loadPublishedPosts();
 }
 
-// Load published posts from our logs
-async function loadPublishedPosts() {
-    const pageId = getCurrentPageId();
+const publishedFilters = {
+    query: "",
+    type: "all",
+    day: "all",
+    customDate: "",
+};
 
-    if (!pageId) {
-        publishedTableContainer.innerHTML = '<div class="pending-empty">Please select a Page first</div>';
-        return;
-    }
+let currentPublishedPosts = [];
 
-    // Show skeleton
-    publishedTableContainer.innerHTML = `
-        <div class="pending-skeleton">
-          <div class="pending-skeleton-row"><div class="sk-img"></div><div class="sk-text"></div><div class="sk-date"></div><div class="sk-badge"></div></div>
-          <div class="pending-skeleton-row"><div class="sk-img"></div><div class="sk-text"></div><div class="sk-date"></div><div class="sk-badge"></div></div>
-          <div class="pending-skeleton-row"><div class="sk-img"></div><div class="sk-text"></div><div class="sk-date"></div><div class="sk-badge"></div></div>
-        </div>
-    `;
+function parsePublishedDate(value) {
+    if (!value) return null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
+        ? raw.replace(" ", "T")
+        : raw;
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
-    try {
-        const response = await fetch(`/api/auto-post-logs?pageId=${pageId}&limit=50`);
-        const data = await response.json();
+function getPublishedDateKey(value) {
+    const date = value instanceof Date ? value : parsePublishedDate(value);
+    if (!date) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
 
-        if (!data.success) {
-            publishedTableContainer.innerHTML = `<div class="pending-empty">Error: ${data.error}</div>`;
-            return;
-        }
+function getPublishedPostTypeKey(log) {
+    const raw = String(log.post_type || log.media_kind || "").toLowerCase();
+    if (raw.includes("reel") || raw.includes("video")) return "reels";
+    if (raw.includes("image") || raw.includes("photo")) return "image";
+    if (raw.includes("text")) return "text";
+    return "link";
+}
 
-        const logs = data.logs || [];
-        if (logs.length === 0) {
-            publishedTableContainer.innerHTML = '<div class="pending-empty">No published posts yet</div>';
-            return;
-        }
-
-        // Build table like pending
-        const table = buildPublishedTable(logs);
-        publishedTableContainer.innerHTML = '';
-        publishedTableContainer.appendChild(table);
-
-    } catch (err) {
-        publishedTableContainer.innerHTML = `<div class="pending-empty">Error: ${err.message}</div>`;
+function getPublishedSourceClass(source) {
+    switch (String(source || "")) {
+        case "scheduled_queue":
+            return "is-scheduled";
+        case "reel":
+            return "is-reel";
+        case "auto_post":
+            return "is-auto";
+        case "publish":
+        default:
+            return "is-manual";
     }
 }
 
-// Build published table (same style as pending)
+function renderPublishedOverview(logs) {
+    const summaryEl = document.getElementById("publishedSummaryBar");
+    if (!summaryEl) return;
+
+    const todayKey = getPublishedDateKey(new Date());
+    const now = Date.now();
+    const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+    const reelsCount = logs.filter((log) => getPublishedPostTypeKey(log) === "reels").length;
+    const todayCount = logs.filter((log) => getPublishedDateKey(log.published_at || log.created_at) === todayKey).length;
+    const last7DaysCount = logs.filter((log) => {
+        const date = parsePublishedDate(log.published_at || log.created_at);
+        return date && date.getTime() >= sevenDaysAgo;
+    }).length;
+    const batchCount = logs.filter((log) => String(log.batch_id || "").trim()).length;
+
+    summaryEl.innerHTML = `
+        <div class="pending-stat">
+            <span class="pending-stat-label">ทั้งหมด</span>
+            <span class="pending-stat-value">${logs.length}</span>
+        </div>
+        <div class="pending-stat">
+            <span class="pending-stat-label">วันนี้</span>
+            <span class="pending-stat-value">${todayCount}</span>
+        </div>
+        <div class="pending-stat">
+            <span class="pending-stat-label">7 วันล่าสุด</span>
+            <span class="pending-stat-value">${last7DaysCount}</span>
+        </div>
+        <div class="pending-stat">
+            <span class="pending-stat-label">Reels / Batch</span>
+            <span class="pending-stat-value">${reelsCount} / ${batchCount}</span>
+        </div>
+    `;
+}
+
+function getPublishedFilterResult(logs) {
+    const query = publishedFilters.query.trim().toLowerCase();
+    const today = new Date();
+    const todayKey = getPublishedDateKey(today);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = getPublishedDateKey(yesterday);
+    const last7Limit = new Date(today);
+    last7Limit.setDate(last7Limit.getDate() - 6);
+    last7Limit.setHours(0, 0, 0, 0);
+    const last30Limit = new Date(today);
+    last30Limit.setDate(last30Limit.getDate() - 29);
+    last30Limit.setHours(0, 0, 0, 0);
+
+    const filtered = logs.filter((log) => {
+        const typeKey = getPublishedPostTypeKey(log);
+        const message = String(log.message_text || "").trim();
+        const sourceLabel = String(log.sourceLabel || "").trim();
+        const batchId = String(log.batch_id || "").trim();
+        const haystack = [
+            message,
+            log.facebook_post_id || "",
+            sourceLabel,
+            batchId,
+        ].join(" ").toLowerCase();
+
+        if (query && !haystack.includes(query)) {
+            return false;
+        }
+
+        if (publishedFilters.type !== "all" && typeKey !== publishedFilters.type) {
+            return false;
+        }
+
+        const date = parsePublishedDate(log.published_at || log.created_at);
+        const dateKey = getPublishedDateKey(date);
+        if (publishedFilters.customDate) {
+            return dateKey === publishedFilters.customDate;
+        }
+
+        switch (publishedFilters.day) {
+            case "today":
+                return dateKey === todayKey;
+            case "yesterday":
+                return dateKey === yesterdayKey;
+            case "last7":
+                return date && date >= last7Limit;
+            case "last30":
+                return date && date >= last30Limit;
+            default:
+                return true;
+        }
+    });
+
+    return { filtered, total: logs.length };
+}
+
+function updatePublishedFilterMeta(filteredCount, totalCount) {
+    const metaEl = document.getElementById("publishedFilterMeta");
+    if (!metaEl) return;
+
+    if (!totalCount) {
+        metaEl.textContent = "ยังไม่มีโพสต์ที่ยิงสำเร็จ";
+        return;
+    }
+
+    if (publishedFilters.customDate) {
+        metaEl.textContent = filteredCount === totalCount
+            ? `วันที่ ${publishedFilters.customDate} มี ${filteredCount} รายการ`
+            : `วันที่ ${publishedFilters.customDate} แสดง ${filteredCount} / ${totalCount} รายการ`;
+        return;
+    }
+
+    if (filteredCount === totalCount) {
+        metaEl.textContent = `แสดง ${totalCount} รายการ`;
+        return;
+    }
+
+    metaEl.textContent = `แสดง ${filteredCount} / ${totalCount} รายการ`;
+}
+
+function syncPublishedDayFiltersUi() {
+    const chips = document.querySelectorAll("#publishedDayFilters .pending-filter-chip");
+    chips.forEach((chip) => {
+        chip.classList.toggle("is-active", chip.dataset.filter === publishedFilters.day && !publishedFilters.customDate);
+    });
+}
+
 function buildPublishedTable(logs) {
     const table = document.createElement("table");
     table.className = "pending-table";
 
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");
-    ["Type", "Message", "Time", "Share", "Status", "Link", "Delete"].forEach((text) => {
+    ["Type", "Source", "Message", "Published", "Link", "Delete"].forEach((text) => {
         const th = document.createElement("th");
         th.textContent = text;
         headerRow.appendChild(th);
@@ -207,132 +322,79 @@ function buildPublishedTable(logs) {
         const tr = document.createElement("tr");
         tr.dataset.id = log.id;
 
-        // Type cell with icon (same style as pending)
         const typeTd = document.createElement("td");
         const typeSpan = document.createElement("span");
-        const pType = log.post_type === 'image' ? 'image' : 'text';
+        const pType = getPublishedPostTypeKey(log);
         typeSpan.className = `post-type-badge post-type-${pType}`;
         const typeIcons = {
+            link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
             image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
-            text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>'
+            reels: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="2" y="2" width="20" height="20" rx="4"/><path d="M7 2l3 6"/><path d="M14 2l3 6"/><path d="M2 8h20"/><path d="M10 11.5l5 3.5-5 3.5z"/></svg>',
+            text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>',
         };
         typeSpan.innerHTML = typeIcons[pType] || typeIcons.text;
-        typeSpan.title = pType === 'image' ? 'Image' : 'Text';
+        typeSpan.title = pType;
         typeTd.appendChild(typeSpan);
         tr.appendChild(typeTd);
 
-        // Message cell
+        const sourceTd = document.createElement("td");
+        const sourceBadge = document.createElement("span");
+        sourceBadge.className = `published-source-badge ${getPublishedSourceClass(log.source)}`;
+        sourceBadge.textContent = log.sourceLabel || "Manual";
+        sourceTd.appendChild(sourceBadge);
+        tr.appendChild(sourceTd);
+
         const msgTd = document.createElement("td");
+        const msgWrap = document.createElement("div");
+        msgWrap.className = "published-message-cell";
         const msgDiv = document.createElement("div");
         msgDiv.className = "pending-table-title";
-        const message = log.quote_text || "(No message)";
-        msgDiv.textContent = message.length > 50 ? message.substring(0, 50) + "..." : message;
+        const message = String(log.message_text || "(No message)");
+        msgDiv.textContent = message.length > 80 ? `${message.slice(0, 80)}...` : message;
         msgDiv.title = message;
-        msgTd.appendChild(msgDiv);
+        msgWrap.appendChild(msgDiv);
+        if (log.warning_message) {
+            const warningDiv = document.createElement("div");
+            warningDiv.className = "published-message-warning";
+            warningDiv.textContent = log.warning_message;
+            warningDiv.title = log.warning_message;
+            msgWrap.appendChild(warningDiv);
+        }
+        msgTd.appendChild(msgWrap);
         tr.appendChild(msgTd);
 
-        // Time cell
         const timeTd = document.createElement("td");
         const timeSpan = document.createElement("span");
         timeSpan.className = "pending-table-time";
-        timeSpan.textContent = new Date(log.created_at).toLocaleString("th-TH", {
-            year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
-        });
+        const publishedDate = parsePublishedDate(log.published_at || log.created_at);
+        timeSpan.textContent = publishedDate
+            ? publishedDate.toLocaleString("th-TH", {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+            })
+            : "-";
         timeTd.appendChild(timeSpan);
         tr.appendChild(timeTd);
 
-        // Share cell
-        const shareTd = document.createElement("td");
-        if (log.share_status === 'shared' && log.shared_at) {
-            if (log.shared_post_id) {
-                const shareLink = document.createElement("a");
-                shareLink.href = `https://facebook.com/${log.shared_post_id}`;
-                shareLink.target = "_blank";
-                shareLink.className = "pending-table-link pending-table-share-link";
-                shareLink.title = "ดูโพสต์ที่แชร์ - " + new Date(log.shared_at).toLocaleString("th-TH");
-                // Share icon SVG
-                const svgNS = "http://www.w3.org/2000/svg";
-                const svg = document.createElementNS(svgNS, "svg");
-                svg.setAttribute("viewBox", "0 0 24 24");
-                svg.setAttribute("fill", "none");
-                svg.setAttribute("stroke", "currentColor");
-                svg.setAttribute("stroke-width", "2");
-                svg.setAttribute("width", "16");
-                svg.setAttribute("height", "16");
-                const path1 = document.createElementNS(svgNS, "path");
-                path1.setAttribute("d", "M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8");
-                const polyline = document.createElementNS(svgNS, "polyline");
-                polyline.setAttribute("points", "16 6 12 2 8 6");
-                const line = document.createElementNS(svgNS, "line");
-                line.setAttribute("x1", "12");
-                line.setAttribute("y1", "2");
-                line.setAttribute("x2", "12");
-                line.setAttribute("y2", "15");
-                svg.appendChild(path1);
-                svg.appendChild(polyline);
-                svg.appendChild(line);
-                shareLink.appendChild(svg);
-                shareTd.appendChild(shareLink);
-            } else {
-                const shareSpan = document.createElement("span");
-                shareSpan.className = "pending-table-time";
-                shareSpan.style.color = "#059669";
-                shareSpan.textContent = new Date(log.shared_at).toLocaleString("th-TH", {
-                    hour: "2-digit", minute: "2-digit"
-                });
-                shareSpan.title = "แชร์แล้ว: " + new Date(log.shared_at).toLocaleString("th-TH");
-                shareTd.appendChild(shareSpan);
-            }
-        } else if (log.share_status === 'pending') {
-            const pendingSpan = document.createElement("span");
-            pendingSpan.style.fontSize = "1rem";
-            pendingSpan.textContent = "⏳";
-            pendingSpan.title = "รอแชร์";
-            shareTd.appendChild(pendingSpan);
-        } else {
-            shareTd.textContent = "-";
-            shareTd.style.color = "#999";
-        }
-        tr.appendChild(shareTd);
-
-        // Status cell
-        const statusTd = document.createElement("td");
-        const statusSpan = document.createElement("span");
-        statusSpan.className = "pending-table-status";
-        if (log.status === 'success') {
-            statusSpan.style.background = "#dcfce7";
-            statusSpan.style.color = "#166534";
-            statusSpan.textContent = "Success";
-        } else if (log.status === 'failed') {
-            statusSpan.style.background = "#fee2e2";
-            statusSpan.style.color = "#dc2626";
-            statusSpan.textContent = "Failed";
-            statusSpan.title = log.error_message || '';
-        } else {
-            statusSpan.style.background = "#fef3c7";
-            statusSpan.style.color = "#d97706";
-            statusSpan.textContent = "Pending";
-        }
-        statusTd.appendChild(statusSpan);
-        tr.appendChild(statusTd);
-
-        // Link cell
         const linkTd = document.createElement("td");
-        if (log.facebook_post_id) {
+        const facebookUrl = String(log.facebook_url || "").trim() || (log.facebook_post_id ? `https://facebook.com/${log.facebook_post_id}` : "");
+        if (facebookUrl) {
             const link = document.createElement("a");
-            link.href = `https://facebook.com/${log.facebook_post_id}`;
+            link.href = facebookUrl;
             link.target = "_blank";
             link.className = "pending-table-link";
             link.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
-            link.title = "View on Facebook";
+            link.title = "เปิดโพสต์บน Facebook";
             linkTd.appendChild(link);
         } else {
             linkTd.textContent = "-";
-            linkTd.style.color = "#999";
+            linkTd.style.color = "#94a3b8";
         }
         tr.appendChild(linkTd);
 
-        // Delete cell
         const deleteTd = document.createElement("td");
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "pending-table-delete";
@@ -344,16 +406,78 @@ function buildPublishedTable(logs) {
 
         tbody.appendChild(tr);
     });
+
     table.appendChild(tbody);
     return table;
 }
 
-// Delete published log - v5.5 fixed path params
-async function deletePublishedLog(logId) {
-    console.log('[DELETE] Deleting log:', logId);
-    if (!confirm("ต้องการลบ log นี้?")) return;
+function renderPublishedPostsWithFilters() {
+    const { filtered, total } = getPublishedFilterResult(currentPublishedPosts);
+    updatePublishedFilterMeta(filtered.length, total);
+
+    if (!filtered.length) {
+        publishedTableContainer.innerHTML = currentPublishedPosts.length
+            ? '<div class="pending-empty">ไม่พบรายการที่ตรงกับ filter นี้</div>'
+            : '<div class="pending-empty">No published posts yet</div>';
+        return;
+    }
+
+    const table = buildPublishedTable(filtered);
+    publishedTableContainer.innerHTML = "";
+    publishedTableContainer.appendChild(table);
+}
+
+function syncPublishedFilterInputs() {
+    const searchInput = document.getElementById("publishedSearchInput");
+    const typeFilter = document.getElementById("publishedTypeFilter");
+    const dateInput = document.getElementById("publishedDateInput");
+
+    if (searchInput) searchInput.value = publishedFilters.query;
+    if (typeFilter) typeFilter.value = publishedFilters.type;
+    if (dateInput) dateInput.value = publishedFilters.customDate;
+    syncPublishedDayFiltersUi();
+}
+
+async function loadPublishedPosts() {
+    const pageId = getCurrentPageId();
+    const summaryEl = document.getElementById("publishedSummaryBar");
+
+    if (!pageId) {
+        if (summaryEl) summaryEl.innerHTML = "";
+        publishedTableContainer.innerHTML = '<div class="pending-empty">Please select a Page first</div>';
+        return;
+    }
+
+    publishedTableContainer.innerHTML = `
+        <div class="pending-skeleton">
+          <div class="pending-skeleton-row"><div class="sk-img"></div><div class="sk-text"></div><div class="sk-date"></div><div class="sk-badge"></div></div>
+          <div class="pending-skeleton-row"><div class="sk-img"></div><div class="sk-text"></div><div class="sk-date"></div><div class="sk-badge"></div></div>
+          <div class="pending-skeleton-row"><div class="sk-img"></div><div class="sk-text"></div><div class="sk-date"></div><div class="sk-badge"></div></div>
+        </div>
+    `;
+
     try {
-        const response = await fetch(`/api/auto-post-logs/${logId}`, { method: 'DELETE' });
+        const response = await fetch(`/api/published-posts?pageId=${pageId}&limit=200`);
+        const data = await response.json();
+
+        if (!data.success) {
+            publishedTableContainer.innerHTML = `<div class="pending-empty">Error: ${data.error}</div>`;
+            return;
+        }
+
+        currentPublishedPosts = Array.isArray(data.logs) ? data.logs : [];
+        renderPublishedOverview(currentPublishedPosts);
+        syncPublishedFilterInputs();
+        renderPublishedPostsWithFilters();
+    } catch (err) {
+        publishedTableContainer.innerHTML = `<div class="pending-empty">Error: ${err.message}</div>`;
+    }
+}
+
+async function deletePublishedLog(logId) {
+    if (!confirm("ต้องการลบรายการโพสต์นี้?")) return;
+    try {
+        const response = await fetch(`/api/published-posts/${logId}`, { method: "DELETE" });
         const data = await response.json();
         if (data.success) {
             loadPublishedPosts();
@@ -363,6 +487,55 @@ async function deletePublishedLog(logId) {
     } catch (err) {
         alert("Error: " + err.message);
     }
+}
+
+const publishedRefreshBtn = document.getElementById("publishedRefreshBtn");
+const publishedSearchInput = document.getElementById("publishedSearchInput");
+const publishedTypeFilter = document.getElementById("publishedTypeFilter");
+const publishedDayFilters = document.getElementById("publishedDayFilters");
+const publishedDateInput = document.getElementById("publishedDateInput");
+
+if (publishedRefreshBtn && !publishedRefreshBtn.dataset.bound) {
+    publishedRefreshBtn.dataset.bound = "true";
+    publishedRefreshBtn.addEventListener("click", () => loadPublishedPosts());
+}
+
+if (publishedSearchInput && !publishedSearchInput.dataset.bound) {
+    publishedSearchInput.dataset.bound = "true";
+    publishedSearchInput.addEventListener("input", (event) => {
+        publishedFilters.query = event.target.value || "";
+        renderPublishedPostsWithFilters();
+    });
+}
+
+if (publishedTypeFilter && !publishedTypeFilter.dataset.bound) {
+    publishedTypeFilter.dataset.bound = "true";
+    publishedTypeFilter.addEventListener("change", (event) => {
+        publishedFilters.type = event.target.value || "all";
+        renderPublishedPostsWithFilters();
+    });
+}
+
+if (publishedDayFilters && !publishedDayFilters.dataset.bound) {
+    publishedDayFilters.dataset.bound = "true";
+    publishedDayFilters.addEventListener("click", (event) => {
+        const target = event.target.closest("[data-filter]");
+        if (!target) return;
+        publishedFilters.day = target.dataset.filter || "all";
+        publishedFilters.customDate = "";
+        if (publishedDateInput) publishedDateInput.value = "";
+        syncPublishedDayFiltersUi();
+        renderPublishedPostsWithFilters();
+    });
+}
+
+if (publishedDateInput && !publishedDateInput.dataset.bound) {
+    publishedDateInput.dataset.bound = "true";
+    publishedDateInput.addEventListener("change", (event) => {
+        publishedFilters.customDate = event.target.value || "";
+        syncPublishedDayFiltersUi();
+        renderPublishedPostsWithFilters();
+    });
 }
 
 // Show settings panel
@@ -484,7 +657,7 @@ if (textQuoteSubmitBtn) {
             const data = await response.json();
 
             if (data.success) {
-                textQuoteStatus.textContent = "✓ บันทึกสำเร็จ กำลังไปหน้า Quotes...";
+                textQuoteStatus.textContent = "✓ บันทึกสำเร็จ กำลังไปหน้า Pending > Quotes...";
                 textQuoteStatus.style.color = "#28a745";
                 textQuoteInput.value = "";
                 // Navigate to quotes page after brief delay

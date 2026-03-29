@@ -44,12 +44,8 @@ app.get('/', async (c) => {
                 ph.scheduled_time,
                 ph.published_at,
                 ph.warning_message,
-                ph.created_at,
-                sq.status as share_status,
-                sq.shared_at,
-                sq.shared_post_id
+                ph.created_at
             FROM publish_history ph
-            LEFT JOIN share_queue sq ON ph.facebook_post_id = sq.facebook_post_id
             WHERE (? = '' OR ph.page_id = ?)
             ORDER BY datetime(COALESCE(ph.published_at, ph.created_at)) DESC, ph.id DESC
             LIMIT ?

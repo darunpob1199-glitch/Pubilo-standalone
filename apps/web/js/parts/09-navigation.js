@@ -9,12 +9,12 @@ function handleNavigation() {
 
     if (hash === "pending") {
         pendingNavItem.classList.add("active");
-        showPendingPanel();
+        showPendingPanel(false, "posts");
     } else if (hash === "published") {
         publishedNavItem.classList.add("active");
         showPublishedPanel();
     } else if (hash === "quotes") {
-        quotesNavItem.classList.add("active");
+        pendingNavItem.classList.add("active");
         showQuotesPanel();
     } else if (hash === "earnings") {
         earningsNavItem.classList.add("active");
@@ -64,12 +64,6 @@ pendingNavItem.addEventListener("click", (e) => {
 publishedNavItem.addEventListener("click", (e) => {
     e.preventDefault();
     navigateTo("published");
-});
-
-// Quotes nav item click
-quotesNavItem.addEventListener("click", (e) => {
-    e.preventDefault();
-    navigateTo("quotes");
 });
 
 // Earnings nav item click

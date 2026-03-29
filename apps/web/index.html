@@ -308,15 +308,6 @@
                         </svg>
                         Earnings
                     </a>
-                    <a href="#quotes" class="nav-item" id="quotesNavItem">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path
-                                d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z" />
-                            <path
-                                d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z" />
-                        </svg>
-                        Quotes
-                    </a>
                 </div>
 
                 <div class="nav-section">
@@ -832,6 +823,14 @@
                         </button>
                     </div>
                 </div>
+                <div class="pending-section-tabs">
+                    <button type="button" class="pending-section-tab is-active" id="pendingPostsTab">
+                        คิวโพสต์
+                    </button>
+                    <button type="button" class="pending-section-tab" id="pendingQuotesTab">
+                        Quotes
+                    </button>
+                </div>
                 <div class="pending-summary-bar" id="pendingSummaryBar"></div>
                 <div class="pending-warning-box" id="pendingWarningBox" style="display: none"></div>
                 <div class="pending-filter-bar">
@@ -868,6 +867,36 @@
             <div class="pending-panel" id="publishedPanel" style="display: none">
                 <div class="pending-panel-header">
                     <h2>Published</h2>
+                    <div class="pending-panel-toolbar">
+                        <button class="pending-refresh-btn" id="publishedRefreshBtn" type="button">
+                            รีเฟรช
+                        </button>
+                    </div>
+                </div>
+                <div class="pending-summary-bar" id="publishedSummaryBar"></div>
+                <div class="pending-filter-bar published-filter-bar">
+                    <div class="pending-filter-search">
+                        <input class="pending-filter-input" id="publishedSearchInput" type="search"
+                            placeholder="ค้นหาข้อความ post id หรือ batch" />
+                    </div>
+                    <select class="pending-filter-select" id="publishedTypeFilter">
+                        <option value="all">ทุกประเภท</option>
+                        <option value="link">Link</option>
+                        <option value="text">Text</option>
+                        <option value="image">Image</option>
+                        <option value="reels">Reels</option>
+                    </select>
+                    <div class="pending-quick-filters" id="publishedDayFilters">
+                        <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
+                        <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
+                        <button type="button" class="pending-filter-chip" data-filter="yesterday">เมื่อวาน</button>
+                        <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
+                        <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
+                    </div>
+                    <div class="pending-filter-search published-date-filter">
+                        <input class="pending-filter-input" id="publishedDateInput" type="date" />
+                    </div>
+                    <div class="pending-filter-meta" id="publishedFilterMeta"></div>
                 </div>
                 <div class="pending-table-container" id="publishedTableContainer">
                     <div class="pending-empty">No published posts</div>
@@ -900,6 +929,14 @@
                     <button id="addQuoteBtn"
                         style="padding: 0.5rem 1rem; background: #1877f2; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 0.9rem;">
                         + เพิ่มคำคม
+                    </button>
+                </div>
+                <div class="pending-section-tabs">
+                    <button type="button" class="pending-section-tab" id="quotesPostsTab">
+                        คิวโพสต์
+                    </button>
+                    <button type="button" class="pending-section-tab is-active" id="quotesQuotesTab">
+                        Quotes
                     </button>
                 </div>
                 <!-- Add Quote Modal -->

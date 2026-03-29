@@ -41,6 +41,17 @@ function normalizePostType(value?: string | null): string | null {
     return normalized;
 }
 
+async function hasTable(env: Env, tableName: string): Promise<boolean> {
+    const result = await env.DB.prepare(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name = ?
+        LIMIT 1
+    `).bind(tableName).first<{ name: string }>();
+
+    return !!result?.name;
+}
+
 export async function ensurePublishHistoryTable(env: Env): Promise<void> {
     await env.DB.prepare(`
         CREATE TABLE IF NOT EXISTS publish_history (
@@ -152,137 +163,143 @@ export async function recordPublishHistory(env: Env, input: PublishHistoryInput)
 export async function backfillLegacyPublishHistory(env: Env): Promise<void> {
     await ensurePublishHistoryTable(env);
 
-    await env.DB.prepare(`
-        INSERT OR IGNORE INTO publish_history (
-            external_key,
-            page_id,
-            source,
-            source_ref,
-            post_type,
-            message_text,
-            media_kind,
-            facebook_post_id,
-            facebook_url,
-            published_at,
-            created_at
-        )
-        SELECT
-            'auto-post-log:' || apl.id,
-            apl.page_id,
-            'auto_post',
-            CAST(apl.id AS TEXT),
-            CASE
-                WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%reel%' THEN 'reels'
-                WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%image%' THEN 'image'
-                WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%text%' THEN 'text'
-                ELSE 'link'
-            END,
-            apl.quote_text,
-            CASE
-                WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%reel%' THEN 'reels'
-                WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%image%' THEN 'image'
-                WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%text%' THEN 'text'
-                ELSE 'link'
-            END,
-            apl.facebook_post_id,
-            CASE
-                WHEN COALESCE(apl.facebook_post_id, '') != '' THEN 'https://www.facebook.com/' || apl.facebook_post_id
-                ELSE NULL
-            END,
-            apl.created_at,
-            apl.created_at
-        FROM auto_post_logs apl
-        WHERE apl.status = 'success'
-    `).run();
+    if (await hasTable(env, 'auto_post_logs')) {
+        await env.DB.prepare(`
+            INSERT OR IGNORE INTO publish_history (
+                external_key,
+                page_id,
+                source,
+                source_ref,
+                post_type,
+                message_text,
+                media_kind,
+                facebook_post_id,
+                facebook_url,
+                published_at,
+                created_at
+            )
+            SELECT
+                'auto-post-log:' || apl.id,
+                apl.page_id,
+                'auto_post',
+                CAST(apl.id AS TEXT),
+                CASE
+                    WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%reel%' THEN 'reels'
+                    WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%image%' THEN 'image'
+                    WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%text%' THEN 'text'
+                    ELSE 'link'
+                END,
+                apl.quote_text,
+                CASE
+                    WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%reel%' THEN 'reels'
+                    WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%image%' THEN 'image'
+                    WHEN LOWER(COALESCE(apl.post_type, '')) LIKE '%text%' THEN 'text'
+                    ELSE 'link'
+                END,
+                apl.facebook_post_id,
+                CASE
+                    WHEN COALESCE(apl.facebook_post_id, '') != '' THEN 'https://www.facebook.com/' || apl.facebook_post_id
+                    ELSE NULL
+                END,
+                apl.created_at,
+                apl.created_at
+            FROM auto_post_logs apl
+            WHERE apl.status = 'success'
+        `).run();
+    }
 
-    await env.DB.prepare(`
-        INSERT OR IGNORE INTO publish_history (
-            external_key,
-            page_id,
-            source,
-            source_ref,
-            batch_id,
-            queue_job_id,
-            post_type,
-            message_text,
-            media_kind,
-            media_url,
-            facebook_post_id,
-            facebook_url,
-            scheduled_time,
-            published_at,
-            extra_json,
-            created_at
-        )
-        SELECT
-            'scheduled-queue:' || q.id,
-            q.page_id,
-            'scheduled_queue',
-            CAST(q.id AS TEXT),
-            q.batch_id,
-            q.id,
-            CASE
-                WHEN json_extract(q.payload_json, '$.queueRoute') = '/api/publish-reel' THEN 'reels'
-                WHEN LOWER(COALESCE(json_extract(q.payload_json, '$.postMode'), '')) LIKE '%reel%' THEN 'reels'
-                WHEN COALESCE(json_extract(q.payload_json, '$.imageUrl'), '') != '' THEN 'image'
-                WHEN COALESCE(json_extract(q.payload_json, '$.link'), '') != '' OR COALESCE(json_extract(q.payload_json, '$.linkUrl'), '') != '' THEN 'link'
-                WHEN COALESCE(json_extract(q.payload_json, '$.message'), '') != '' OR COALESCE(json_extract(q.payload_json, '$.primaryText'), '') != '' THEN 'text'
-                ELSE 'link'
-            END,
-            COALESCE(
-                json_extract(q.payload_json, '$.message'),
-                json_extract(q.payload_json, '$.primaryText'),
-                json_extract(q.payload_json, '$.caption'),
-                ''
-            ),
-            CASE
-                WHEN json_extract(q.payload_json, '$.queueRoute') = '/api/publish-reel' THEN 'reels'
-                WHEN COALESCE(json_extract(q.payload_json, '$.imageUrl'), '') != '' THEN 'image'
-                WHEN COALESCE(json_extract(q.payload_json, '$.link'), '') != '' OR COALESCE(json_extract(q.payload_json, '$.linkUrl'), '') != '' THEN 'link'
-                ELSE 'text'
-            END,
-            COALESCE(json_extract(q.payload_json, '$.imageUrl'), json_extract(q.payload_json, '$.linkUrl'), json_extract(q.payload_json, '$.link')),
-            q.post_id,
-            q.facebook_url,
-            q.scheduled_time,
-            COALESCE(q.processed_at, q.updated_at, q.created_at),
-            q.payload_json,
-            q.created_at
-        FROM scheduled_publish_queue q
-        WHERE q.status = 'published'
-    `).run();
+    if (await hasTable(env, 'scheduled_publish_queue')) {
+        await env.DB.prepare(`
+            INSERT OR IGNORE INTO publish_history (
+                external_key,
+                page_id,
+                source,
+                source_ref,
+                batch_id,
+                queue_job_id,
+                post_type,
+                message_text,
+                media_kind,
+                media_url,
+                facebook_post_id,
+                facebook_url,
+                scheduled_time,
+                published_at,
+                extra_json,
+                created_at
+            )
+            SELECT
+                'scheduled-queue:' || q.id,
+                q.page_id,
+                'scheduled_queue',
+                CAST(q.id AS TEXT),
+                q.batch_id,
+                q.id,
+                CASE
+                    WHEN json_extract(q.payload_json, '$.queueRoute') = '/api/publish-reel' THEN 'reels'
+                    WHEN LOWER(COALESCE(json_extract(q.payload_json, '$.postMode'), '')) LIKE '%reel%' THEN 'reels'
+                    WHEN COALESCE(json_extract(q.payload_json, '$.imageUrl'), '') != '' THEN 'image'
+                    WHEN COALESCE(json_extract(q.payload_json, '$.link'), '') != '' OR COALESCE(json_extract(q.payload_json, '$.linkUrl'), '') != '' THEN 'link'
+                    WHEN COALESCE(json_extract(q.payload_json, '$.message'), '') != '' OR COALESCE(json_extract(q.payload_json, '$.primaryText'), '') != '' THEN 'text'
+                    ELSE 'link'
+                END,
+                COALESCE(
+                    json_extract(q.payload_json, '$.message'),
+                    json_extract(q.payload_json, '$.primaryText'),
+                    json_extract(q.payload_json, '$.caption'),
+                    ''
+                ),
+                CASE
+                    WHEN json_extract(q.payload_json, '$.queueRoute') = '/api/publish-reel' THEN 'reels'
+                    WHEN COALESCE(json_extract(q.payload_json, '$.imageUrl'), '') != '' THEN 'image'
+                    WHEN COALESCE(json_extract(q.payload_json, '$.link'), '') != '' OR COALESCE(json_extract(q.payload_json, '$.linkUrl'), '') != '' THEN 'link'
+                    ELSE 'text'
+                END,
+                COALESCE(json_extract(q.payload_json, '$.imageUrl'), json_extract(q.payload_json, '$.linkUrl'), json_extract(q.payload_json, '$.link')),
+                q.post_id,
+                q.facebook_url,
+                q.scheduled_time,
+                COALESCE(q.processed_at, q.updated_at, q.created_at),
+                q.payload_json,
+                q.created_at
+            FROM scheduled_publish_queue q
+            WHERE q.status = 'published'
+        `).run();
+    }
 
-    await env.DB.prepare(`
-        INSERT OR IGNORE INTO publish_history (
-            external_key,
-            page_id,
-            source,
-            source_ref,
-            post_type,
-            message_text,
-            media_kind,
-            media_url,
-            facebook_post_id,
-            facebook_url,
-            published_at,
-            warning_message,
-            created_at
-        )
-        SELECT
-            'reel:' || COALESCE(NULLIF(ru.video_key, ''), NULLIF(ru.post_id, ''), NULLIF(ru.video_id, ''), CAST(ru.id AS TEXT)),
-            ru.page_id,
-            'reel',
-            COALESCE(NULLIF(ru.video_key, ''), NULLIF(ru.post_id, ''), NULLIF(ru.video_id, ''), CAST(ru.id AS TEXT)),
-            'reels',
-            NULL,
-            'reels',
-            NULL,
-            COALESCE(NULLIF(ru.post_id, ''), NULLIF(ru.video_id, ''), NULL),
-            ru.facebook_url,
-            COALESCE(ru.published_at, ru.updated_at, ru.created_at),
-            ru.warning_message,
-            ru.created_at
-        FROM reel_uploads ru
-        WHERE ru.status IN ('published', 'deleted')
-    `).run();
+    if (await hasTable(env, 'reel_uploads')) {
+        await env.DB.prepare(`
+            INSERT OR IGNORE INTO publish_history (
+                external_key,
+                page_id,
+                source,
+                source_ref,
+                post_type,
+                message_text,
+                media_kind,
+                media_url,
+                facebook_post_id,
+                facebook_url,
+                published_at,
+                warning_message,
+                created_at
+            )
+            SELECT
+                'reel:' || COALESCE(NULLIF(ru.video_key, ''), NULLIF(ru.post_id, ''), NULLIF(ru.video_id, ''), CAST(ru.id AS TEXT)),
+                ru.page_id,
+                'reel',
+                COALESCE(NULLIF(ru.video_key, ''), NULLIF(ru.post_id, ''), NULLIF(ru.video_id, ''), CAST(ru.id AS TEXT)),
+                'reels',
+                NULL,
+                'reels',
+                NULL,
+                COALESCE(NULLIF(ru.post_id, ''), NULLIF(ru.video_id, ''), NULL),
+                ru.facebook_url,
+                COALESCE(ru.published_at, ru.updated_at, ru.created_at),
+                ru.warning_message,
+                ru.created_at
+            FROM reel_uploads ru
+            WHERE ru.status IN ('published', 'deleted')
+        `).run();
+    }
 }

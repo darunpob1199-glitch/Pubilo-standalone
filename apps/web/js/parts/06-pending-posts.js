@@ -737,6 +737,39 @@ const pendingRefreshBtn = document.getElementById("pendingRefreshBtn");
 const pendingSearchInput = document.getElementById("pendingSearchInput");
 const pendingTypeFilter = document.getElementById("pendingTypeFilter");
 const pendingQuickFilters = document.getElementById("pendingQuickFilters");
+const pendingPostsTab = document.getElementById("pendingPostsTab");
+const pendingQuotesTab = document.getElementById("pendingQuotesTab");
+const quotesPostsTab = document.getElementById("quotesPostsTab");
+const quotesQuotesTab = document.getElementById("quotesQuotesTab");
+
+let pendingSectionView = "posts";
+
+function syncPendingSectionTabs() {
+    const isQuotes = pendingSectionView === "quotes";
+    pendingPostsTab?.classList.toggle("is-active", !isQuotes);
+    quotesPostsTab?.classList.toggle("is-active", !isQuotes);
+    pendingQuotesTab?.classList.toggle("is-active", isQuotes);
+    quotesQuotesTab?.classList.toggle("is-active", isQuotes);
+}
+
+function bindPendingSectionTabs() {
+    const buttons = [
+        [pendingPostsTab, "pending"],
+        [quotesPostsTab, "pending"],
+        [pendingQuotesTab, "quotes"],
+        [quotesQuotesTab, "quotes"],
+    ];
+
+    buttons.forEach(([button, hash]) => {
+        if (!button || button.dataset.bound) return;
+        button.dataset.bound = "true";
+        button.addEventListener("click", () => {
+            window.location.hash = hash;
+        });
+    });
+}
+
+bindPendingSectionTabs();
 
 if (pendingRefreshBtn && !pendingRefreshBtn.dataset.bound) {
     pendingRefreshBtn.dataset.bound = "true";
@@ -775,7 +808,9 @@ if (pendingQuickFilters && !pendingQuickFilters.dataset.bound) {
     syncPendingQuickFiltersUi();
 }
 
-async function showPendingPanel(forceRefresh = false) {
+async function showPendingPanel(forceRefresh = false, view = "posts") {
+    pendingSectionView = view === "quotes" ? "quotes" : "posts";
+    syncPendingSectionTabs();
     // Hide all mode containers
     document.querySelectorAll(".mode-container").forEach((c) => {
         c.classList.remove("active");
@@ -789,10 +824,21 @@ async function showPendingPanel(forceRefresh = false) {
     if (tp) tp.style.display = "none";
     // Lock body scroll
     document.body.style.overflow = "hidden";
-    // Show pending panel (full width)
-    pendingPanel.style.display = "flex";
     // Add pending mode class
     appLayout.classList.add("pending-mode");
+
+    if (pendingSectionView === "quotes") {
+        pendingPanel.style.display = "none";
+        quotesPanel.style.display = "flex";
+        if (typeof loadQuotes === "function") {
+            loadQuotes();
+        }
+        return;
+    }
+
+    // Show pending panel (full width)
+    pendingPanel.style.display = "flex";
+    quotesPanel.style.display = "none";
 
     const pageId = getCurrentPageId();
 
