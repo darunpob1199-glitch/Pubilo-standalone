@@ -16,7 +16,9 @@ import { autoHideConfigRouter } from './routes/auto-hide-config';
 import { uploadImageRouter } from './routes/upload-image';
 import { logsRouter } from './routes/logs';
 import { publishedPostsRouter } from './routes/published-posts';
+import { postActionJobsRouter } from './routes/post-action-jobs';
 import { migrateRouter } from './routes/migrate';
+import { processPendingPostActionJobs } from './lib/post-action-jobs';
 // Cron routes
 import { cronAutoPostRouter } from './routes/cron-auto-post';
 import { cronEarningsRouter } from './routes/cron-earnings';
@@ -246,6 +248,7 @@ app.route('/api/auto-post-logs', logsRouter);
 app.route('/api/view-logs', logsRouter);
 app.route('/api/logs', logsRouter);
 app.route('/api/published-posts', publishedPostsRouter);
+app.route('/api/post-action-jobs', postActionJobsRouter);
 app.route('/api/migrate', migrateRouter);
 
 // Additional API Routes
@@ -284,6 +287,13 @@ export default {
                 await processScheduledPublishQueue(env, ctx);
             } catch (err) {
                 console.error('[scheduled] scheduled publish queue error:', err);
+            }
+
+            console.log('[scheduled] Every minute - Processing post action jobs');
+            try {
+                await processPendingPostActionJobs(env, { perJobLimit: 20, maxJobs: 3 });
+            } catch (err) {
+                console.error('[scheduled] post action jobs error:', err);
             }
 
             console.log('[scheduled] Every minute - Running auto-post');

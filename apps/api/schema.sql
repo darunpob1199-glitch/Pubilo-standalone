@@ -152,6 +152,39 @@ CREATE TABLE IF NOT EXISTS hidden_posts (
     PRIMARY KEY (page_id, post_id)
 );
 
+CREATE TABLE IF NOT EXISTS post_action_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    page_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    total_count INTEGER NOT NULL DEFAULT 0,
+    processed_count INTEGER NOT NULL DEFAULT 0,
+    success_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    requested_filters_json TEXT,
+    last_error TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    finished_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS post_action_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER NOT NULL,
+    post_id TEXT NOT NULL,
+    post_message TEXT,
+    post_type TEXT,
+    post_created_at TEXT,
+    post_permalink TEXT,
+    post_picture_url TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error_message TEXT,
+    processed_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(job_id, post_id)
+);
+
 CREATE TABLE IF NOT EXISTS scheduled_publish_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     page_id TEXT NOT NULL,
@@ -178,6 +211,9 @@ CREATE INDEX IF NOT EXISTS idx_publish_history_page_published ON publish_history
 CREATE INDEX IF NOT EXISTS idx_publish_history_source_ref ON publish_history (source, source_ref);
 CREATE INDEX IF NOT EXISTS idx_share_queue_status_created_at ON share_queue (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_share_queue_target_page_id ON share_queue (target_page_id);
+CREATE INDEX IF NOT EXISTS idx_post_action_jobs_page_action_created ON post_action_jobs (page_id, action, created_at);
+CREATE INDEX IF NOT EXISTS idx_post_action_jobs_status_created ON post_action_jobs (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_post_action_items_job_status ON post_action_items (job_id, status, id);
 CREATE INDEX IF NOT EXISTS idx_earnings_history_date ON earnings_history (date);
 CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_status_time ON scheduled_publish_queue (status, scheduled_time);
 CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_page_status ON scheduled_publish_queue (page_id, status, scheduled_time);
