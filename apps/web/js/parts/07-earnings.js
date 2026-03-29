@@ -32,7 +32,7 @@ async function loadEarnings() {
     loadingEl.style.color = '';
     dataEl.style.display = "none";
 
-    const pageId = getCurrentPageId() || localStorage.getItem("fewfeed_selectedPageId");
+    const pageId = getCurrentPageId();
     if (!pageId) {
         loadingEl.textContent = 'Please select a Page first';
         loadingEl.style.color = '#e74c3c';
@@ -146,7 +146,7 @@ function showPublishedPanel() {
 
 // Load published posts from our logs
 async function loadPublishedPosts() {
-    const pageId = getCurrentPageId() || localStorage.getItem("fewfeed_selectedPageId");
+    const pageId = getCurrentPageId();
 
     if (!pageId) {
         publishedTableContainer.innerHTML = '<div class="pending-empty">Please select a Page first</div>';
@@ -389,138 +389,14 @@ function showSettingsPanel() {
 const textPanel = document.getElementById("textPanel");
 
 function showTextPanel() {
-    // Hide all panels
-    document.querySelectorAll(".mode-container").forEach((c) => {
-        c.classList.remove("active");
-    });
-    pendingPanel.style.display = "none";
-    publishedPanel.style.display = "none";
-    quotesPanel.style.display = "none";
-    settingsPanel.style.display = "none";
-
-    // Show text mode panel (full width like pending)
-    const textModePanel = document.getElementById("textModePanel");
-    if (textModePanel) {
-        textModePanel.style.display = "block";
-    }
-
-    // Add pending-mode class for full width layout
-    appLayout.classList.add("pending-mode");
-
-    // Focus on text textarea
+    setPostMode("text");
+    showDashboard();
     setTimeout(() => {
-        const textTextarea = document.getElementById("textMessageTextarea");
-        if (textTextarea) {
-            textTextarea.focus();
-
-            // Add preview functionality
-            textTextarea.oninput = () => {
-                const previewContent = document.getElementById("textPreviewContent");
-                if (previewContent) {
-                    const text = textTextarea.value;
-                    previewContent.textContent = text || "พิมพ์ข้อความในช่องด้านล่างเพื่อดูตัวอย่าง...";
-                    previewContent.style.color = text ? "#333" : "#999";
-                }
-            };
+        document.getElementById("textPrimaryText")?.focus();
+        if (typeof renderTextComposerUi === "function") {
+            renderTextComposerUi();
         }
-
-        // Add publish button handler
-        const textPublishBtn = document.getElementById("textPublishBtn");
-        if (textPublishBtn) {
-            textPublishBtn.onclick = async () => {
-                const message = document.getElementById("textMessageTextarea").value;
-                if (!message.trim()) {
-                    alert("กรุณาพิมพ์ข้อความก่อนโพสต์");
-                    return;
-                }
-
-                const statusEl = document.getElementById("textPublishStatus");
-                const showStatus = (msg, isError = false) => {
-                    statusEl.style.display = 'block';
-                    statusEl.style.background = isError ? '#fee2e2' : '#dcfce7';
-                    statusEl.style.color = isError ? '#dc2626' : '#16a34a';
-                    statusEl.innerHTML = msg;
-                };
-
-                try {
-                    textPublishBtn.disabled = true;
-                    textPublishBtn.innerHTML = '<span class="publish-icon">⏳</span> กำลังโพสต์...';
-                    showStatus('📤 กำลังสร้างโพสต์...');
-
-                    const pageId = getCurrentPageId();
-                    if (!pageId) {
-                        alert("กรุณาเลือกเพจก่อน");
-                        return;
-                    }
-
-                    // Get selected share pages
-                    const shareCheckboxes = document.querySelectorAll('input[name="sharePage"]:checked');
-                    const shareToPages = Array.from(shareCheckboxes).map(cb => cb.value);
-                    const userId = getCurrentUserId();
-
-                    if (!userId) {
-                        throw new Error('กรุณาเลือกผู้ใช้ก่อน');
-                    }
-
-                    const iUser = document.getElementById('iUserInput')?.value?.trim();
-
-                    showStatus('📤 กำลังโพสต์...');
-                    const response = await fetch("/api/text-post", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            pageId,
-                            message,
-                            shareToPages,
-                            userId,
-                            iUser
-                        }),
-                    });
-
-                    const result = await response.json();
-
-                    if (result.success) {
-                        let statusMsg = `✅ โพสต์สำเร็จ!<br>Post ID: ${result.postId}`;
-
-                        // แสดงผล edit
-                        if (result.editSuccess) {
-                            statusMsg += '<br>✅ ลบรูปสำเร็จ (เหลือแค่ text)';
-                        } else if (result.editError) {
-                            statusMsg += '<br>❌ ลบรูปไม่สำเร็จ: ' + result.editError.slice(0, 100);
-                        }
-
-                        if (result.queuedShares?.length > 0) {
-                            statusMsg += '<br><br>📢 รอแชร์ตามเวลาที่กำหนด:';
-                            result.queuedShares.forEach(sr => {
-                                statusMsg += sr.queued
-                                    ? `<br>⏳ ${sr.pageId}`
-                                    : `<br>❌ ${sr.pageId}: queue failed`;
-                            });
-                        }
-                        showStatus(statusMsg);
-
-                        // Clear form
-                        document.getElementById("textMessageTextarea").value = "";
-
-                        // Uncheck all share checkboxes
-                        document.querySelectorAll('input[name="sharePage"]').forEach(cb => cb.checked = false);
-                    } else {
-                        throw new Error(result.error || 'Server error');
-                    }
-
-                } catch (error) {
-                    console.error('Text post error:', error);
-                    showStatus("❌ " + error.message, true);
-                } finally {
-                    textPublishBtn.disabled = false;
-                    textPublishBtn.innerHTML = '<span class="publish-icon">📝</span> Publish Text Post';
-                }
-            };
-        }
-
-        // Load share pages list
-        loadSharePagesList();
-    }, 100);
+    }, 50);
 }
 
 // Load pages for sharing - ดึงจาก database

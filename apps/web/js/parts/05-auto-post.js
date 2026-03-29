@@ -606,6 +606,10 @@ function renderPresets() {
             saveAutoPostConfig(undefined, undefined, undefined, currentPresets.join(','));
         });
     });
+
+    if (typeof renderTextComposerUi === "function") {
+        renderTextComposerUi();
+    }
 }
 
 addPresetBtn.addEventListener("click", () => {
@@ -706,6 +710,17 @@ async function loadSettingsPanel() {
     const pageId = getCurrentPageId();
     if (!pageId) {
         console.log("[LOAD] No page selected");
+        const tokenInput = document.getElementById("pageTokenInputPanel");
+        if (tokenInput) tokenInput.value = "";
+        if (hideTokenInputPanel) hideTokenInputPanel.value = "";
+        autoScheduleEnabledPanel.checked = false;
+        scheduleMinutesPanel.value = "00, 15, 30, 45";
+        if (workingHoursStart) workingHoursStart.value = 6;
+        if (workingHoursEnd) workingHoursEnd.value = 24;
+        imageSourceSelectPanel.value = "ai";
+        ogBackgroundUrlPanel.value = "";
+        ogFontSelectPanel.value = "noto-sans-thai";
+        setPageTokenAutoStatus("เลือกเพจหลักก่อน แล้วค่อยจัดการ token และการตั้งค่า", "muted");
         return;
     }
 
@@ -858,6 +873,10 @@ async function loadSettingsPanel() {
 
     // Load Auto-Hide config
     await loadAutoHideConfig();
+
+    if (typeof renderTextComposerUi === "function") {
+        renderTextComposerUi();
+    }
 }
 
 // Auto schedule checkbox change handler for panel
@@ -1041,6 +1060,9 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
 
             // Update UI mode
             if (currentPostMode) setAutoPostMode(currentPostMode);
+            if (typeof renderTextComposerUi === "function") {
+                renderTextComposerUi();
+            }
 
             // Show success
             saveSettingsPanelBtn.innerHTML = "✓ บันทึกแล้ว!";
@@ -1157,6 +1179,9 @@ const modeState = {
         currentView: "upload",
         lastCaption: "", // Store last used caption for regeneration
     },
+    text: {
+        selectedBackgroundPresetId: "",
+    },
     image: {
         referenceImages: [],
         generatedImages: [],
@@ -1171,6 +1196,12 @@ const modeState = {
         selectedVideoFile: null,
         selectedVideoUrl: "",
         selectedVideoName: "",
+        selectedVideoKey: "",
+        selectedVideoMimeType: "",
+        selectedVideoSize: 0,
+        isUploadingVideo: false,
+        videoUploadError: "",
+        videoUploadRequestId: "",
         currentView: "upload",
         lastCaption: "",
     },
@@ -1179,9 +1210,15 @@ const modeState = {
 // Update pending count from Facebook API
 async function updatePendingCount() {
     try {
+        const pageId = getCurrentPageId();
+        if (!pageId) {
+            pendingBadge.textContent = "0";
+            pendingBadge.style.display = "none";
+            return;
+        }
         const scheduledPosts =
             await fetchScheduledPostsFromFacebook();
-        const count = scheduledPosts.length;
+        const count = Array.isArray(scheduledPosts) ? scheduledPosts.length : 0;
         pendingBadge.textContent = count;
         pendingBadge.style.display = count > 0 ? "inline" : "none";
     } catch (err) {

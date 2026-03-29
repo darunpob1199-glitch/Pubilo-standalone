@@ -12,6 +12,10 @@ binding = "DB"
 database_name = "pubilo-database-prod"
 database_id = "59e18881-ca09-41a4-a980-8049c6c0dfb9"
 
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "pubilo-media-prod"
+
 # Cron Triggers (UTC timezone)
 # * * * * * = Every minute - Auto-post
 # 0 * * * * = Every hour - Health check (alert if no posts in last hour)

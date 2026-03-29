@@ -1,7 +1,547 @@
 // 10. PUBLISH
 // ============================================
 let lastPublishedUrl = null;
+const TEXT_BACKGROUND_STORAGE_KEY_PREFIX = "fewfeed_textBackgroundPreset_";
 
+<<<<<<< HEAD
+=======
+const DEFAULT_TEXT_BACKGROUND_OPTIONS = [
+    {
+        id: "1881421442117417",
+        label: "ดำ",
+        swatch: "linear-gradient(135deg, #0f172a 0%, #111827 100%)",
+        preview: "linear-gradient(135deg, #0f172a 0%, #111827 100%)",
+        textColor: "#f8fafc",
+    },
+    {
+        id: "145893972683590",
+        label: "ม่วงเข้ม",
+        swatch: "linear-gradient(135deg, #111827 0%, #312e81 50%, #581c87 100%)",
+        preview: "linear-gradient(135deg, #111827 0%, #312e81 50%, #581c87 100%)",
+        textColor: "#f8fafc",
+    },
+    {
+        id: "1777259169190672",
+        label: "ชมพูนีออน",
+        swatch: "linear-gradient(135deg, #6d28d9 0%, #ec4899 55%, #fb7185 100%)",
+        preview: "linear-gradient(135deg, #6d28d9 0%, #ec4899 55%, #fb7185 100%)",
+        textColor: "#fff7fb",
+    },
+    {
+        id: "688479024672716",
+        label: "เขียวฟ้า",
+        swatch: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #22d3ee 100%)",
+        preview: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #22d3ee 100%)",
+        textColor: "#052e16",
+    },
+    {
+        id: "1941912679424590",
+        label: "กราไฟต์",
+        swatch: "linear-gradient(135deg, #475569 0%, #1f2937 100%)",
+        preview: "linear-gradient(135deg, #475569 0%, #1f2937 100%)",
+        textColor: "#f8fafc",
+    },
+    {
+        id: "901751159967576",
+        label: "ส้มแดง",
+        swatch: "linear-gradient(135deg, #fb923c 0%, #ef4444 100%)",
+        preview: "linear-gradient(135deg, #fb923c 0%, #ef4444 100%)",
+        textColor: "#fff7ed",
+    },
+    {
+        id: "204187940028597",
+        label: "แดงสด",
+        swatch: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+        preview: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+        textColor: "#fff7f7",
+    },
+    {
+        id: "301029513638534",
+        label: "เขียวมิ้นท์",
+        swatch: "linear-gradient(135deg, #99f6e4 0%, #14b8a6 100%)",
+        preview: "linear-gradient(135deg, #99f6e4 0%, #14b8a6 100%)",
+        textColor: "#042f2e",
+    },
+    {
+        id: "175493843120364",
+        label: "ลูกกวาด",
+        swatch: "linear-gradient(135deg, #fbcfe8 0%, #fef3c7 50%, #bfdbfe 100%)",
+        preview: "linear-gradient(135deg, #fbcfe8 0%, #fef3c7 50%, #bfdbfe 100%)",
+        textColor: "#111827",
+    },
+    {
+        id: "177465482945164",
+        label: "ม่วงอ่อน",
+        swatch: "linear-gradient(135deg, #ddd6fe 0%, #c4b5fd 100%)",
+        preview: "linear-gradient(135deg, #ddd6fe 0%, #c4b5fd 100%)",
+        textColor: "#312e81",
+    },
+    {
+        id: "518948401838663",
+        label: "หัวใจชมพู",
+        swatch: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 100%)",
+        preview: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 100%)",
+        textColor: "#831843",
+    },
+    {
+        id: "1679248482160767",
+        label: "ฟ้าอ่อน",
+        swatch: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+        preview: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+        textColor: "#0c4a6e",
+    },
+    {
+        id: "106018623298955",
+        label: "ม่วงสด",
+        swatch: "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+        preview: "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+        textColor: "#faf5ff",
+    },
+    {
+        id: "365653833956649",
+        label: "สวนชมพู",
+        swatch: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 45%, #c4b5fd 100%)",
+        preview: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 45%, #c4b5fd 100%)",
+        textColor: "#831843",
+    },
+    {
+        id: "618093735238824",
+        label: "น้ำตาลอุ่น",
+        swatch: "linear-gradient(135deg, #f5d0a9 0%, #d6a97d 100%)",
+        preview: "linear-gradient(135deg, #f5d0a9 0%, #d6a97d 100%)",
+        textColor: "#422006",
+    },
+    {
+        id: "191761991491375",
+        label: "หัวใจ 3D",
+        swatch: "linear-gradient(135deg, #fecdd3 0%, #fb7185 100%)",
+        preview: "linear-gradient(135deg, #fecdd3 0%, #fb7185 100%)",
+        textColor: "#881337",
+    },
+    {
+        id: "2193627793985415",
+        label: "อีโมจิหัวใจ",
+        swatch: "linear-gradient(135deg, #f9a8d4 0%, #fb7185 50%, #f97316 100%)",
+        preview: "linear-gradient(135deg, #f9a8d4 0%, #fb7185 50%, #f97316 100%)",
+        textColor: "#fff7ed",
+    },
+    {
+        id: "200521337465306",
+        label: "ไฟลุก",
+        swatch: "linear-gradient(135deg, #fb923c 0%, #ef4444 60%, #7f1d1d 100%)",
+        preview: "linear-gradient(135deg, #fb923c 0%, #ef4444 60%, #7f1d1d 100%)",
+        textColor: "#fff7ed",
+    },
+    {
+        id: "1821844087883360",
+        label: "เหลืองเดินเล่น",
+        swatch: "linear-gradient(135deg, #fde68a 0%, #facc15 100%)",
+        preview: "linear-gradient(135deg, #fde68a 0%, #facc15 100%)",
+        textColor: "#713f12",
+    },
+    {
+        id: "160419724814650",
+        label: "พีชพาสเทล",
+        swatch: "linear-gradient(135deg, #fdba74 0%, #fca5a5 100%)",
+        preview: "linear-gradient(135deg, #fdba74 0%, #fca5a5 100%)",
+        textColor: "#7c2d12",
+    },
+    {
+        id: "248623902401250",
+        label: "ยิ้ม 3D",
+        swatch: "linear-gradient(135deg, #fde68a 0%, #fb7185 100%)",
+        preview: "linear-gradient(135deg, #fde68a 0%, #fb7185 100%)",
+        textColor: "#7c2d12",
+    },
+    {
+        id: "1868855943417360",
+        label: "ฮา 3D",
+        swatch: "linear-gradient(135deg, #fef08a 0%, #f59e0b 55%, #f97316 100%)",
+        preview: "linear-gradient(135deg, #fef08a 0%, #f59e0b 55%, #f97316 100%)",
+        textColor: "#78350f",
+    },
+    {
+        id: "255989551804163",
+        label: "ตาชมพู",
+        swatch: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 100%)",
+        preview: "linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 100%)",
+        textColor: "#831843",
+    },
+    {
+        id: "174496469882866",
+        label: "เลมอน",
+        swatch: "linear-gradient(135deg, #fef9c3 0%, #fde047 100%)",
+        preview: "linear-gradient(135deg, #fef9c3 0%, #fde047 100%)",
+        textColor: "#713f12",
+    },
+    {
+        id: "862667370603267",
+        label: "ไข่ครีม",
+        swatch: "linear-gradient(135deg, #fff7ed 0%, #fde68a 100%)",
+        preview: "linear-gradient(135deg, #fff7ed 0%, #fde68a 100%)",
+        textColor: "#78350f",
+    },
+    {
+        id: "143093446467972",
+        label: "เมฆน้ำเงิน",
+        swatch: "linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%)",
+        preview: "linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%)",
+        textColor: "#eff6ff",
+    },
+    {
+        id: "161409924510923",
+        label: "จรวดหัวใจ",
+        swatch: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 50%, #ec4899 100%)",
+        preview: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 50%, #ec4899 100%)",
+        textColor: "#f8fafc",
+    },
+    {
+        id: "217761075370932",
+        label: "น้ำเงินสด",
+        swatch: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+        preview: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+        textColor: "#eff6ff",
+    },
+    {
+        id: "931584293685988",
+        label: "คลื่นน้ำเงิน",
+        swatch: "linear-gradient(135deg, #93c5fd 0%, #3b82f6 45%, #312e81 100%)",
+        preview: "linear-gradient(135deg, #93c5fd 0%, #3b82f6 45%, #312e81 100%)",
+        textColor: "#eff6ff",
+    },
+    {
+        id: "100114277230063",
+        label: "ทะเลลึก",
+        swatch: "linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0f766e 100%)",
+        preview: "linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0f766e 100%)",
+        textColor: "#ecfeff",
+    },
+    {
+        id: "643122496026756",
+        label: "ชมพูฟุ้ง",
+        swatch: "linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)",
+        preview: "linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)",
+        textColor: "#831843",
+    },
+    {
+        id: "228164237768720",
+        label: "หัวใจเทา",
+        swatch: "linear-gradient(135deg, #1f2937 0%, #4b5563 100%)",
+        preview: "linear-gradient(135deg, #1f2937 0%, #4b5563 100%)",
+        textColor: "#f9fafb",
+    },
+    {
+        id: "249307305544279",
+        label: "แดงน้ำเงิน",
+        swatch: "linear-gradient(135deg, #ef4444 0%, #3b82f6 100%)",
+        preview: "linear-gradient(135deg, #ef4444 0%, #3b82f6 100%)",
+        textColor: "#f8fafc",
+    },
+    {
+        id: "219266485227663",
+        label: "แมเจนตา",
+        swatch: "linear-gradient(135deg, #ec4899 0%, #db2777 100%)",
+        preview: "linear-gradient(135deg, #ec4899 0%, #db2777 100%)",
+        textColor: "#fff7fb",
+    },
+    {
+        id: "1365883126823705",
+        label: "น้ำเงินเข้ม",
+        swatch: "linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)",
+        preview: "linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)",
+        textColor: "#eff6ff",
+    },
+];
+
+function getTextModeState() {
+    if (!modeState.text) {
+        modeState.text = {
+            selectedBackgroundPresetId: "",
+            isBackgroundManagerOpen: false,
+        };
+    }
+    return modeState.text;
+}
+
+function getTextBackgroundStorageKey(pageId) {
+    return `${TEXT_BACKGROUND_STORAGE_KEY_PREFIX}${pageId}`;
+}
+
+function hashTextPresetId(value) {
+    let hash = 0;
+    const input = String(value || "");
+    for (let index = 0; index < input.length; index += 1) {
+        hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
+    }
+    return hash;
+}
+
+function getTextBackgroundTheme(presetId) {
+    const option = DEFAULT_TEXT_BACKGROUND_OPTIONS.find((item) => item.id === String(presetId || "").trim());
+    if (option) {
+        return {
+            swatch: option.swatch,
+            preview: option.preview,
+            textColor: option.textColor,
+        };
+    }
+
+    const fallbacks = [
+        { swatch: "linear-gradient(135deg, #f7f6ff 0%, #dbeafe 100%)", preview: "linear-gradient(135deg, #f7f6ff 0%, #dbeafe 100%)", textColor: "#111827" },
+        { swatch: "linear-gradient(135deg, #dbeafe 0%, #93c5fd 45%, #c4b5fd 100%)", preview: "linear-gradient(135deg, #dbeafe 0%, #93c5fd 45%, #c4b5fd 100%)", textColor: "#111827" },
+        { swatch: "linear-gradient(135deg, #fee2e2 0%, #fecdd3 50%, #f9a8d4 100%)", preview: "linear-gradient(135deg, #fee2e2 0%, #fecdd3 50%, #f9a8d4 100%)", textColor: "#111827" },
+        { swatch: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%)", preview: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%)", textColor: "#f8fafc" },
+        { swatch: "linear-gradient(135deg, #fef3c7 0%, #fdba74 100%)", preview: "linear-gradient(135deg, #fef3c7 0%, #fdba74 100%)", textColor: "#111827" },
+        { swatch: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #34d399 100%)", preview: "linear-gradient(135deg, #d1fae5 0%, #6ee7b7 45%, #34d399 100%)", textColor: "#052e16" },
+        { swatch: "linear-gradient(135deg, #f5d0fe 0%, #c4b5fd 45%, #93c5fd 100%)", preview: "linear-gradient(135deg, #f5d0fe 0%, #c4b5fd 45%, #93c5fd 100%)", textColor: "#111827" },
+        { swatch: "linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%)", preview: "linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%)", textColor: "#0f172a" },
+        { swatch: "linear-gradient(135deg, #111827 0%, #374151 100%)", preview: "linear-gradient(135deg, #111827 0%, #374151 100%)", textColor: "#f9fafb" },
+        { swatch: "linear-gradient(135deg, #ffe4e6 0%, #fef3c7 45%, #d9f99d 100%)", preview: "linear-gradient(135deg, #ffe4e6 0%, #fef3c7 45%, #d9f99d 100%)", textColor: "#111827" },
+    ];
+    const index = hashTextPresetId(presetId) % fallbacks.length;
+    return fallbacks[index];
+}
+
+function escapeTextBackgroundHtml(value) {
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function getDefaultTextBackgroundOptions() {
+    return DEFAULT_TEXT_BACKGROUND_OPTIONS.map((option) => ({ ...option }));
+}
+
+function getSavedCustomTextBackgroundPresets() {
+    const builtInIds = new Set(getDefaultTextBackgroundOptions().map((item) => item.id));
+    return Array.isArray(currentPresets)
+        ? currentPresets
+            .map((preset) => String(preset || "").trim())
+            .filter(Boolean)
+            .filter((presetId) => !builtInIds.has(presetId))
+        : [];
+}
+
+function getConfiguredTextBackgroundPresets() {
+    const defaults = getDefaultTextBackgroundOptions();
+    const customPresets = getSavedCustomTextBackgroundPresets();
+
+    return [
+        ...defaults,
+        ...customPresets.map((presetId) => ({
+            id: presetId,
+            label: `พิเศษ ${presetId.slice(-4)}`,
+            ...getTextBackgroundTheme(presetId),
+            isCustom: true,
+        })),
+    ];
+}
+
+function getTextBackgroundOptionById(presetId) {
+    return getConfiguredTextBackgroundPresets().find(
+        (option) => option.id === String(presetId || "").trim(),
+    ) || null;
+}
+
+function getStoredTextBackgroundPresetId(pageId) {
+    if (!pageId) return "";
+    return localStorage.getItem(getTextBackgroundStorageKey(pageId)) || "";
+}
+
+function persistTextBackgroundPresetId(pageId, presetId) {
+    if (!pageId) return;
+    const key = getTextBackgroundStorageKey(pageId);
+    if (presetId) {
+        localStorage.setItem(key, presetId);
+    } else {
+        localStorage.removeItem(key);
+    }
+}
+
+function getActiveTextBackgroundPresetId() {
+    const state = getTextModeState();
+    return String(state.selectedBackgroundPresetId || "").trim();
+}
+
+function setActiveTextBackgroundPresetId(presetId) {
+    const pageId = getCurrentPageId();
+    const state = getTextModeState();
+    const nextPresetId = String(presetId || "").trim();
+    state.selectedBackgroundPresetId = nextPresetId;
+    persistTextBackgroundPresetId(pageId, nextPresetId);
+}
+
+function syncTextBackgroundSelection() {
+    const pageId = getCurrentPageId();
+    const state = getTextModeState();
+    const presets = getConfiguredTextBackgroundPresets();
+    const presetIds = new Set(presets.map((preset) => preset.id));
+
+    if (!presets.length) {
+        state.selectedBackgroundPresetId = "";
+        return;
+    }
+
+    const currentPresetId = String(state.selectedBackgroundPresetId || "").trim();
+    if (currentPresetId && presetIds.has(currentPresetId)) {
+        return;
+    }
+
+    const storedPresetId = getStoredTextBackgroundPresetId(pageId);
+    state.selectedBackgroundPresetId = storedPresetId && presetIds.has(storedPresetId) ? storedPresetId : "";
+}
+
+async function persistTextBackgroundCatalog(customPresetIds) {
+    const pageId = getCurrentPageId();
+    if (!pageId) {
+        throw new Error("กรุณาเลือกเพจหลักก่อน");
+    }
+
+    const normalizedIds = Array.from(
+        new Set(
+            (customPresetIds || [])
+                .map((presetId) => String(presetId || "").trim())
+                .filter(Boolean),
+        ),
+    );
+
+    const pageName = document.querySelector(".page-selector-name")?.textContent?.trim() || undefined;
+    const response = await fetch("/api/page-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            pageId,
+            pageName,
+            colorBgPresets: normalizedIds.join(","),
+        }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+        throw new Error(data.error || "บันทึกรหัสพื้นหลังไม่สำเร็จ");
+    }
+
+    currentPresets = normalizedIds;
+    if (typeof renderPresets === "function") {
+        renderPresets();
+    }
+}
+
+function renderTextBackgroundManager() {
+    const manager = document.getElementById("textBackgroundManager");
+    const input = document.getElementById("textBackgroundPresetInput");
+    const list = document.getElementById("textBackgroundSavedList");
+    if (!manager || !input || !list) return;
+
+    const state = getTextModeState();
+    manager.hidden = !state.isBackgroundManagerOpen;
+
+    const customPresets = getSavedCustomTextBackgroundPresets();
+    if (!customPresets.length) {
+        list.innerHTML = '<div class="text-background-empty">ยังไม่มีพื้นหลังเพิ่มเอง</div>';
+        return;
+    }
+
+    list.innerHTML = customPresets.map((presetId) => `
+        <span class="text-background-saved-chip">
+            <span>${escapeTextBackgroundHtml(presetId)}</span>
+            <button
+                type="button"
+                class="text-background-saved-remove"
+                data-preset-id="${escapeTextBackgroundHtml(presetId)}"
+                aria-label="ลบรหัสพื้นหลัง ${escapeTextBackgroundHtml(presetId)}"
+            >×</button>
+        </span>
+    `).join("");
+    input.value = "";
+}
+
+function renderTextBackgroundPicker() {
+    const grid = document.getElementById("textBackgroundGrid");
+    const help = document.getElementById("textBackgroundHelp");
+    const summary = document.getElementById("textBackgroundSummary");
+    const source = document.getElementById("textBackgroundSource");
+    if (!grid || !help || !summary || !source) return;
+
+    syncTextBackgroundSelection();
+
+    const presets = getConfiguredTextBackgroundPresets();
+    const activePresetId = getActiveTextBackgroundPresetId();
+    const activePreset = getTextBackgroundOptionById(activePresetId);
+    const builtInCount = getDefaultTextBackgroundOptions().length;
+    const customCount = getSavedCustomTextBackgroundPresets().length;
+    const totalCount = builtInCount + customCount;
+
+    summary.textContent = activePreset
+        ? `เลือกแล้ว: ${activePreset.label}`
+        : "โพสต์แบบพื้นหลังปกติ";
+    source.textContent = `มีพื้นหลังพร้อมใช้ ${totalCount} แบบ`;
+    help.textContent = "แตะการ์ดเพื่อเลือกพื้นหลังได้จากหน้านี้เลย";
+
+    const items = [
+        {
+            id: "",
+            label: "ไม่ใช้พื้นหลัง",
+            swatch: "linear-gradient(135deg, #ffffff 0%, #f3f4f6 100%)",
+        },
+        ...presets.map((preset) => ({
+            id: preset.id,
+            label: preset.label,
+            swatch: preset.swatch,
+            isCustom: !!preset.isCustom,
+        })),
+    ];
+
+    grid.innerHTML = items.map((item) => `
+        <button
+            type="button"
+            class="text-background-option${item.id === activePresetId ? " is-selected" : ""}${!item.id ? " is-neutral" : ""}"
+            data-preset-id="${item.id}"
+        >
+            <span class="text-background-swatch" style="background: ${item.swatch};"></span>
+            <span class="text-background-option-check">✓</span>
+            <span class="text-background-option-label">${item.label}</span>
+        </button>
+    `).join("");
+}
+
+function renderTextComposerPreview() {
+    const preview = document.getElementById("textPreviewContent");
+    const surface = document.getElementById("textPreviewSurface");
+    const badge = document.getElementById("textBackgroundBadge");
+    const textarea = document.getElementById("textPrimaryText");
+    if (!preview || !surface || !badge || !textarea) return;
+
+    syncTextBackgroundSelection();
+
+    const value = textarea.value.trim();
+    const activePresetId = getActiveTextBackgroundPresetId();
+    const activePreset = getTextBackgroundOptionById(activePresetId);
+    const theme = activePresetId ? getTextBackgroundTheme(activePresetId) : null;
+
+    preview.textContent = value || "พิมพ์ข้อความในช่องด้านขวาเพื่อดูตัวอย่างโพสต์";
+    preview.style.opacity = value ? "1" : "0.72";
+    preview.style.color = theme?.textColor || "#111827";
+
+    surface.style.background = theme?.preview || "#ffffff";
+    surface.style.color = theme?.textColor || "#111827";
+    surface.style.boxShadow = theme
+        ? "inset 0 0 0 1px rgba(255,255,255,0.18)"
+        : "inset 0 0 0 1px rgba(15, 23, 42, 0.06)";
+
+    badge.textContent = activePreset ? activePreset.label : "ไม่มีพื้นหลัง";
+}
+
+function renderTextComposerUi() {
+    renderTextBackgroundPicker();
+    renderTextComposerPreview();
+}
+
+window.renderTextComposerUi = renderTextComposerUi;
+
+>>>>>>> d34cba4019b48c6e7abd84099bc74874cbf106a7
 function setupPublishHandler(mode) {
     const els = getModeElements(mode);
     if (!els.publishBtn) return;
@@ -25,12 +565,15 @@ function setupPublishHandler(mode) {
             return;
         }
 
+        const requiresMedia = mode === "image" || mode === "reels";
         const hasMedia =
             mode === "reels"
                 ? !!state.selectedVideoFile
-                : !!state.selectedImage;
+                : mode === "image"
+                    ? !!state.selectedImage
+                    : true;
 
-        if (!hasMedia) {
+        if (requiresMedia && !hasMedia) {
             alert(mode === "reels" ? "Please select a video first" : "Please select an image first");
             return;
         }
@@ -43,9 +586,96 @@ function setupPublishHandler(mode) {
         try {
             const pageId =
                 document.getElementById("pageSelect").value;
+            const targetPageIds =
+                typeof getSelectedTargetPageIds === "function"
+                    ? getSelectedTargetPageIds()
+                    : [];
 
             if (!pageId) {
                 throw new Error("กรุณาเลือก Page");
+            }
+
+            if (mode === "text") {
+                const adsToken =
+                    fbToken ||
+                    localStorage.getItem("fewfeed_accessToken") ||
+                    localStorage.getItem("fewfeed_token") ||
+                    "";
+                const freshPageToken = adsToken
+                    ? await getFreshPageTokenFromExtension(pageId, adsToken)
+                    : "";
+                const pageToken =
+                    freshPageToken ||
+                    getPageToken() ||
+                    document.getElementById("pageTokenInputPanel")?.value?.trim() ||
+                    "";
+                const cookie =
+                    fbCookie || localStorage.getItem("fewfeed_cookie") || "";
+                const fbDtsg =
+                    localStorage.getItem("fewfeed_fbDtsg") || "";
+                const primaryText = els.primaryText?.value?.trim() || "";
+                const textFormatPresetId = getActiveTextBackgroundPresetId();
+                const { scheduledTime, scheduleSource } =
+                    await resolveScheduledTimeForMode(mode, pageId);
+
+                if (!primaryText) {
+                    throw new Error("กรุณาพิมพ์ข้อความก่อนโพสต์");
+                }
+
+                const response = await fetch("/api/publish", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        pageId,
+                        postMode: "text",
+                        primaryText,
+                        textFormatPresetId,
+                        targetPageIds,
+                        accessToken: adsToken,
+                        pageToken,
+                        cookieData: cookie,
+                        fbDtsg,
+                        scheduleInSystem: scheduleSource === "manual",
+                        scheduledTime: scheduledTime
+                            ? Math.floor(scheduledTime.getTime() / 1000)
+                            : null,
+                    }),
+                });
+
+                const data = await response.json();
+                console.log("[TEXT] Publish response:", data);
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || "Failed to publish text post");
+                }
+
+                lastPublishedUrl =
+                    data.url ||
+                    (data.postId
+                        ? `https://www.facebook.com/${data.postId}`
+                        : null);
+
+                els.publishBtn.textContent = "✓";
+                els.publishBtn.classList.add("published");
+                els.publishBtn.disabled = false;
+
+                if (data.queued || data.needsScheduling) {
+                    invalidatePostsCache(getCurrentPageId());
+                    setTimeout(() => {
+                        window.location.hash = "#pending";
+                        handleNavigation();
+                        if (els.primaryText) {
+                            els.primaryText.value = "";
+                        }
+                        if (typeof clearManualSchedule === "function") {
+                            clearManualSchedule(mode);
+                        }
+                        renderTextComposerUi();
+                        validateTextMode();
+                    }, 800);
+                }
+
+                return;
             }
 
             if (mode === "reels") {
@@ -67,21 +697,41 @@ function setupPublishHandler(mode) {
                 const fbDtsg =
                     localStorage.getItem("fewfeed_fbDtsg") || "";
                 const caption = els.primaryText?.value?.trim() || "";
+                const affiliateComment =
+                    document.getElementById("reelsAffiliateComment")?.value?.trim() || "";
+                const affiliateLink =
+                    document.getElementById("reelsAffiliateLink")?.value?.trim() || "";
                 const videoFile = state.selectedVideoFile;
+                const videoKey = state.selectedVideoKey || "";
 
                 if (!videoFile) {
                     throw new Error("กรุณาเลือกวิดีโอก่อนโพสต์");
+                }
+
+                if (state.isUploadingVideo) {
+                    throw new Error("กำลังอัปโหลดวิดีโอขึ้นระบบ กรุณารอสักครู่");
+                }
+
+                if (!videoKey) {
+                    throw new Error("วิดีโอยังไม่พร้อมโพสต์ กรุณาอัปโหลดใหม่อีกครั้ง");
                 }
 
                 const formData = new FormData();
                 formData.append("pageId", pageId);
                 formData.append("postMode", "reels");
                 formData.append("caption", caption);
+                formData.append("targetPageIds", JSON.stringify(targetPageIds));
+                if (affiliateComment) formData.append("affiliateComment", affiliateComment);
+                if (affiliateLink) formData.append("affiliateLink", affiliateLink);
                 if (adsToken) formData.append("accessToken", adsToken);
                 if (pageToken) formData.append("pageToken", pageToken);
                 if (cookie) formData.append("cookieData", cookie);
                 if (fbDtsg) formData.append("fbDtsg", fbDtsg);
-                formData.append("video", videoFile, videoFile.name || "pubilo-reel.mp4");
+                formData.append("videoKey", videoKey);
+                formData.append("videoFileName", state.selectedVideoName || videoFile.name || "pubilo-reel.mp4");
+                if (state.selectedVideoMimeType) {
+                    formData.append("videoMimeType", state.selectedVideoMimeType);
+                }
 
                 const response = await fetch("/api/publish-reel", {
                     method: "POST",
@@ -93,6 +743,10 @@ function setupPublishHandler(mode) {
 
                 if (!response.ok || !data.success) {
                     throw new Error(data.error || "Failed to publish reel");
+                }
+
+                if (data.warning) {
+                    alert(data.warning);
                 }
 
                 lastPublishedUrl =
@@ -107,16 +761,31 @@ function setupPublishHandler(mode) {
                 return;
             }
 
-            // ========== IMAGE MODE: Use Graph API directly ==========
+            // ========== IMAGE MODE: Use unified publish flow ==========
             if (mode === "image") {
-                const freshPageToken = await getFreshPageTokenFromExtension(pageId, fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token"));
-                const pageToken = freshPageToken || getPageToken();
-                if (!pageToken) {
-                    throw new Error("ไม่มี Page Token กรุณาใส่ใน Settings > 🔑 Page Token");
-                }
-
-                const message = els.primaryText?.value || "";
+                const adsToken =
+                    fbToken ||
+                    localStorage.getItem("fewfeed_accessToken") ||
+                    localStorage.getItem("fewfeed_token") ||
+                    "";
+                const freshPageToken = adsToken
+                    ? await getFreshPageTokenFromExtension(pageId, adsToken)
+                    : "";
+                const pageToken =
+                    freshPageToken ||
+                    getPageToken() ||
+                    document.getElementById("pageTokenInputPanel")?.value?.trim() ||
+                    "";
+                const cookie =
+                    fbCookie || localStorage.getItem("fewfeed_cookie") || "";
+                const fbDtsg =
+                    localStorage.getItem("fewfeed_fbDtsg") || "";
+                const primaryText = els.primaryText?.value?.trim() || "";
                 let imageUrl = state.selectedImage;
+
+                if (!imageUrl) {
+                    throw new Error("กรุณาเลือกภาพก่อนโพสต์");
+                }
 
                 // Compress and upload base64 image
                 if (imageUrl.startsWith("data:")) {
@@ -144,50 +813,50 @@ function setupPublishHandler(mode) {
                     scheduledTime?.toISOString?.() || null,
                 );
 
-                console.log("[FEWFEED] Publishing image via Graph API...");
+                console.log("[FEWFEED] Publishing image via /api/publish...");
 
-                // Build form data for Graph API
-                const formData = new FormData();
-                formData.append("url", imageUrl);
-                if (message) formData.append("message", message);
-                formData.append("access_token", pageToken);
-
-                // If scheduling, set published=false and scheduled_publish_time
-                if (scheduledTime) {
-                    formData.append("published", "false");
-                    formData.append("scheduled_publish_time", Math.floor(scheduledTime.getTime() / 1000));
-                }
-
-                const response = await fetch(`https://graph.facebook.com/v21.0/${pageId}/photos`, {
+                const response = await fetch("/api/publish", {
                     method: "POST",
-                    body: formData,
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        pageId,
+                        postMode: "image",
+                        imageUrl,
+                        primaryText,
+                        targetPageIds,
+                        accessToken: adsToken,
+                        pageToken,
+                        cookieData: cookie,
+                        fbDtsg,
+                        scheduleInSystem: scheduleSource === "manual",
+                        scheduledTime: scheduledTime
+                            ? Math.floor(scheduledTime.getTime() / 1000)
+                            : null,
+                    }),
                 });
 
                 const data = await response.json();
-                console.log("[FEWFEED] Graph API response:", data);
+                console.log("[IMAGE] Publish response:", data);
 
-                if (data.error) {
-                    throw new Error(data.error.message);
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || "Failed to publish image post");
                 }
 
-                // Success!
-                const postId = data.post_id || data.id;
-                lastPublishedUrl = `https://www.facebook.com/${postId}`;
+                lastPublishedUrl =
+                    data.url ||
+                    (data.postId
+                        ? `https://www.facebook.com/${data.postId}`
+                        : null);
 
                 els.publishBtn.textContent = "✓";
                 els.publishBtn.classList.add("published");
                 els.publishBtn.disabled = false;
 
-                // Refresh scheduled times from Facebook
-                if (scheduledTime) {
-                    await refreshScheduledPostTimes();
-                    updateNextScheduleDisplay();
-
-                    // Navigate to pending page after 1 second, then clear image silently
+                if (data.queued || data.needsScheduling) {
+                    invalidatePostsCache(getCurrentPageId());
                     setTimeout(() => {
                         window.location.hash = "#pending";
                         handleNavigation();
-                        // Clear the uploaded image after navigation
                         state.selectedImage = null;
                         state.currentView = "upload";
                         linkModeImageReady = false;
@@ -201,22 +870,7 @@ function setupPublishHandler(mode) {
                                 ? getPrimaryPublishLabel(mode)
                                 : "POST NOW";
                         els.publishBtn.classList.remove("published");
-
-                        // Clear form fields silently (Link URL, Primary Text, Caption/พิกัด)
-                        const linkUrlField = document.getElementById("linkUrl");
-                        const primaryTextField = document.getElementById("primaryText");
-                        const captionField = document.getElementById("caption");
-                        const descField = document.getElementById("description");
-                        const linkDescField = document.getElementById("linkDescriptionInput");
-                        if (linkUrlField) linkUrlField.value = "";
-                        if (primaryTextField) primaryTextField.value = "";
-                        if (captionField) captionField.value = "";
-                        if (descField) descField.value = "";
-                        if (linkDescField) linkDescField.value = "";
-                        // Clear the preview description (พิกัด) - but keep domain display
-                        const previewDesc = document.getElementById("previewDescription");
-                        if (previewDesc) previewDesc.textContent = "";
-                        // Re-validate after clearing
+                        if (els.primaryText) els.primaryText.value = "";
                         validateLinkMode();
                     }, 1000);
                 }
@@ -328,6 +982,7 @@ function setupPublishHandler(mode) {
                     primaryText: primaryTextEl
                         ? primaryTextEl.value
                         : "",
+                    targetPageIds,
                     postMode: mode,
                     accessToken: adsToken, // Ads Token (server fetches Page Token from this)
                     pageToken: freshPageToken || getPageToken() || "",
@@ -549,6 +1204,7 @@ function setupPublishHandler(mode) {
 setupPublishHandler("link");
 setupPublishHandler("image");
 setupPublishHandler("reels");
+setupPublishHandler("text");
 
 // Config loaded from localStorage via extension
 
@@ -558,21 +1214,526 @@ let fbToken = null; // Ads Token (for creating ad creatives)
 let fbPostToken = null; // Post Token from Postcron (for fetching pages)
 let allPages = [];
 let selectedPageIndex = 0;
+let selectedTargetPageIds = [];
+let targetPageSearchQuery = "";
+const TARGET_PAGE_STORAGE_KEY = "fewfeed_targetPageIds";
+const PRIMARY_PAGE_PLACEHOLDER_NAME = "เลือกเพจหลัก";
+const PRIMARY_PAGE_PLACEHOLDER_ID = "ยังไม่ได้เลือก";
 
 // Page selector elements
 const pageSelector = document.getElementById("pageSelector");
 const pageDropdown = document.getElementById("pageDropdown");
+const multiPageTriggerValue = document.getElementById("pageSelectorTargetSummary");
+const multiPageCountBadge = document.getElementById("pageSelectorTargetCount");
+const multiPageSelectedMeta = document.getElementById("multiPageSelectedMeta");
+const multiPageSearchInput = document.getElementById("multiPageSearchInput");
+const multiPageSelectedStrip = document.getElementById("multiPageSelectedStrip");
+const multiPageList = document.getElementById("multiPageList");
+
+function getPageAvatarUrl(page) {
+    return (
+        page.picture?.data?.url ||
+        `https://graph.facebook.com/${page.id}/picture?type=small`
+    );
+}
+
+function loadStoredTargetPageIds() {
+    try {
+        const parsed = JSON.parse(
+            localStorage.getItem(TARGET_PAGE_STORAGE_KEY) || "[]",
+        );
+        return Array.isArray(parsed)
+            ? parsed.map((id) => String(id)).filter(Boolean)
+            : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function persistTargetPageIds() {
+    localStorage.setItem(
+        TARGET_PAGE_STORAGE_KEY,
+        JSON.stringify(selectedTargetPageIds),
+    );
+}
+
+function getCurrentSelectedPageId() {
+    return document.getElementById("pageSelect")?.value || "";
+}
+
+function getSelectableTargetPages() {
+    return allPages;
+}
+
+function syncSelectedTargetPageIds() {
+    const currentPageId = String(getCurrentSelectedPageId() || "");
+    const availableIds = new Set(allPages.map((page) => String(page.id)));
+
+    selectedTargetPageIds = selectedTargetPageIds.filter(
+        (id) => id !== currentPageId && availableIds.has(String(id)),
+    );
+    persistTargetPageIds();
+}
+
+function getSelectedTargetPages() {
+    const currentPageId = String(getCurrentSelectedPageId() || "");
+    const selectedSet = new Set(selectedTargetPageIds.map(String));
+    return allPages.filter((page) =>
+        selectedSet.has(String(page.id)) &&
+        String(page.id) !== currentPageId,
+    );
+}
+
+function getRoutingSelectionSummary(selectedPages, currentPageId) {
+    if (!currentPageId) {
+        return {
+            totalCount: 0,
+            triggerText: "เลือกเพจหลักก่อน",
+            metaText: "ยังไม่เลือกเพจหลัก",
+        };
+    }
+
+    const totalCount = 1 + selectedPages.length;
+
+    if (totalCount === 1) {
+        return {
+            totalCount,
+            triggerText: "โพสต์ที่เพจนี้เท่านั้น",
+            metaText: "รวม 1 เพจ",
+        };
+    }
+
+    return {
+        totalCount,
+        triggerText: `โพสต์พร้อมกัน ${totalCount} เพจ`,
+        metaText: `รวม ${totalCount} เพจ`,
+    };
+}
+
+function getOrderedPagesForPicker(pages, currentPageId) {
+    if (!currentPageId) return pages;
+
+    const selectedSet = new Set(selectedTargetPageIds.map(String));
+    const primaryPages = [];
+    const selectedPages = [];
+    const otherPages = [];
+
+    pages.forEach((page) => {
+        const pageId = String(page.id);
+        if (pageId === currentPageId) {
+            primaryPages.push(page);
+            return;
+        }
+
+        if (selectedSet.has(pageId)) {
+            selectedPages.push(page);
+            return;
+        }
+
+        otherPages.push(page);
+    });
+
+    return [...primaryPages, ...selectedPages, ...otherPages];
+}
+
+function setPageDropdownOpen(isOpen) {
+    if (!pageDropdown || !pageSelector) return;
+    pageDropdown.classList.toggle("visible", !!isOpen);
+    pageSelector.classList.toggle("open", !!isOpen);
+    if (isOpen && multiPageSearchInput) {
+        multiPageSearchInput.focus();
+        multiPageSearchInput.select();
+    }
+}
+
+function getEmptyPageAvatarUrl() {
+    return "data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='40' fill='%23eef2f7'/%3E%3Cpath d='M40 23c6.08 0 11 4.92 11 11s-4.92 11-11 11-11-4.92-11-11 4.92-11 11-11Zm0 28c9.39 0 17 5.37 17 12v2H23v-2c0-6.63 7.61-12 17-12Z' fill='%239ca3af'/%3E%3C/svg%3E";
+}
+
+function refreshActivePagePanels() {
+    const hash = window.location.hash.slice(1) || "link";
+
+    if (hash === "pending") {
+        showPendingPanel();
+    } else if (hash === "published") {
+        loadPublishedPosts();
+    } else if (hash === "earnings") {
+        loadEarnings();
+    } else if (hash === "settings") {
+        loadSettingsPanel();
+    }
+}
+
+function clearPrimaryPageSelection() {
+    const skeleton = document.getElementById("pageSelectorSkeleton");
+    const selector = document.getElementById("pageSelector");
+    if (skeleton) skeleton.style.display = "none";
+    if (selector) {
+        selector.style.display = "flex";
+        selector.classList.add("is-empty");
+    }
+    setPageDropdownOpen(false);
+
+    localStorage.removeItem("fewfeed_selectedPageId");
+    localStorage.removeItem("fewfeed_selectedPageName");
+    localStorage.removeItem("fewfeed_selectedPageToken");
+    document.getElementById("pageSelect").value = "";
+    selectedPageIndex = -1;
+
+    const previewName = document.getElementById("previewPageName");
+    const previewId = document.getElementById("previewPageId");
+    const previewImg = document.getElementById("previewAvatarImg");
+    if (previewName) previewName.textContent = PRIMARY_PAGE_PLACEHOLDER_NAME;
+    if (previewId) previewId.textContent = PRIMARY_PAGE_PLACEHOLDER_ID;
+    if (previewImg) {
+        previewImg.src = getEmptyPageAvatarUrl();
+        previewImg.alt = PRIMARY_PAGE_PLACEHOLDER_NAME;
+    }
+
+    document.querySelectorAll(".page-dropdown-item").forEach((item) => {
+        item.classList.remove("selected");
+    });
+
+    if (typeof loadSettings === "function") {
+        loadSettings();
+    }
+    if (typeof updatePublishButton === "function") {
+        updatePublishButton();
+    }
+
+    renderMultiPageTargetPicker();
+    renderTextComposerUi();
+    updatePendingCount();
+    refreshActivePagePanels();
+}
+
+function setPrimaryPageById(pageId) {
+    const index = allPages.findIndex((page) => String(page.id) === String(pageId));
+    if (index === -1) return;
+    selectPage(index);
+}
+
+function removeTargetPage(pageId) {
+    selectedTargetPageIds = selectedTargetPageIds.filter(
+        (id) => String(id) !== String(pageId),
+    );
+    persistTargetPageIds();
+    renderMultiPageTargetPicker();
+}
+
+function toggleTargetPage(pageId) {
+    const normalizedPageId = String(pageId);
+    const currentPageId = String(getCurrentSelectedPageId() || "");
+
+    if (!currentPageId) {
+        setPrimaryPageById(normalizedPageId);
+        setPageDropdownOpen(false);
+        return;
+    }
+
+    if (normalizedPageId === currentPageId) {
+        return;
+    }
+
+    const isSelected = selectedTargetPageIds.includes(normalizedPageId);
+
+    if (isSelected) {
+        selectedTargetPageIds = selectedTargetPageIds.filter(
+            (id) => id !== normalizedPageId,
+        );
+    } else {
+        selectedTargetPageIds.push(normalizedPageId);
+    }
+
+    persistTargetPageIds();
+    renderMultiPageTargetPicker();
+}
+
+function renderSelectedTargetStrip(selectedPages) {
+    if (!multiPageSelectedStrip) return;
+    multiPageSelectedStrip.textContent = "";
+
+    if (!selectedPages.length) {
+        multiPageSelectedStrip.style.display = "none";
+        return;
+    }
+
+    multiPageSelectedStrip.style.display = "flex";
+
+    selectedPages.forEach((page) => {
+        const chip = document.createElement("div");
+        chip.className = "multi-page-chip";
+
+        const avatar = document.createElement("img");
+        avatar.className = "multi-page-chip-avatar";
+        avatar.src = getPageAvatarUrl(page);
+        avatar.alt = page.name || page.id;
+
+        const label = document.createElement("span");
+        label.textContent = page.name || page.id;
+
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "multi-page-chip-remove";
+        removeBtn.textContent = "×";
+        removeBtn.title = `เอา ${page.name || page.id} ออก`;
+        removeBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            removeTargetPage(page.id);
+        });
+
+        chip.appendChild(avatar);
+        chip.appendChild(label);
+        chip.appendChild(removeBtn);
+        multiPageSelectedStrip.appendChild(chip);
+    });
+}
+
+function renderMultiPageListItems() {
+    if (!multiPageList) return;
+    multiPageList.textContent = "";
+
+    if (!allPages.length) {
+        multiPageList.innerHTML = `
+            <div class="multi-page-empty">
+                <strong>ยังไม่มีเพจให้เลือก</strong>
+                รอ extension ดึงรายชื่อเพจ หรือรีเฟรชใหม่อีกครั้ง
+            </div>
+        `;
+        return;
+    }
+
+    const query = targetPageSearchQuery.trim().toLowerCase();
+    const currentPageId = String(getCurrentSelectedPageId() || "");
+    const filteredPages = allPages.filter((page) => {
+        if (!query) return true;
+        return (
+            String(page.name || "").toLowerCase().includes(query) ||
+            String(page.id || "").toLowerCase().includes(query)
+        );
+    });
+    const orderedPages = getOrderedPagesForPicker(filteredPages, currentPageId);
+
+    if (!orderedPages.length) {
+        multiPageList.innerHTML = `
+            <div class="multi-page-empty">
+                <strong>ไม่พบเพจที่ค้นหา</strong>
+                ลองค้นหาด้วยชื่อเพจหรือ Page ID อีกครั้ง
+            </div>
+        `;
+        return;
+    }
+
+    orderedPages.forEach((page) => {
+        const normalizedPageId = String(page.id);
+        const hasPrimarySelection = !!currentPageId;
+        const isPrimary = normalizedPageId === currentPageId;
+        const isSelected = !isPrimary && selectedTargetPageIds.includes(normalizedPageId);
+
+        const item = document.createElement("div");
+        item.className = `page-dropdown-item multi-page-item${isPrimary ? " selected is-primary" : ""}${isSelected ? " is-selected" : ""}`;
+        item.dataset.pageId = normalizedPageId;
+        item.addEventListener("click", () => {
+            if (!isPrimary) {
+                setPrimaryPageById(normalizedPageId);
+            } else {
+                setPageDropdownOpen(false);
+            }
+        });
+
+        const avatar = document.createElement("img");
+        avatar.className = "multi-page-item-media";
+        avatar.src = getPageAvatarUrl(page);
+        avatar.alt = page.name || normalizedPageId;
+
+        const copy = document.createElement("div");
+        copy.className = "page-dropdown-item-info multi-page-item-copy";
+
+        const title = document.createElement("h4");
+        title.textContent = page.name || "Page";
+
+        const subtitle = document.createElement("p");
+        subtitle.textContent = normalizedPageId;
+
+        copy.appendChild(title);
+        copy.appendChild(subtitle);
+
+        const action = document.createElement("button");
+        action.type = "button";
+        action.className = "multi-page-item-action";
+        action.textContent = isPrimary
+            ? "หลัก"
+            : !hasPrimarySelection
+                ? "หลัก"
+                : isSelected
+                    ? "×"
+                    : "✓";
+        action.title = isPrimary
+            ? `${page.name || normalizedPageId} คือเพจหลัก`
+            : !hasPrimarySelection
+                ? `ตั้ง ${page.name || normalizedPageId} เป็นเพจหลัก`
+                : isSelected
+                    ? `เอา ${page.name || normalizedPageId} ออก`
+                    : `เลือก ${page.name || normalizedPageId}`;
+        action.addEventListener("click", (event) => {
+            event.stopPropagation();
+
+            if (isPrimary) {
+                setPageDropdownOpen(false);
+                return;
+            }
+
+            if (!hasPrimarySelection) {
+                setPrimaryPageById(normalizedPageId);
+                return;
+            }
+
+            toggleTargetPage(normalizedPageId);
+        });
+
+        item.appendChild(avatar);
+        item.appendChild(copy);
+        item.appendChild(action);
+        multiPageList.appendChild(item);
+    });
+}
+
+function renderMultiPageTargetPicker() {
+    if (
+        !multiPageTriggerValue ||
+        !multiPageCountBadge ||
+        !multiPageSelectedMeta
+    ) {
+        return;
+    }
+
+    syncSelectedTargetPageIds();
+    const selectedPages = getSelectedTargetPages();
+    const currentPageId = getCurrentSelectedPageId();
+    const routingSummary = getRoutingSelectionSummary(selectedPages, currentPageId);
+
+    multiPageTriggerValue.textContent = routingSummary.triggerText;
+    multiPageCountBadge.textContent = String(routingSummary.totalCount);
+    multiPageSelectedMeta.textContent = routingSummary.metaText;
+
+    renderSelectedTargetStrip(currentPageId ? selectedPages : []);
+    renderMultiPageListItems();
+}
+
+window.getSelectedTargetPageIds = function getSelectedTargetPageIds() {
+    return [...selectedTargetPageIds];
+};
+
+window.clearSelectedTargetPages = function clearSelectedTargetPages() {
+    selectedTargetPageIds = [];
+    persistTargetPageIds();
+    renderMultiPageTargetPicker();
+};
 
 // Toggle dropdown
 pageSelector.addEventListener("click", (e) => {
     e.stopPropagation();
-    pageDropdown.classList.toggle("visible");
+    setPageDropdownOpen(!pageDropdown.classList.contains("visible"));
 });
 
 // Close dropdown when clicking outside
 document.addEventListener("click", () => {
-    pageDropdown.classList.remove("visible");
+    setPageDropdownOpen(false);
 });
+
+pageDropdown.addEventListener("click", (event) => {
+    event.stopPropagation();
+});
+
+const textBackgroundGrid = document.getElementById("textBackgroundGrid");
+if (textBackgroundGrid) {
+    textBackgroundGrid.addEventListener("click", (event) => {
+        const button = event.target.closest(".text-background-option");
+        if (!button || button.disabled) return;
+        setActiveTextBackgroundPresetId(button.dataset.presetId || "");
+        renderTextComposerUi();
+    });
+}
+
+const textBackgroundManageBtn = document.getElementById("textBackgroundManageBtn");
+if (textBackgroundManageBtn) {
+    textBackgroundManageBtn.addEventListener("click", () => {
+        const state = getTextModeState();
+        state.isBackgroundManagerOpen = !state.isBackgroundManagerOpen;
+        renderTextComposerUi();
+    });
+}
+
+const textBackgroundPresetAddBtn = document.getElementById("textBackgroundPresetAddBtn");
+if (textBackgroundPresetAddBtn) {
+    textBackgroundPresetAddBtn.addEventListener("click", async () => {
+        const input = document.getElementById("textBackgroundPresetInput");
+        const nextPresetId = String(input?.value || "").trim();
+        if (!nextPresetId) {
+            alert("ใส่รหัสพื้นหลังที่ต้องการเพิ่มก่อน");
+            return;
+        }
+
+        const currentCustomPresets = getSavedCustomTextBackgroundPresets();
+        if (currentCustomPresets.includes(nextPresetId) || getTextBackgroundOptionById(nextPresetId)) {
+            setActiveTextBackgroundPresetId(nextPresetId);
+            renderTextComposerUi();
+            return;
+        }
+
+        try {
+            textBackgroundPresetAddBtn.disabled = true;
+            textBackgroundPresetAddBtn.textContent = "กำลังเพิ่ม...";
+            await persistTextBackgroundCatalog([...currentCustomPresets, nextPresetId]);
+            setActiveTextBackgroundPresetId(nextPresetId);
+            renderTextComposerUi();
+        } catch (error) {
+            alert(error instanceof Error ? error.message : "เพิ่มรหัสพื้นหลังไม่สำเร็จ");
+        } finally {
+            textBackgroundPresetAddBtn.disabled = false;
+            textBackgroundPresetAddBtn.textContent = "เพิ่ม";
+        }
+    });
+}
+
+const textBackgroundPresetInput = document.getElementById("textBackgroundPresetInput");
+if (textBackgroundPresetInput) {
+    textBackgroundPresetInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            textBackgroundPresetAddBtn?.click();
+        }
+    });
+}
+
+const textBackgroundSavedList = document.getElementById("textBackgroundSavedList");
+if (textBackgroundSavedList) {
+    textBackgroundSavedList.addEventListener("click", async (event) => {
+        const button = event.target.closest(".text-background-saved-remove");
+        if (!button) return;
+
+        const presetId = String(button.dataset.presetId || "").trim();
+        if (!presetId) return;
+
+        const nextCustomPresets = getSavedCustomTextBackgroundPresets().filter((item) => item !== presetId);
+        try {
+            await persistTextBackgroundCatalog(nextCustomPresets);
+            if (getActiveTextBackgroundPresetId() === presetId) {
+                setActiveTextBackgroundPresetId("");
+            }
+            renderTextComposerUi();
+        } catch (error) {
+            alert(error instanceof Error ? error.message : "ลบรหัสพื้นหลังไม่สำเร็จ");
+        }
+    });
+}
+
+if (multiPageSearchInput) {
+    multiPageSearchInput.addEventListener("input", (event) => {
+        targetPageSearchQuery = event.target.value || "";
+        renderMultiPageTargetPicker();
+    });
+}
 
 // Select a page
 function selectPage(index) {
@@ -622,6 +1783,7 @@ function selectPage(index) {
     const pageSelector = document.getElementById("pageSelector");
     if (skeleton) skeleton.style.display = "none";
     pageSelector.style.display = "flex";
+    pageSelector.classList.remove("is-empty");
 
     // Update content
     document.getElementById("previewPageName").textContent =
@@ -638,11 +1800,16 @@ function selectPage(index) {
     // Update dropdown selection
     document
         .querySelectorAll(".page-dropdown-item")
-        .forEach((item, i) => {
-            item.classList.toggle("selected", i === index);
+        .forEach((item) => {
+            const itemPageId = item.dataset.pageId || "";
+            item.classList.toggle("selected", itemPageId === String(page.id));
+            item.classList.toggle("is-primary", itemPageId === String(page.id));
         });
 
-    pageDropdown.classList.remove("visible");
+    syncSelectedTargetPageIds();
+    renderMultiPageTargetPicker();
+
+    setPageDropdownOpen(false);
 
     // Load page-specific settings
     loadSettings();
@@ -674,6 +1841,8 @@ function selectPage(index) {
     if (window.location.hash === "#published") {
         loadPublishedPosts();
     }
+
+    renderTextComposerUi();
 }
 
 function hydratePageFromLocalStorageFallback() {
@@ -701,52 +1870,28 @@ function hydratePageFromLocalStorageFallback() {
 // Render pages dropdown
 function renderPagesDropdown(pages) {
     allPages = pages;
-    pageDropdown.textContent = "";
+    if (!selectedTargetPageIds.length) {
+        selectedTargetPageIds = loadStoredTargetPageIds();
+    }
 
-    pages.forEach((page, i) => {
-        const item = document.createElement("div");
-        item.className =
-            "page-dropdown-item" +
-            (i === selectedPageIndex ? " selected" : "");
-
-        const img = document.createElement("img");
-        img.src =
-            page.picture?.data?.url ||
-            `https://graph.facebook.com/${page.id}/picture?type=small`;
-        img.alt = page.name;
-
-        const info = document.createElement("div");
-        info.className = "page-dropdown-item-info";
-
-        const name = document.createElement("h4");
-        name.textContent = page.name || "Page";
-
-        const id = document.createElement("p");
-        id.textContent = page.id;
-
-        info.appendChild(name);
-        info.appendChild(id);
-        item.appendChild(img);
-        item.appendChild(info);
-
-        item.addEventListener("click", () => selectPage(i));
-        pageDropdown.appendChild(item);
-    });
-
-    // Auto-select saved page or first page
     if (pages.length > 0) {
         const savedPageId = localStorage.getItem("fewfeed_selectedPageId");
-        let indexToSelect = 0;
-
         if (savedPageId) {
-            const savedIndex = pages.findIndex(p => p.id === savedPageId);
+            const savedIndex = pages.findIndex((page) => String(page.id) === String(savedPageId));
             if (savedIndex !== -1) {
-                indexToSelect = savedIndex;
+                selectPage(savedIndex);
+            } else {
+                clearPrimaryPageSelection();
             }
+        } else {
+            clearPrimaryPageSelection();
         }
-
-        selectPage(indexToSelect);
+    } else {
+        clearPrimaryPageSelection();
     }
+
+    renderMultiPageTargetPicker();
+    renderTextComposerUi();
 }
 
 function requestPagesFromExtension(accessToken) {
@@ -1172,12 +2317,6 @@ async function fetchPages(accessToken) {
             }));
 
             renderPagesDropdown(pages);
-
-            // Auto-select first page if none selected
-            const pageSelect = document.getElementById("pageSelect");
-            if (pageSelect && !pageSelect.value && pages.length > 0) {
-                selectPage(0);
-            }
         } else {
             console.log("[FEWFEED] No pages found in D1");
             hydratePageFromLocalStorageFallback();

@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/styles.css?v=6.3" />
+    <link rel="stylesheet" href="/css/styles.css?v=6.4" />
 </head>
 
 <body>
@@ -198,13 +198,38 @@
                     <div class="preview-page-info">
                         <h3 id="previewPageName">Select Page</h3>
                         <p id="previewPageId">-</p>
+                        <div class="page-selector-target-summary">
+                            <span class="page-selector-target-label">เส้นทางโพสต์</span>
+                            <span class="page-selector-target-value" id="pageSelectorTargetSummary">ยังไม่ได้เลือก</span>
+                        </div>
                     </div>
-                    <svg class="page-dropdown-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2">
-                        <path d="M6 9l6 6 6-6" />
-                    </svg>
+                    <div class="page-selector-meta">
+                        <span class="page-selector-target-count" id="pageSelectorTargetCount">0</span>
+                        <svg class="page-dropdown-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M6 9l6 6 6-6" />
+                        </svg>
+                    </div>
                 </div>
-                <div class="page-dropdown" id="pageDropdown"></div>
+                <div class="page-dropdown" id="pageDropdown">
+                    <div class="multi-page-dropdown-head">
+                        <div>
+                            <p class="multi-page-eyebrow">Page Routing</p>
+                            <h4>เลือกเพจหลักและเพจปลายทาง</h4>
+                        </div>
+                        <span class="multi-page-selected-meta" id="multiPageSelectedMeta">ยังไม่เลือกเพจหลัก</span>
+                    </div>
+                    <div class="multi-page-search-shell">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg>
+                        <input type="text" id="multiPageSearchInput" class="multi-page-search-input"
+                            placeholder="ค้นหาชื่อเพจหรือ Page ID" autocomplete="off" />
+                    </div>
+                    <div class="multi-page-selected-strip" id="multiPageSelectedStrip"></div>
+                    <div class="multi-page-list" id="multiPageList"></div>
+                </div>
             </div>
 
             <nav class="sidebar-nav">
@@ -541,57 +566,68 @@
             <!-- End linkModeContainer -->
 
             <!-- ========== TEXT MODE ========== -->
-            <div class="pending-panel" id="textModePanel" style="display: none;">
-                <div class="pending-panel-header">
-                    <h2>Text Post</h2>
-                </div>
-                <div style="padding: 1.5rem; max-width: 800px; margin: 0 auto;">
-                    <!-- Input -->
-                    <div
-                        style="background: #fff; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                        <label
-                            style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">ข้อความ</label>
-                        <textarea id="textMessageTextarea" placeholder="พิมพ์ข้อความที่ต้องการโพสต์..."
-                            style="width: 100%; min-height: 150px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 14px; line-height: 1.6; resize: vertical; box-sizing: border-box;"></textarea>
-                    </div>
-
-                    <!-- Share to Pages -->
-                    <div
-                        style="background: #fff; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">แชร์ไปเพจอื่น
-                            (เลือกได้หลายเพจ)</label>
-                        <div id="sharePagesList"
-                            style="max-height: 250px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 8px; background: #fafafa;">
+            <div class="mode-container" id="textModeContainer">
+                <div class="preview-panel">
+                    <div class="card-preview text-card-preview">
+                        <div class="text-preview-stage" id="textPreviewStage">
+                            <div class="text-preview-surface" id="textPreviewSurface">
+                                <div class="text-preview-meta">
+                                    <span class="text-preview-pill" id="textBackgroundBadge">ไม่มีพื้นหลัง</span>
+                                </div>
+                                <div class="text-preview-content" id="textPreviewContent">
+                                    พิมพ์ข้อความในช่องด้านขวาเพื่อดูตัวอย่างโพสต์
+                                </div>
+                            </div>
                         </div>
                     </div>
-
-                    <!-- i_user for GraphQL Edit -->
-                    <div
-                        style="background: #fff; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">i_user
-                            (Profile Plus ID)</label>
-                        <input type="text" id="iUserInput" placeholder="เช่น 61554708539220"
-                            style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                        <small style="color: #666; margin-top: 4px; display: block;">ดูจาก URL เมื่อสลับเป็นเพจ หรือเปิด
-                            Extension เพื่อ sync ข้อมูลใหม่</small>
+                </div>
+                <div class="form-panel">
+                    <div class="card">
+                        <div style="
+                                    display: flex;
+                                    justify-content: flex-start;
+                                    align-items: center;
+                                    margin-bottom: 1rem;
+                                ">
+                            <button class="btn-publish" id="textPublishBtn">
+                                POST NOW
+                            </button>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Primary Text</label>
+                            <textarea class="form-textarea" id="textPrimaryText"
+                                placeholder="พิมพ์ข้อความที่ต้องการโพสต์..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="textManualScheduleInput">ตั้งเวลาโพสต์เอง</label>
+                            <div class="schedule-row">
+                                <input class="form-input" type="datetime-local" id="textManualScheduleInput">
+                                <button class="schedule-clear-btn" type="button" id="textManualScheduleClearBtn">ล้าง</button>
+                            </div>
+                            <small id="textManualScheduleHint" style="
+                                        color: #888;
+                                        margin-top: 4px;
+                                        display: block;
+                                    ">
+                                ถ้ากรอกไว้ ระบบจะใช้เวลานี้ก่อน auto schedule ใน Settings
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">พื้นหลังข้อความ</label>
+                            <div class="text-background-toolbar">
+                                <div class="text-background-toolbar-copy">
+                                    <div class="text-background-summary" id="textBackgroundSummary">โพสต์แบบพื้นหลังปกติ</div>
+                                    <div class="text-background-source" id="textBackgroundSource">มีพื้นหลังพร้อมใช้</div>
+                                </div>
+                            </div>
+                            <div class="text-background-grid" id="textBackgroundGrid"></div>
+                            <small class="text-background-help" id="textBackgroundHelp">
+                                แตะการ์ดด้านล่างเพื่อเลือกพื้นหลังได้เลย
+                            </small>
+                        </div>
                     </div>
-
-                    <!-- Publish Button -->
-                    <button class="publish-btn" id="textPublishBtn"
-                        style="width: 100%; padding: 14px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform 0.2s, box-shadow 0.2s;"
-                        onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(102,126,234,0.4)';"
-                        onmouseout="this.style.transform=''; this.style.boxShadow='';">
-                        <span>📝</span> Publish Text Post
-                    </button>
-
-                    <!-- Status -->
-                    <div id="textPublishStatus"
-                        style="margin-top: 12px; padding: 12px; border-radius: 8px; display: none;"></div>
                 </div>
             </div>
-
-            <!-- Old text mode container - hidden -->
-            <div class="mode-container" id="textModeContainer" style="display: none !important;"></div>
             <!-- End textModeContainer -->
 
             <!-- ========== IMAGE MODE ========== -->
@@ -657,6 +693,20 @@
                             <textarea class="form-textarea" id="imagePrimaryText"
                                 placeholder="Write something about your post..."></textarea>
                         </div>
+                        <div class="form-group">
+                            <label class="form-label" for="imageManualScheduleInput">ตั้งเวลาโพสต์เอง</label>
+                            <div class="schedule-row">
+                                <input class="form-input" type="datetime-local" id="imageManualScheduleInput">
+                                <button class="schedule-clear-btn" type="button" id="imageManualScheduleClearBtn">ล้าง</button>
+                            </div>
+                            <small id="imageManualScheduleHint" style="
+                                        color: #888;
+                                        margin-top: 4px;
+                                        display: block;
+                                    ">
+                                ถ้ากรอกไว้ ระบบจะใช้เวลานี้ก่อน auto schedule ใน Settings
+                            </small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -686,7 +736,7 @@
                                     </button>
                                 </div>
                                 <p style="margin-top: 0.75rem; color: #9ca3af; font-size: 0.85rem; text-align: center;">
-                                    รองรับวิดีโอจากเครื่องก่อนใน V1
+                                    อัปขึ้นระบบก่อน แล้วค่อย publish ใน V2
                                 </p>
                             </div>
                             <div class="generate-overlay" id="reelsGenerateOverlay" style="display: none">
@@ -727,6 +777,19 @@
                             <label class="form-label">Primary Text</label>
                             <textarea class="form-textarea" id="reelsPrimaryText"
                                 placeholder="Write something about your post..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">คอมเมนต์ Affiliate</label>
+                            <textarea class="form-textarea" id="reelsAffiliateComment"
+                                placeholder="ข้อความคอมเมนต์ที่จะยิงใต้ Reel หลังโพสต์สำเร็จ"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">ลิงก์สินค้า</label>
+                            <input class="form-input" id="reelsAffiliateLink"
+                                placeholder="https://..." />
+                            <small style="display:block; margin-top:8px; color:#6b7280;">
+                                ถ้าใส่ ระบบจะต่อท้ายในคอมเมนต์ affiliate อัตโนมัติ
+                            </small>
                         </div>
                     </div>
                 </div>
@@ -1168,13 +1231,13 @@
                                 <label id="colorBgGroup"
                                     style="display: none; align-items: center; gap: 0.5rem; margin-top: 0.75rem; cursor: pointer;">
                                     <input type="checkbox" id="colorBgEnabled" style="width: 18px; height: 18px;">
-                                    <span style="font-size: 0.9rem;">🎨 Colors Background</span>
+                                    <span style="font-size: 0.9rem;">🎨 พื้นหลังข้อความเพิ่มเติม (ขั้นสูง)</span>
                                 </label>
                                 <div id="colorBgPresetsGroup" style="display: none; margin-top: 0.5rem;">
                                     <div id="presetsList" style="display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
                                     <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
                                         <input type="text" id="newPresetInput" class="form-input"
-                                            placeholder="Preset ID"
+                                            placeholder="เพิ่มรหัสพื้นหลังพิเศษ"
                                             style="padding: 0.4rem; flex: 1; font-size: 0.85rem;">
                                         <button type="button" id="addPresetBtn" class="btn"
                                             style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">+</button>
@@ -1668,6 +1731,7 @@
 
     <script src="/js/config.js?v=6.3"></script>
     <script src="/js/parts/01-thumb-preview.js?v=6.1"></script>
+<<<<<<< HEAD
     <script src="/js/parts/02-dom-elements.js?v=6.1"></script>
     <script src="/js/parts/03-validation.js?v=6.2"></script>
     <script src="/js/parts/04-settings.js?v=6.7"></script>
@@ -1679,6 +1743,19 @@
     <script src="/js/parts/10-lazada.js?v=6.1"></script>
     <script src="/js/parts/11-image-generation.js?v=7.6"></script>
     <script src="/js/parts/12-publish.js?v=7.8"></script>
+=======
+    <script src="/js/parts/02-dom-elements.js?v=6.3"></script>
+    <script src="/js/parts/03-validation.js?v=6.4"></script>
+    <script src="/js/parts/04-settings.js?v=6.9"></script>
+    <script src="/js/parts/05-auto-post.js?v=6.6"></script>
+    <script src="/js/parts/06-pending-posts.js?v=6.6"></script>
+    <script src="/js/parts/07-earnings.js?v=6.2"></script>
+    <script src="/js/parts/08-quotes.js?v=6.1"></script>
+    <script src="/js/parts/09-navigation.js?v=6.5"></script>
+    <script src="/js/parts/10-lazada.js?v=6.3"></script>
+    <script src="/js/parts/11-image-generation.js?v=7.8"></script>
+    <script src="/js/parts/12-publish.js?v=7.9"></script>
+>>>>>>> d34cba4019b48c6e7abd84099bc74874cbf106a7
 
     <!-- Lightbox Modal -->
     <div class="lightbox-overlay" id="lightboxOverlay">

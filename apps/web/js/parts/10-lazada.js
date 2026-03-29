@@ -236,6 +236,12 @@ function resetReelsVideoState(showPrompt = true) {
     state.selectedVideoFile = null;
     state.selectedVideoUrl = "";
     state.selectedVideoName = "";
+    state.selectedVideoKey = "";
+    state.selectedVideoMimeType = "";
+    state.selectedVideoSize = 0;
+    state.isUploadingVideo = false;
+    state.videoUploadError = "";
+    state.videoUploadRequestId = "";
     state.selectedImage = null;
     state.currentView = "upload";
     reelsModeVideoReady = false;
@@ -260,6 +266,86 @@ function resetReelsVideoState(showPrompt = true) {
     validateReelsMode();
 }
 
+function formatReelsVideoMetaLine() {
+    const state = modeState.reels;
+    const sizeMb = state.selectedVideoSize || state.selectedVideoFile?.size || 0;
+    const base = `${state.selectedVideoName || "video"} · ${Math.round((sizeMb / (1024 * 1024)) * 10) / 10} MB`;
+
+    if (state.isUploadingVideo) {
+        return `${base} · กำลังอัปขึ้นระบบ...`;
+    }
+
+    if (state.videoUploadError) {
+        return `${base} · อัปไม่สำเร็จ`;
+    }
+
+    if (state.selectedVideoKey) {
+        return `${base} · พร้อมโพสต์`;
+    }
+
+    return base;
+}
+
+function updateReelsVideoMeta() {
+    const metaEl = document.getElementById("reelsVideoMeta");
+    if (!metaEl) return;
+    metaEl.textContent = formatReelsVideoMetaLine();
+    metaEl.style.background = modeState.reels.videoUploadError
+        ? "rgba(127,29,29,0.78)"
+        : "rgba(0,0,0,0.55)";
+}
+
+async function uploadReelsVideoToStage(file) {
+    const state = modeState.reels;
+    const pageId = document.getElementById("pageSelect")?.value?.trim() || "";
+
+    if (!pageId) {
+        throw new Error("กรุณาเลือก Page ก่อนอัปโหลดวิดีโอ");
+    }
+
+    const requestId = crypto.randomUUID();
+    state.videoUploadRequestId = requestId;
+    state.isUploadingVideo = true;
+    state.videoUploadError = "";
+    state.selectedVideoKey = "";
+    state.selectedVideoMimeType = file.type || "video/mp4";
+    state.selectedVideoSize = file.size;
+    updateReelsVideoMeta();
+    validateReelsMode();
+
+    const formData = new FormData();
+    formData.append("pageId", pageId);
+    formData.append("video", file, file.name || "pubilo-reel.mp4");
+
+    const response = await fetch("/api/publish-reel/upload", {
+        method: "POST",
+        body: formData,
+    });
+
+    const data = await response.json();
+
+    if (state.videoUploadRequestId !== requestId) {
+        return;
+    }
+
+    if (!response.ok || !data.success) {
+        state.isUploadingVideo = false;
+        state.videoUploadError = data.error || "อัปโหลดวิดีโอไม่สำเร็จ";
+        updateReelsVideoMeta();
+        validateReelsMode();
+        throw new Error(state.videoUploadError);
+    }
+
+    state.isUploadingVideo = false;
+    state.videoUploadError = "";
+    state.selectedVideoKey = String(data.videoKey || "").trim();
+    state.selectedVideoMimeType = String(data.mimeType || file.type || "video/mp4").trim();
+    state.selectedVideoSize = Number(data.fileSize || file.size || 0);
+    state.selectedVideoName = String(data.fileName || file.name || "video").trim();
+    updateReelsVideoMeta();
+    validateReelsMode();
+}
+
 function showSelectedReelsVideo(file) {
     const state = modeState.reels;
     const els = getModeElements("reels");
@@ -274,6 +360,12 @@ function showSelectedReelsVideo(file) {
     state.selectedVideoFile = file;
     state.selectedVideoUrl = objectUrl;
     state.selectedVideoName = file.name || "video";
+    state.selectedVideoKey = "";
+    state.selectedVideoMimeType = file.type || "video/mp4";
+    state.selectedVideoSize = file.size || 0;
+    state.isUploadingVideo = false;
+    state.videoUploadError = "";
+    state.videoUploadRequestId = "";
     state.selectedImage = null;
     state.currentView = "full";
 
@@ -310,9 +402,10 @@ function showSelectedReelsVideo(file) {
     });
 
     const metaEl = document.createElement("div");
+    metaEl.id = "reelsVideoMeta";
     metaEl.style.cssText =
         "position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 8px 10px; border-radius: 10px; background: rgba(0,0,0,0.55); color: #fff; font-size: 0.82rem; line-height: 1.4; z-index: 2;";
-    metaEl.textContent = `${state.selectedVideoName} · ${Math.round(file.size / (1024 * 1024) * 10) / 10} MB`;
+    metaEl.textContent = formatReelsVideoMetaLine();
 
     els.fullImageView.appendChild(videoEl);
     els.fullImageView.appendChild(backBtn);
@@ -327,7 +420,7 @@ function showSelectedReelsVideo(file) {
 }
 
 if (reelsFileInput) {
-    reelsFileInput.addEventListener("change", (e) => {
+    reelsFileInput.addEventListener("change", async (e) => {
         const file = e.target.files?.[0];
         reelsFileInput.value = "";
 
@@ -344,6 +437,13 @@ if (reelsFileInput) {
         }
 
         showSelectedReelsVideo(file);
+
+        try {
+            await uploadReelsVideoToStage(file);
+        } catch (error) {
+            console.error("[REELS] Stage upload failed:", error);
+            alert(error instanceof Error ? error.message : String(error));
+        }
     });
 }
 

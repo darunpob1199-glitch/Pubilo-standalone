@@ -3,6 +3,7 @@
 let linkModeImageReady = false;
 let newsModeImageReady = false;
 let reelsModeVideoReady = false;
+let textModeReady = false;
 
 function validateLinkMode() {
     // Determine current mode - default to 'link'
@@ -42,6 +43,24 @@ function validateLinkMode() {
                 publishBtn.textContent = typeof getPrimaryPublishLabel === "function"
                     ? getPrimaryPublishLabel('link')
                     : 'POST NOW';
+            }
+        }
+    } else if (currentMode === "image") {
+        const imagePublishBtn = document.getElementById("imagePublishBtn");
+        const imageState = modeState?.image || {};
+        const hasImage = !!imageState.selectedImage;
+        const isValid = hasImage;
+
+        if (imagePublishBtn) {
+            imagePublishBtn.disabled = !isValid;
+            imagePublishBtn.classList.toggle("disabled", !isValid);
+            imagePublishBtn.style.opacity = isValid ? "1" : "0.5";
+            imagePublishBtn.style.cursor = isValid ? "pointer" : "not-allowed";
+
+            if (!imagePublishBtn.classList.contains("published")) {
+                imagePublishBtn.textContent = typeof getPrimaryPublishLabel === "function"
+                    ? getPrimaryPublishLabel("image")
+                    : "POST NOW";
             }
         }
     } else {
@@ -84,10 +103,12 @@ function validateNewsMode() {
 
 function validateReelsMode() {
     const reelsPublishBtn = document.getElementById("reelsPublishBtn");
-    const reelsPrimaryText = document.getElementById("reelsPrimaryText");
+    const reelsState = modeState?.reels || {};
     const hasVideo = reelsModeVideoReady;
-    const hasCaption = !!reelsPrimaryText;
-    const isValid = hasVideo && hasCaption;
+    const hasUploadedVideo = !!reelsState.selectedVideoKey;
+    const isUploading = !!reelsState.isUploadingVideo;
+    const hasUploadError = !!reelsState.videoUploadError;
+    const isValid = hasVideo && hasUploadedVideo && !isUploading && !hasUploadError;
 
     if (reelsPublishBtn) {
         reelsPublishBtn.disabled = !isValid;
@@ -95,7 +116,28 @@ function validateReelsMode() {
         reelsPublishBtn.style.opacity = isValid ? "1" : "0.5";
         reelsPublishBtn.style.cursor = isValid ? "pointer" : "not-allowed";
         if (!reelsPublishBtn.classList.contains("published")) {
-            reelsPublishBtn.textContent = "PUBLISH";
+            reelsPublishBtn.textContent = isUploading ? "UPLOADING..." : "PUBLISH";
+        }
+    }
+}
+
+function validateTextMode() {
+    const textPublishBtn = document.getElementById("textPublishBtn");
+    const textPrimaryText = document.getElementById("textPrimaryText");
+    const hasText = !!textPrimaryText?.value?.trim();
+    const isValid = hasText;
+
+    textModeReady = isValid;
+
+    if (textPublishBtn) {
+        textPublishBtn.disabled = !isValid;
+        textPublishBtn.classList.toggle("disabled", !isValid);
+        textPublishBtn.style.opacity = isValid ? "1" : "0.5";
+        textPublishBtn.style.cursor = isValid ? "pointer" : "not-allowed";
+        if (!textPublishBtn.classList.contains("published")) {
+            textPublishBtn.textContent = typeof getPrimaryPublishLabel === "function"
+                ? getPrimaryPublishLabel("text")
+                : "POST NOW";
         }
     }
 }
@@ -104,11 +146,22 @@ function validateReelsMode() {
 if (linkUrl) {
     linkUrl.addEventListener("input", validateLinkMode);
 }
+
+const textPrimaryText = document.getElementById("textPrimaryText");
+if (textPrimaryText) {
+    textPrimaryText.addEventListener("input", () => {
+        if (typeof renderTextComposerUi === "function") {
+            renderTextComposerUi();
+        }
+        validateTextMode();
+    });
+}
 // Note: description validation is triggered from setupEditableText blur handler
 // and after config loading/form clearing
 
 // Initial validation
 setTimeout(validateLinkMode, 500);
 setTimeout(validateReelsMode, 500);
+setTimeout(validateTextMode, 500);
 
 // ============================================
