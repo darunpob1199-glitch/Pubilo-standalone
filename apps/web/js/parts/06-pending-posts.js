@@ -802,6 +802,9 @@ if (pendingQuickFilters && !pendingQuickFilters.dataset.bound) {
 }
 
 async function showPendingPanel(forceRefresh = false, view = "posts") {
+    if (window.PUBILO_WEB_ONLY_MODE && view === "quotes") {
+        view = "posts";
+    }
     pendingSectionView = view === "quotes" ? "quotes" : "posts";
     syncPendingSectionTabs();
     // Hide all mode containers

@@ -1,7 +1,32 @@
 // 12. NAVIGATION
 // ============================================
+function getAllowedHash(rawHash) {
+    const fallbackMap = {
+        quotes: "pending",
+        earnings: "link",
+        "hide-posts": "link",
+        "delete-posts": "link",
+    };
+
+    if (
+        window.PUBILO_WEB_ONLY_MODE &&
+        Array.isArray(window.PUBILO_HIDDEN_HASHES) &&
+        window.PUBILO_HIDDEN_HASHES.includes(rawHash)
+    ) {
+        return fallbackMap[rawHash] || "link";
+    }
+
+    return rawHash;
+}
+
 function handleNavigation() {
-    const hash = window.location.hash.slice(1) || "link";
+    const requestedHash = window.location.hash.slice(1) || "link";
+    const hash = getAllowedHash(requestedHash);
+
+    if (hash !== requestedHash) {
+        window.location.hash = hash;
+        return;
+    }
 
     document
         .querySelectorAll(".nav-item")
@@ -87,10 +112,12 @@ if (deletePostsNavItem) {
 }
 
 // Earnings nav item click
-earningsNavItem.addEventListener("click", (e) => {
-    e.preventDefault();
-    navigateTo("earnings");
-});
+if (earningsNavItem) {
+    earningsNavItem.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo(window.PUBILO_WEB_ONLY_MODE ? "link" : "earnings");
+    });
+}
 
 // Settings nav item click
 document.getElementById("settingsNavBtn").addEventListener("click", (e) => {

@@ -1,5 +1,9 @@
 // Pubilo v5.0 - Cloudflare API Configuration
 const PUBILO_API_STORAGE_KEY = 'pubilo_api_base';
+const PUBILO_WEB_ONLY_MODE = true;
+
+window.PUBILO_WEB_ONLY_MODE = PUBILO_WEB_ONLY_MODE;
+window.PUBILO_HIDDEN_HASHES = ['quotes', 'earnings', 'hide-posts', 'delete-posts'];
 
 // Old production preview URLs stay frozen on older deploys and keep causing stale-client issues.
 // Always move users back to the stable production hostname.
@@ -56,6 +60,38 @@ window.API_BASE = normalizeApiBase(
 );
 
 console.log('[Pubilo] API_BASE:', window.API_BASE, '| host:', window.location.hostname);
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (!PUBILO_WEB_ONLY_MODE) return;
+
+    document.body.dataset.productMode = 'web-only';
+
+    const hiddenIds = [
+        'earningsNavItem',
+        'hidePostsNavItem',
+        'deletePostsNavItem',
+        'pendingQuotesTab',
+        'quotesPostsTab',
+        'quotesQuotesTab',
+        'quotesPanel',
+        'earningsPanel',
+        'hidePostsPanel',
+        'deletePostsPanel',
+        'textQuoteSubmitBtn',
+        'addQuoteBtn',
+        'autoScheduleSettingsSection',
+        'autoPostSettingsSection',
+        'autoHideSettingsSection',
+        'hideTokenSettingGroup',
+    ];
+
+    hiddenIds.forEach((id) => {
+        const element = document.getElementById(id);
+        if (!element) return;
+        element.style.display = 'none';
+        element.setAttribute('aria-hidden', 'true');
+    });
+});
 
 // Override fetch to automatically prefix API calls
 const originalFetch = window.fetch;

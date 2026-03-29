@@ -1157,7 +1157,7 @@
                                     ใช้สำหรับโพสต์และแชร์
                                 </p>
                             </div>
-                            <div class="setting-group" style="margin-top: 1rem;">
+                            <div class="setting-group" id="hideTokenSettingGroup" style="margin-top: 1rem;">
                                 <label class="form-label">🙈 Token สำหรับ Hide</label>
                                 <input type="text" id="hideTokenInputPanel" class="form-input"
                                     placeholder="EAAxxxxxxx... (ถ้าไม่ใส่ จะใช้ Token โพสต์แทน)"
@@ -1170,7 +1170,7 @@
                     </div>
 
                     <!-- Schedule Settings -->
-                    <div class="settings-section collapsible">
+                    <div class="settings-section collapsible" id="autoScheduleSettingsSection">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                             ⏰ ตั้งเวลาโพสต์
                             <span class="collapse-icon">›</span>
@@ -1427,7 +1427,7 @@
                     </div>
 
                     <!-- Auto-Post Alternating Section -->
-                    <div class="settings-section collapsible">
+                    <div class="settings-section collapsible" id="autoPostSettingsSection">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                             🔄 Auto-Post Mode
                             <span class="collapse-icon">›</span>
@@ -1638,7 +1638,7 @@
                     </div>
 
                     <!-- Auto Hide Posts Section -->
-                    <div class="settings-section collapsible">
+                    <div class="settings-section collapsible" id="autoHideSettingsSection">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                             🙈 Auto Hide Posts
                             <span class="collapse-icon">›</span>
