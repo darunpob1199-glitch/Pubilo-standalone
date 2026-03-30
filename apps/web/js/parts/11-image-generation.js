@@ -1025,41 +1025,48 @@ if (newsPublishBtn) {
                         ? "ตั้งเวลาโพสต์สำเร็จแล้ว"
                         : "โพสต์สำเร็จแล้ว",
                 );
-                
-                if (scheduledTime) {
+
+                if (isScheduledNewsPost && scheduledTime) {
                     await refreshScheduledPostTimes();
                     updateNextScheduleDisplay();
                 }
-                
-                setTimeout(() => {
-                    window.location.hash = "#pending";
-                    handleNavigation();
-                    
-                    if (newsUrlInputEl) newsUrlInputEl.value = "";
-                    if (newsPrimaryTextEl) newsPrimaryTextEl.value = "";
-                    if (newsPreviewDescEl) newsPreviewDescEl.textContent = "";
-                    if (newsDescriptionInput) newsDescriptionInput.value = "";
-                    if (typeof clearManualSchedule === "function") {
-                        clearManualSchedule("news");
-                    }
-                    newsGeneratedImages = [];
-                    newsSelectedImages = [];
-                    newsModeImageReady = false;
-                    
-                    const container = document.getElementById("newsFullImageView");
-                    if (container) container.style.display = "none";
-                    const uploadPrompt = document.getElementById("newsUploadPrompt");
-                    if (uploadPrompt) uploadPrompt.style.display = "flex";
-                    
-                    const baseLabel = typeof getPrimaryPublishLabel === "function"
-                        ? getPrimaryPublishLabel("news")
-                        : "POST NOW";
-                    newsPublishBtn.textContent = baseLabel;
-                    newsPublishBtn.classList.remove("published");
-                    newsPublishBtn.disabled = true;
-                    newsPublishBtn.style.opacity = "0.5";
-                    validateNewsMode();
-                }, 1000);
+
+                if (isScheduledNewsPost) {
+                    setTimeout(() => {
+                        window.location.hash = "#pending";
+                        handleNavigation();
+
+                        if (newsUrlInputEl) newsUrlInputEl.value = "";
+                        if (newsPrimaryTextEl) newsPrimaryTextEl.value = "";
+                        if (newsPreviewDescEl) newsPreviewDescEl.textContent = "";
+                        if (newsDescriptionInput) newsDescriptionInput.value = "";
+                        if (typeof clearManualSchedule === "function") {
+                            clearManualSchedule("news");
+                        }
+                        newsGeneratedImages = [];
+                        newsSelectedImages = [];
+                        newsModeImageReady = false;
+
+                        const container = document.getElementById("newsFullImageView");
+                        if (container) container.style.display = "none";
+                        const uploadPrompt = document.getElementById("newsUploadPrompt");
+                        if (uploadPrompt) uploadPrompt.style.display = "flex";
+
+                        const baseLabel = typeof getPrimaryPublishLabel === "function"
+                            ? getPrimaryPublishLabel("news")
+                            : "POST NOW";
+                        newsPublishBtn.textContent = baseLabel;
+                        newsPublishBtn.classList.remove("published");
+                        newsPublishBtn.disabled = true;
+                        newsPublishBtn.style.opacity = "0.5";
+                        validateNewsMode();
+                    }, 1000);
+                } else {
+                    window.handleImmediatePublishSuccess?.("news", {
+                        publishBtn: newsPublishBtn,
+                        primaryText: newsPrimaryTextEl,
+                    });
+                }
             } else {
                 throw new Error("Facebook ไม่คืน post id กลับมา");
             }

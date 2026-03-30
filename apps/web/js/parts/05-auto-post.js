@@ -6,7 +6,21 @@ const postModeAlternate = document.getElementById("postModeAlternate");
 const pageTokenInputPanel = document.getElementById("pageTokenInputPanel");
 const autoFetchPageTokenBtn = document.getElementById("autoFetchPageTokenBtn");
 const pageTokenAutoStatus = document.getElementById("pageTokenAutoStatus");
+const afterPublishActionSelectPanel = document.getElementById("afterPublishActionSelectPanel");
 let currentPostMode = "image";
+
+const AFTER_PUBLISH_ACTION_STORAGE_PREFIX = "fewfeed_afterPublishAction";
+
+function normalizeAfterPublishActionSetting(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "published" || normalized === "pending") return normalized;
+    return "stay";
+}
+
+function getAfterPublishActionStorageKeyForSettings(pageId) {
+    const id = String(pageId || "").trim();
+    return `${AFTER_PUBLISH_ACTION_STORAGE_PREFIX}:${id || "_default"}`;
+}
 
 // Auto-Hide elements
 const autoHideEnabled = document.getElementById("autoHideEnabled");
@@ -720,6 +734,9 @@ async function loadSettingsPanel() {
         imageSourceSelectPanel.value = "ai";
         ogBackgroundUrlPanel.value = "";
         ogFontSelectPanel.value = "noto-sans-thai";
+        if (afterPublishActionSelectPanel) {
+            afterPublishActionSelectPanel.value = "stay";
+        }
         setPageTokenAutoStatus("เลือกเพจหลักก่อน แล้วค่อยจัดการ token และการตั้งค่า", "muted");
         return;
     }
@@ -797,6 +814,12 @@ async function loadSettingsPanel() {
         }
     } catch (err) {
         console.error("[LOAD] Failed to load settings:", err);
+    }
+
+    if (afterPublishActionSelectPanel) {
+        const savedAction = localStorage.getItem(getAfterPublishActionStorageKeyForSettings(pageId));
+        const fallbackAction = localStorage.getItem(AFTER_PUBLISH_ACTION_STORAGE_PREFIX);
+        afterPublishActionSelectPanel.value = normalizeAfterPublishActionSetting(savedAction || fallbackAction || "stay");
     }
 
     if (!pageTokenInputPanel?.value?.trim()) {
@@ -916,6 +939,12 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
         alert("กรุณาเลือกเพจก่อน");
         return;
     }
+
+    const afterPublishAction = normalizeAfterPublishActionSetting(
+        afterPublishActionSelectPanel?.value || "stay",
+    );
+    localStorage.setItem(getAfterPublishActionStorageKeyForSettings(pageId), afterPublishAction);
+    localStorage.setItem(AFTER_PUBLISH_ACTION_STORAGE_PREFIX, afterPublishAction);
 
     // Show loading state with spinner
     const originalText = saveSettingsPanelBtn.textContent;

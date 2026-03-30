@@ -2,6 +2,8 @@
 // ============================================
 let lastPublishedUrl = null;
 const TEXT_BACKGROUND_STORAGE_KEY_PREFIX = "fewfeed_textBackgroundPreset_";
+let hasSeenExtensionReadySignal = false;
+let extensionMissingHintShown = false;
 
 const DEFAULT_TEXT_BACKGROUND_OPTIONS = [
     {
@@ -711,6 +713,7 @@ async function uploadTextPostSquareImage(dataUrl) {
 
 window.renderTextComposerUi = renderTextComposerUi;
 let publishToastTimer = null;
+const AFTER_PUBLISH_ACTION_STORAGE_PREFIX = "fewfeed_afterPublishAction";
 
 function showPublishToast(message, type = "success") {
     if (!message) return;
@@ -740,6 +743,83 @@ function showPublishToast(message, type = "success") {
 }
 
 window.showPublishToast = showPublishToast;
+
+function normalizeAfterPublishAction(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "published" || normalized === "pending") {
+        return normalized;
+    }
+    return "stay";
+}
+
+function getAfterPublishActionStorageKey(pageId) {
+    const id = String(pageId || "").trim();
+    return `${AFTER_PUBLISH_ACTION_STORAGE_PREFIX}:${id || "_default"}`;
+}
+
+function getAfterPublishActionForCurrentPage() {
+    const pageId = typeof getCurrentPageId === "function" ? getCurrentPageId() : "";
+    const pageScoped = localStorage.getItem(getAfterPublishActionStorageKey(pageId));
+    const fallback = localStorage.getItem(AFTER_PUBLISH_ACTION_STORAGE_PREFIX);
+    return normalizeAfterPublishAction(pageScoped || fallback || "stay");
+}
+
+function restorePublishButtonState(mode, publishBtn) {
+    if (!publishBtn) return;
+    publishBtn.textContent =
+        typeof getPrimaryPublishLabel === "function"
+            ? getPrimaryPublishLabel(mode)
+            : "POST NOW";
+    publishBtn.classList.remove("published");
+    publishBtn.disabled = false;
+}
+
+function focusPrimaryComposerField(mode, els) {
+    let targetField = null;
+
+    if (mode === "news") {
+        targetField = document.getElementById("newsUrlInput");
+    } else if (mode === "link") {
+        targetField = document.getElementById("linkUrl");
+    } else if (mode === "text") {
+        targetField = els?.primaryText || document.getElementById("textPrimaryText");
+    } else if (mode === "image") {
+        targetField = els?.primaryText || document.getElementById("imagePrimaryText");
+    } else if (mode === "reels") {
+        targetField = els?.primaryText || document.getElementById("reelsPrimaryText");
+    }
+
+    if (targetField && typeof targetField.focus === "function") {
+        targetField.focus();
+        if (typeof targetField.select === "function" && targetField.tagName === "INPUT") {
+            targetField.select();
+        }
+    }
+}
+
+function handleImmediatePublishSuccess(mode, els = null) {
+    const modeEls = els || (typeof getModeElements === "function" ? getModeElements(mode) : null);
+    const publishBtn = modeEls?.publishBtn || document.getElementById(`${mode}PublishBtn`) || null;
+    const afterPublishAction = getAfterPublishActionForCurrentPage();
+
+    if (afterPublishAction === "published" || afterPublishAction === "pending") {
+        const targetHash = afterPublishAction === "published" ? "#published" : "#pending";
+        setTimeout(() => {
+            window.location.hash = targetHash;
+            if (typeof handleNavigation === "function") {
+                handleNavigation();
+            }
+        }, 500);
+        return;
+    }
+
+    setTimeout(() => {
+        restorePublishButtonState(mode, publishBtn);
+        focusPrimaryComposerField(mode, modeEls);
+    }, 900);
+}
+
+window.handleImmediatePublishSuccess = handleImmediatePublishSuccess;
 
 function setupPublishHandler(mode) {
     const els = getModeElements(mode);
@@ -889,6 +969,8 @@ function setupPublishHandler(mode) {
                         renderTextComposerUi();
                         validateTextMode();
                     }, 800);
+                } else {
+                    handleImmediatePublishSuccess(mode, els);
                 }
 
                 return;
@@ -975,6 +1057,7 @@ function setupPublishHandler(mode) {
                 els.publishBtn.classList.add("published");
                 els.publishBtn.disabled = false;
                 showPublishToast("โพสต์สำเร็จแล้ว");
+                handleImmediatePublishSuccess(mode, els);
                 return;
             }
 
@@ -1096,6 +1179,8 @@ function setupPublishHandler(mode) {
                         if (els.primaryText) els.primaryText.value = "";
                         validateLinkMode();
                     }, 1000);
+                } else {
+                    handleImmediatePublishSuccess(mode, els);
                 }
 
                 return; // Exit early for image mode
@@ -1399,6 +1484,7 @@ function setupPublishHandler(mode) {
                     els.publishBtn.classList.add("published");
                     els.publishBtn.disabled = false;
                     showPublishToast("โพสต์สำเร็จแล้ว");
+                    handleImmediatePublishSuccess(mode, els);
                     console.log(
                         "[FEWFEED] Published successfully:",
                         lastPublishedUrl,
@@ -2309,25 +2395,180 @@ function isInvalidFacebookSessionError(data) {
         (Number(data?.errorCode) === 1 && data?.errorType === 'OAuthException');
 }
 
-async function refreshFacebookTokensFromExtension() {
+function normalizeExtensionSessionData(rawData = {}) {
+    const pickString = (...values) => {
+        for (const value of values) {
+            if (typeof value === "string" && value.trim()) {
+                return value.trim();
+            }
+        }
+        return "";
+    };
+
+    return {
+        adsToken: pickString(
+            rawData.adsToken,
+            rawData.accessToken,
+            rawData.fewfeed_accessToken,
+            rawData.token,
+        ),
+        postToken: pickString(
+            rawData.postToken,
+            rawData.fewfeed_postToken,
+        ),
+        cookie: pickString(rawData.cookie, rawData.fewfeed_cookie),
+        fbDtsg: pickString(rawData.fbDtsg, rawData.fewfeed_fbDtsg),
+        userId: pickString(rawData.userId, rawData.fewfeed_userId),
+        userName: pickString(rawData.userName, rawData.fewfeed_userName),
+    };
+}
+
+function hasAnyExtensionSessionData(session = {}) {
+    return !!(
+        session.adsToken ||
+        session.postToken ||
+        session.cookie ||
+        session.userId ||
+        session.userName
+    );
+}
+
+function applyExtensionSessionData(sessionData, source = "extension") {
+    const session = normalizeExtensionSessionData(sessionData);
+    if (!hasAnyExtensionSessionData(session)) {
+        return false;
+    }
+
+    if (session.adsToken) {
+        localStorage.setItem("fewfeed_accessToken", session.adsToken);
+        localStorage.setItem("fewfeed_token", session.adsToken);
+        fbToken = session.adsToken;
+    }
+    if (session.postToken) {
+        localStorage.setItem("fewfeed_postToken", session.postToken);
+        fbPostToken = session.postToken;
+    }
+    if (session.cookie) {
+        localStorage.setItem("fewfeed_cookie", session.cookie);
+        fbCookie = session.cookie;
+    }
+    if (session.fbDtsg) {
+        localStorage.setItem("fewfeed_fbDtsg", session.fbDtsg);
+    }
+    if (session.userId) {
+        localStorage.setItem("fewfeed_userId", session.userId);
+    }
+    if (session.userName) {
+        localStorage.setItem("fewfeed_userName", session.userName);
+    }
+
+    const effectiveUserId = localStorage.getItem("fewfeed_userId") || session.userId || "";
+    const effectiveUserName = localStorage.getItem("fewfeed_userName") || session.userName || "";
+    const effectiveAdsToken =
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        session.adsToken ||
+        "";
+    const effectivePostToken =
+        localStorage.getItem("fewfeed_postToken") ||
+        session.postToken ||
+        "";
+    const effectiveCookie =
+        localStorage.getItem("fewfeed_cookie") ||
+        session.cookie ||
+        "";
+
+    showCookieStatus(
+        !!(effectiveUserId || effectiveAdsToken || effectiveCookie || effectivePostToken),
+        effectiveUserId,
+        effectiveUserName,
+        !!effectiveAdsToken,
+        !!effectiveCookie,
+        !!effectivePostToken,
+    );
+
+    if (effectiveAdsToken || effectivePostToken) {
+        fetchPages(effectiveAdsToken || effectivePostToken);
+        fetchAdAccounts(effectiveAdsToken || effectivePostToken);
+    }
+
+    console.log("[FEWFEED] Session applied from", source, {
+        hasAdsToken: !!effectiveAdsToken,
+        hasCookie: !!effectiveCookie,
+        hasPostToken: !!effectivePostToken,
+        hasUserId: !!effectiveUserId,
+    });
+    return true;
+}
+
+async function requestStoredTokensFromExtension() {
     return new Promise((resolve) => {
         let settled = false;
+        let requestInterval = null;
 
         const finish = (result) => {
             if (settled) return;
             settled = true;
             window.removeEventListener("message", handleMessage);
             clearTimeout(timeout);
+            if (requestInterval) {
+                clearInterval(requestInterval);
+                requestInterval = null;
+            }
+            resolve(result);
+        };
+
+        const handleMessage = (event) => {
+            if (event.source !== window) return;
+            if (event.data.type !== "FEWFEED_DATA_RESPONSE") return;
+            const payload = event.data.data || {};
+            const normalized = normalizeExtensionSessionData(payload);
+            finish({
+                success: hasAnyExtensionSessionData(normalized),
+                session: normalized,
+                payload,
+            });
+        };
+
+        const timeout = setTimeout(() => {
+            finish({ success: false });
+        }, 5000);
+
+        window.addEventListener("message", handleMessage);
+        window.postMessage({ type: "FEWFEED_GET_DATA" }, "*");
+
+        // Retry handshake in case content script listener is not ready yet.
+        requestInterval = setInterval(() => {
+            if (settled) return;
+            window.postMessage({ type: "FEWFEED_GET_DATA" }, "*");
+        }, 1200);
+    });
+}
+
+async function refreshFacebookTokensFromExtension() {
+    return new Promise((resolve) => {
+        let settled = false;
+        let refreshInterval = null;
+
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            window.removeEventListener("message", handleMessage);
+            clearTimeout(timeout);
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
             resolve(result);
         };
 
         const handleMessage = (event) => {
             if (event.source !== window) return;
             if (event.data.type !== "FEWFEED_COOKIE_INJECTED") return;
+            const normalized = normalizeExtensionSessionData(event.data || {});
             finish({
-                success: true,
-                token: event.data.token || "",
-                cookie: event.data.cookie || "",
+                success: hasAnyExtensionSessionData(normalized),
+                session: normalized,
             });
         };
 
@@ -2337,6 +2578,12 @@ async function refreshFacebookTokensFromExtension() {
 
         window.addEventListener("message", handleMessage);
         window.postMessage({ type: "FEWFEED_REFRESH_TOKEN" }, "*");
+
+        // Retry refresh handshake in case content script listener is not ready yet.
+        refreshInterval = setInterval(() => {
+            if (settled) return;
+            window.postMessage({ type: "FEWFEED_REFRESH_TOKEN" }, "*");
+        }, 1200);
     });
 }
 
@@ -2346,40 +2593,22 @@ window.addEventListener("message", (event) => {
 
     // Extension ready
     if (event.data.type === "FEWFEED_EXTENSION_READY") {
+        hasSeenExtensionReadySignal = true;
         console.log("[FEWFEED] Extension detected!");
         document.body.setAttribute("data-extension-ready", "true");
+
+        // Request a fresh token sync when extension becomes ready.
+        setTimeout(() => {
+            syncWithExtensionNow().catch(() => {});
+        }, 250);
     }
 
     // Cookie + Tokens injected from extension
     if (event.data.type === "FEWFEED_COOKIE_INJECTED") {
-        fbCookie = event.data.cookie;
-        fbToken = event.data.token;
-        fbPostToken = event.data.postToken;
-        const userId = event.data.userId;
-        const userName = event.data.userName;
-
-        console.log("[FEWFEED] Data received:", {
-            userId: userId,
-            userName: userName,
-            hasAdsToken: !!fbToken,
-            hasPostToken: !!fbPostToken,
-            hasCookie: !!fbCookie,
-        });
-
-        // Show status with token/cookie indicators
-        showCookieStatus(
-            true,
-            userId,
-            userName,
-            !!fbToken,
-            !!fbCookie,
-            !!fbPostToken,
-        );
-
-        // Prefer access token from extension so we get the live page list, not stale D1 only.
-        if (fbToken || fbPostToken) {
-            fetchPages(fbToken || fbPostToken);
-            fetchAdAccounts(fbToken || fbPostToken);
+        const normalized = normalizeExtensionSessionData(event.data || {});
+        const applied = applyExtensionSessionData(normalized, "FEWFEED_COOKIE_INJECTED");
+        if (!applied) {
+            console.warn("[FEWFEED] FEWFEED_COOKIE_INJECTED received but no usable session data");
         }
     }
 
@@ -2438,27 +2667,15 @@ setInterval(async () => {
             // Get cached tokens (no Facebook API calls)
             const cachedData = await window.pubiloExtension.getCachedTokens();
             if (cachedData && cachedData.success) {
-                const currentUserId = localStorage.getItem("fewfeed_userId");
-
-                // Update if Extension has different cached data
-                if (cachedData.userId && cachedData.userId !== currentUserId) {
-                    localStorage.setItem("fewfeed_userId", cachedData.userId);
-                    localStorage.setItem("fewfeed_userName", cachedData.userName || '');
-                    localStorage.setItem("fewfeed_accessToken", cachedData.adsToken || '');
-                    localStorage.setItem("fewfeed_postToken", cachedData.postToken || '');
-                    localStorage.setItem("fewfeed_cookie", cachedData.cookie || '');
-
-                    showCookieStatus(
-                        true,
-                        cachedData.userId,
-                        cachedData.userName,
-                        !!cachedData.adsToken,
-                        !!cachedData.cookie,
-                        !!cachedData.postToken
-                    );
-
+                const applied = applyExtensionSessionData(cachedData, "auto-sync-cache");
+                if (applied) {
                     console.log('[auto-sync] Updated from Extension cache');
                 }
+            }
+        } else {
+            const storedResult = await requestStoredTokensFromExtension();
+            if (storedResult?.success) {
+                applyExtensionSessionData(storedResult.session, "auto-sync-get-data");
             }
         }
     } catch (error) {
@@ -2469,33 +2686,85 @@ setInterval(async () => {
 // Manual sync function for cached data only
 async function syncWithExtensionNow() {
     try {
-        if (typeof window.pubiloExtension !== 'undefined') {
+        if (
+            typeof window.pubiloExtension !== "undefined" &&
+            typeof window.pubiloExtension.getCachedTokens === "function"
+        ) {
             // Get cached tokens only (no Facebook API calls)
             const cachedData = await window.pubiloExtension.getCachedTokens();
-            if (cachedData && cachedData.success) {
-                localStorage.setItem("fewfeed_userId", cachedData.userId || '');
-                localStorage.setItem("fewfeed_userName", cachedData.userName || '');
-                localStorage.setItem("fewfeed_accessToken", cachedData.adsToken || '');
-                localStorage.setItem("fewfeed_postToken", cachedData.postToken || '');
-                localStorage.setItem("fewfeed_cookie", cachedData.cookie || '');
-
-                showCookieStatus(
-                    true,
-                    cachedData.userId,
-                    cachedData.userName,
-                    !!cachedData.adsToken,
-                    !!cachedData.cookie,
-                    !!cachedData.postToken
-                );
-
+            if (cachedData && cachedData.success && applyExtensionSessionData(cachedData, "manual-sync-cache")) {
                 console.log('[manual-sync] Updated from Extension cache');
                 return true;
             }
         }
+
+        // Fallback 1: ask content script for extension storage directly.
+        const storedResult = await requestStoredTokensFromExtension();
+        if (storedResult?.success && applyExtensionSessionData(storedResult.session, "manual-sync-get-data")) {
+            console.log("[manual-sync] Updated via FEWFEED_GET_DATA");
+            return true;
+        }
+
+        // Fallback: request fresh tokens directly from extension content script.
+        const refreshResult = await refreshFacebookTokensFromExtension();
+        if (!refreshResult?.success) {
+            return false;
+        }
+
+        if (applyExtensionSessionData(refreshResult.session || {}, "manual-sync-refresh")) {
+            console.log("[manual-sync] Updated via FEWFEED_REFRESH_TOKEN");
+            return true;
+        }
+
+        // Final fallback: after refresh, request storage once more (some flows write async to storage).
+        const postRefreshStoredResult = await requestStoredTokensFromExtension();
+        if (postRefreshStoredResult?.success && applyExtensionSessionData(postRefreshStoredResult.session, "manual-sync-post-refresh-get-data")) {
+            console.log("[manual-sync] Updated via FEWFEED_GET_DATA after refresh");
+            return true;
+        }
+
+        return false;
     } catch (error) {
-        console.log('[manual-sync] Extension cache not available');
+        console.log("[manual-sync] Extension sync failed:", error?.message || error);
     }
     return false;
+}
+
+function hasLocalSessionData() {
+    return !!(
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        localStorage.getItem("fewfeed_postToken") ||
+        localStorage.getItem("fewfeed_cookie")
+    );
+}
+
+function scheduleEarlyExtensionSyncRetries() {
+    const retryDelaysMs = [700, 1500, 3000, 5000, 8000];
+    retryDelaysMs.forEach((delay) => {
+        setTimeout(async () => {
+            if (hasLocalSessionData()) return;
+            await syncWithExtensionNow().catch(() => {});
+        }, delay);
+    });
+
+    setTimeout(() => {
+        const extensionReadyAttr = document.body.getAttribute("data-extension-ready") === "true";
+        const shouldShowHint =
+            !hasLocalSessionData() &&
+            !hasSeenExtensionReadySignal &&
+            !extensionReadyAttr &&
+            !extensionMissingHintShown;
+
+        if (!shouldShowHint) return;
+
+        extensionMissingHintShown = true;
+        showPublishToast(
+            "ยังไม่พบ Extension บนหน้านี้ (ลอง Reload extension + เปิด Site access สำหรับ pubilo-web-prod.pages.dev)",
+            "warning",
+        );
+        console.warn("[FEWFEED] Extension not detected on page after startup retries");
+    }, 9500);
 }
 
 // Sync when page becomes visible (user switches back to tab)
@@ -3103,14 +3372,16 @@ function loadSavedData() {
 
     console.log("[FEWFEED] Loaded saved data from localStorage");
 
-    if (userId) {
-        fbToken = accessToken;
-        fbPostToken = postToken;
-        fbCookie = cookie;
+    fbToken = accessToken || null;
+    fbPostToken = postToken || null;
+    fbCookie = cookie || null;
+
+    const hasAnySessionData = !!userId || !!accessToken || !!cookie || !!postToken;
+    if (hasAnySessionData) {
         showCookieStatus(
-            true,
-            userId,
-            userName,
+            !!userId,
+            userId || "",
+            userName || "",
             !!accessToken,
             !!cookie,
             !!postToken,
@@ -3131,6 +3402,12 @@ function loadSavedData() {
             fetchAdAccounts(nextAccessToken || nextPostToken);
         }
     }).catch(() => {});
+
+    // Extra retry in case extension init finishes slightly after first sync call.
+    setTimeout(() => {
+        syncWithExtensionNow().catch(() => {});
+    }, 2500);
+    scheduleEarlyExtensionSyncRetries();
 
     fetchPages(accessToken || postToken);
     fetchAdAccounts(accessToken || postToken);
