@@ -1,4 +1,5 @@
 (function () {
+    const SHOW_BILLING_BANNER = false;
     const state = {
         authenticated: false,
         user: null,
@@ -181,11 +182,18 @@
     }
 
     function ensureBillingBanner() {
-        if (!state.workspace?.subscriptionStatus || state.workspace.subscriptionStatus === 'active') {
+        const existing = document.getElementById('pubiloBillingBanner');
+        if (!SHOW_BILLING_BANNER) {
+            existing?.remove();
             return;
         }
 
-        let banner = document.getElementById('pubiloBillingBanner');
+        if (!state.workspace?.subscriptionStatus || state.workspace.subscriptionStatus === 'active') {
+            existing?.remove();
+            return;
+        }
+
+        let banner = existing;
         if (!banner) {
             banner = document.createElement('div');
             banner.id = 'pubiloBillingBanner';

@@ -3,6 +3,7 @@
 let lastPublishedUrl = null;
 const TEXT_BACKGROUND_STORAGE_KEY_PREFIX = "fewfeed_textBackgroundPreset_";
 const WORKSPACE_FACEBOOK_SESSION_MAP_KEY = "fewfeed_workspaceFacebookSessions_v1";
+const SHOW_FACEBOOK_CONNECT_BANNER = false;
 let hasSeenExtensionReadySignal = false;
 let extensionMissingHintShown = false;
 let lastPersistedFacebookSessionSignature = "";
@@ -2454,6 +2455,11 @@ function getFacebookConnectBannerElements() {
 }
 
 function ensureFacebookConnectBanner() {
+    if (!SHOW_FACEBOOK_CONNECT_BANNER) {
+        document.getElementById("pubiloFacebookConnectBanner")?.remove();
+        return null;
+    }
+
     const existing = getFacebookConnectBannerElements();
     if (existing) return existing;
 
@@ -2513,6 +2519,11 @@ function ensureFacebookConnectBanner() {
 }
 
 function updateFacebookConnectBanner(options = {}) {
+    if (!SHOW_FACEBOOK_CONNECT_BANNER) {
+        document.getElementById("pubiloFacebookConnectBanner")?.remove();
+        return;
+    }
+
     const workspaceId = getActiveWorkspaceId();
     const elements = ensureFacebookConnectBanner();
     if (!elements) return;
