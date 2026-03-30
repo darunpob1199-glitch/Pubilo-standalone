@@ -148,6 +148,32 @@ function normalizeAdAccountId(adAccountId?: string): string {
     return normalized.startsWith('act_') ? normalized : `act_${normalized}`;
 }
 
+const ALLOWED_CALL_TO_ACTION_TYPES = new Set([
+    'SHOP_NOW',
+    'LEARN_MORE',
+    'SIGN_UP',
+    'BOOK_NOW',
+    'APPLY_NOW',
+    'CONTACT_US',
+    'DOWNLOAD',
+    'GET_OFFER',
+    'GET_QUOTE',
+    'ORDER_NOW',
+    'SUBSCRIBE',
+    'WATCH_MORE',
+    'SEND_MESSAGE',
+    'MESSAGE_PAGE',
+    'CALL_NOW',
+]);
+
+function normalizeCallToActionType(callToAction?: string): string {
+    const normalized = String(callToAction || '').trim().toUpperCase();
+    if (!normalized) return 'SHOP_NOW';
+    return ALLOWED_CALL_TO_ACTION_TYPES.has(normalized)
+        ? normalized
+        : 'SHOP_NOW';
+}
+
 function buildNewsPreviewUrl(requestUrl: string, params: {
     targetUrl: string;
     imageUrl?: string;
@@ -732,6 +758,7 @@ app.post('/', async (c) => {
             adAccountId,
             fbDtsg,
             callToAction,
+            callToActionLabel,
             textFormatPresetId,
             scheduleInSystem,
             internalRun,
@@ -1038,6 +1065,7 @@ app.post('/', async (c) => {
         let lastFacebookError: any = null;
         let sawSessionExpired = false;
         const normalizedAdAccountId = normalizeAdAccountId(adAccountId);
+        const normalizedCallToAction = normalizeCallToActionType(callToAction);
 
         if (isLinkAttachmentPost && !normalizedAdAccountId) {
             return c.json({
@@ -1080,7 +1108,7 @@ app.post('/', async (c) => {
                     title: attachmentTitle || undefined,
                     caption: previewSiteName || undefined,
                     description: attachmentDescription || undefined,
-                    callToAction: callToAction || 'SHOP_NOW',
+                    callToAction: normalizedCallToAction,
                     seed: seedContext.seed,
                 });
 
@@ -1245,9 +1273,11 @@ app.post('/', async (c) => {
                     previewUrl,
                     hasHostedImage: !!hostedImageUrl,
                     publishDraftAfterCreate,
-                    hasCallToAction: !!callToAction,
-                    adAccountId: adAccountId || '',
-                });
+                        hasCallToAction: !!callToAction,
+                        callToAction: normalizedCallToAction,
+                        callToActionLabel: typeof callToActionLabel === 'string' ? callToActionLabel.slice(0, 40) : '',
+                        adAccountId: adAccountId || '',
+                    });
             }
 
             const response = await fetch(endpoint, {

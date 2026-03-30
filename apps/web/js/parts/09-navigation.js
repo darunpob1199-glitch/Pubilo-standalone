@@ -3,24 +3,28 @@
 function getAllowedHash(rawHash) {
     const fallbackMap = {
         quotes: "pending",
-        earnings: "link",
-        "hide-posts": "link",
-        "delete-posts": "link",
+        earnings: "news",
+        "hide-posts": "news",
+        "delete-posts": "news",
     };
+
+    if (rawHash === "link") {
+        return "news";
+    }
 
     if (
         window.PUBILO_WEB_ONLY_MODE &&
         Array.isArray(window.PUBILO_HIDDEN_HASHES) &&
         window.PUBILO_HIDDEN_HASHES.includes(rawHash)
     ) {
-        return fallbackMap[rawHash] || "link";
+        return fallbackMap[rawHash] || "news";
     }
 
     return rawHash;
 }
 
 function handleNavigation() {
-    const requestedHash = window.location.hash.slice(1) || "link";
+    const requestedHash = window.location.hash.slice(1) || "news";
     const hash = getAllowedHash(requestedHash);
 
     if (hash !== requestedHash) {
@@ -70,9 +74,9 @@ function handleNavigation() {
         setPostMode("text");
         showDashboard();
     } else {
-        // Default: link
-        dashboardNavItem.classList.add("active");
-        setPostMode("link");
+        // Default: news
+        document.getElementById("newsNavItem").classList.add("active");
+        setPostMode("news");
         showDashboard();
     }
     // Re-validate after mode change
@@ -115,7 +119,7 @@ if (deletePostsNavItem) {
 if (earningsNavItem) {
     earningsNavItem.addEventListener("click", (e) => {
         e.preventDefault();
-        navigateTo(window.PUBILO_WEB_ONLY_MODE ? "link" : "earnings");
+        navigateTo(window.PUBILO_WEB_ONLY_MODE ? "news" : "earnings");
     });
 }
 
@@ -123,12 +127,6 @@ if (earningsNavItem) {
 document.getElementById("settingsNavBtn").addEventListener("click", (e) => {
     e.preventDefault();
     navigateTo("settings");
-});
-
-// Link nav item click (Dashboard renamed to Link)
-dashboardNavItem.addEventListener("click", (e) => {
-    e.preventDefault();
-    navigateTo("link");
 });
 
 // News nav item click

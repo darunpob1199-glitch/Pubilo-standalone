@@ -140,23 +140,27 @@ if (newsUrlInput) {
 // ============================================
 
 // Track which upload mode was clicked
-let uploadMode = "gemini"; // 'device' or 'gemini'
+let uploadMode = "device"; // 'device' or 'gemini'
 const REELS_V1_MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
 // Setup upload button handlers for each mode
 function setupUploadHandlers(mode) {
     const els = getModeElements(mode);
-    if (!els.uploadFromDevice || !els.uploadFromGemini) return;
+    if (!els.uploadFromDevice) return;
+    const canUseGemini =
+        !!els.uploadFromGemini && !!els.generateBtn;
 
     if (mode === "reels") {
-        els.uploadFromGemini.disabled = true;
-        els.uploadFromGemini.style.opacity = "0.45";
-        els.uploadFromGemini.style.cursor = "not-allowed";
-        els.uploadFromGemini.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            alert("Reels V1 ยังรองรับเฉพาะวิดีโอจากเครื่อง");
-        });
+        if (els.uploadFromGemini) {
+            els.uploadFromGemini.disabled = true;
+            els.uploadFromGemini.style.opacity = "0.45";
+            els.uploadFromGemini.style.cursor = "not-allowed";
+            els.uploadFromGemini.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                alert("Reels V1 ยังรองรับเฉพาะวิดีโอจากเครื่อง");
+            });
+        }
 
         els.uploadFromDevice.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -189,13 +193,15 @@ function setupUploadHandlers(mode) {
         fileInput.click();
     });
 
-    els.uploadFromGemini.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        // Directly trigger generate without needing to upload
-        if (els.generateBtn) {
-            els.generateBtn.click();
-        }
-    });
+    if (canUseGemini && els.uploadFromGemini) {
+        els.uploadFromGemini.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            // Directly trigger generate without needing to upload
+            if (els.generateBtn) {
+                els.generateBtn.click();
+            }
+        });
+    }
 
     // Click on card image area (for other areas)
     if (els.cardImageArea) {
@@ -213,7 +219,7 @@ function setupUploadHandlers(mode) {
                 state.currentView === "upload" ||
                 state.currentView === "refs"
             ) {
-                uploadMode = "gemini";
+                uploadMode = canUseGemini ? "gemini" : "device";
                 fileInput.click();
             }
         });

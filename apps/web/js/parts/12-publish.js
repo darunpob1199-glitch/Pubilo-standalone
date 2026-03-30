@@ -537,7 +537,210 @@ function renderTextComposerUi() {
     renderTextComposerPreview();
 }
 
+const TEXT_POST_EXPORT_SIZE = 1080;
+const TEXT_POST_EXPORT_PADDING = 120;
+const TEXT_POST_EXPORT_MAX_LINES = 10;
+
+function buildCanvasGradientFromCss(ctx, cssValue, size) {
+    const value = String(cssValue || "").trim();
+    if (!value.toLowerCase().includes("linear-gradient(")) {
+        return null;
+    }
+
+    const stops = [];
+    const stopRegex = /(#[0-9a-fA-F]{3,8})(?:\s+([0-9.]+)%?)?/g;
+    let stopMatch;
+    while ((stopMatch = stopRegex.exec(value)) !== null) {
+        stops.push({
+            color: stopMatch[1],
+            position: Number.isFinite(Number(stopMatch[2]))
+                ? Number(stopMatch[2])
+                : null,
+        });
+    }
+
+    if (!stops.length) {
+        return null;
+    }
+
+    const angleMatch = value.match(/(-?\d+(?:\.\d+)?)deg/i);
+    const angleDeg = angleMatch ? Number(angleMatch[1]) : 135;
+    const radians = ((angleDeg - 90) * Math.PI) / 180;
+    const halfSpan = (size * Math.SQRT2) / 2;
+    const center = size / 2;
+    const dx = Math.cos(radians) * halfSpan;
+    const dy = Math.sin(radians) * halfSpan;
+    const gradient = ctx.createLinearGradient(
+        center - dx,
+        center - dy,
+        center + dx,
+        center + dy,
+    );
+
+    if (stops.length === 1) {
+        gradient.addColorStop(0, stops[0].color);
+        gradient.addColorStop(1, stops[0].color);
+        return gradient;
+    }
+
+    const allHasPosition = stops.every((stop) => Number.isFinite(stop.position));
+    stops.forEach((stop, index) => {
+        const position = allHasPosition
+            ? Math.max(0, Math.min(1, Number(stop.position) / 100))
+            : index / (stops.length - 1);
+        gradient.addColorStop(position, stop.color);
+    });
+
+    return gradient;
+}
+
+function buildTextLinesForCanvas(ctx, text, maxWidth, fontSizePx) {
+    ctx.font = `700 ${fontSizePx}px "Noto Sans Thai", "Prompt", "Sarabun", "Inter", sans-serif`;
+    const normalized = String(text || "").replace(/\r\n?/g, "\n");
+    const paragraphs = normalized.split("\n");
+    const lines = [];
+
+    paragraphs.forEach((paragraphRaw, paragraphIndex) => {
+        const paragraph = paragraphRaw.replace(/\s+$/g, "");
+        if (!paragraph.trim()) {
+            if (paragraphIndex !== paragraphs.length - 1) {
+                lines.push("");
+            }
+            return;
+        }
+
+        let current = "";
+        Array.from(paragraph).forEach((char) => {
+            const candidate = `${current}${char}`;
+            if (!current || ctx.measureText(candidate).width <= maxWidth) {
+                current = candidate;
+                return;
+            }
+
+            lines.push(current.replace(/\s+$/g, ""));
+            current = char === " " ? "" : char;
+        });
+
+        if (current.trim()) {
+            lines.push(current.replace(/\s+$/g, ""));
+        }
+    });
+
+    return lines.length ? lines : [""];
+}
+
+function renderTextPostSquareImageDataUrl(text, presetId) {
+    const canvas = document.createElement("canvas");
+    canvas.width = TEXT_POST_EXPORT_SIZE;
+    canvas.height = TEXT_POST_EXPORT_SIZE;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        throw new Error("ไม่สามารถสร้างภาพสำหรับโพสต์ได้");
+    }
+
+    const activePresetId = String(presetId || "").trim();
+    const theme = activePresetId
+        ? getTextBackgroundTheme(activePresetId)
+        : null;
+    const backgroundValue = theme?.preview || "#ffffff";
+    const gradientFill = buildCanvasGradientFromCss(
+        ctx,
+        backgroundValue,
+        TEXT_POST_EXPORT_SIZE,
+    );
+
+    ctx.fillStyle = gradientFill || backgroundValue;
+    ctx.fillRect(0, 0, TEXT_POST_EXPORT_SIZE, TEXT_POST_EXPORT_SIZE);
+
+    const content = String(text || "").trim();
+    const glyphCount = Array.from(content.replace(/\s+/g, "")).length;
+    let fontSize = 88;
+    if (glyphCount > 220) fontSize = 42;
+    else if (glyphCount > 170) fontSize = 50;
+    else if (glyphCount > 130) fontSize = 58;
+    else if (glyphCount > 95) fontSize = 66;
+    else if (glyphCount > 65) fontSize = 74;
+    else if (glyphCount > 40) fontSize = 82;
+
+    const maxWidth = TEXT_POST_EXPORT_SIZE - TEXT_POST_EXPORT_PADDING * 2;
+    let lines = [];
+    let lineHeight = Math.round(fontSize * 1.24);
+
+    for (let attempt = 0; attempt < 14; attempt += 1) {
+        lines = buildTextLinesForCanvas(ctx, content, maxWidth, fontSize);
+        lineHeight = Math.round(fontSize * 1.24);
+        const totalHeight = lines.length * lineHeight;
+        const fitsHeight =
+            totalHeight <= TEXT_POST_EXPORT_SIZE - TEXT_POST_EXPORT_PADDING * 2;
+        const fitsLineCount = lines.length <= TEXT_POST_EXPORT_MAX_LINES;
+
+        if ((fitsHeight && fitsLineCount) || fontSize <= 34) {
+            break;
+        }
+
+        fontSize -= 4;
+    }
+
+    ctx.font = `700 ${fontSize}px "Noto Sans Thai", "Prompt", "Sarabun", "Inter", sans-serif`;
+    ctx.fillStyle = theme?.textColor || "#111827";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const totalHeight = lines.length * lineHeight;
+    let y = (TEXT_POST_EXPORT_SIZE - totalHeight) / 2 + lineHeight / 2;
+    lines.forEach((line) => {
+        ctx.fillText(line || " ", TEXT_POST_EXPORT_SIZE / 2, y, maxWidth);
+        y += lineHeight;
+    });
+
+    return canvas.toDataURL("image/jpeg", 0.92);
+}
+
+async function uploadTextPostSquareImage(dataUrl) {
+    const uploadRes = await fetch("/api/upload-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageData: dataUrl }),
+    });
+    const uploadData = await uploadRes.json();
+    if (!uploadRes.ok || !uploadData?.success || !uploadData?.url) {
+        throw new Error(uploadData?.error || "อัปโหลดภาพโพสต์ไม่สำเร็จ");
+    }
+    return uploadData.url;
+}
+
 window.renderTextComposerUi = renderTextComposerUi;
+let publishToastTimer = null;
+
+function showPublishToast(message, type = "success") {
+    if (!message) return;
+
+    let toast = document.getElementById("publishToast");
+    if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "publishToast";
+        toast.className = "publish-toast";
+        document.body.appendChild(toast);
+    }
+
+    toast.textContent = message;
+    toast.classList.remove("is-success", "is-error", "is-visible");
+    toast.classList.add(type === "error" ? "is-error" : "is-success");
+
+    requestAnimationFrame(() => {
+        toast.classList.add("is-visible");
+    });
+
+    if (publishToastTimer) {
+        clearTimeout(publishToastTimer);
+    }
+    publishToastTimer = setTimeout(() => {
+        toast.classList.remove("is-visible");
+    }, 2200);
+}
+
+window.showPublishToast = showPublishToast;
+
 function setupPublishHandler(mode) {
     const els = getModeElements(mode);
     if (!els.publishBtn) return;
@@ -575,7 +778,8 @@ function setupPublishHandler(mode) {
         }
 
         els.publishBtn.disabled = true;
-        els.publishBtn.innerHTML = '<span class="loading"></span>';
+        els.publishBtn.innerHTML =
+            '<span class="loading"></span><span>กำลังโพสต์...</span>';
         els.publishBtn.classList.remove("published");
         lastPublishedUrl = null;
 
@@ -618,14 +822,24 @@ function setupPublishHandler(mode) {
                     throw new Error("กรุณาพิมพ์ข้อความก่อนโพสต์");
                 }
 
+                const renderedImageDataUrl = renderTextPostSquareImageDataUrl(
+                    primaryText,
+                    textFormatPresetId,
+                );
+                const textImageUrl = await uploadTextPostSquareImage(
+                    renderedImageDataUrl,
+                );
+
                 const response = await fetch("/api/publish", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         pageId,
                         postMode: "text",
-                        primaryText,
-                        textFormatPresetId,
+                        primaryText: "",
+                        message: "",
+                        textFormatPresetId: "",
+                        imageUrl: textImageUrl,
                         targetPageIds,
                         accessToken: adsToken,
                         pageToken,
@@ -654,8 +868,14 @@ function setupPublishHandler(mode) {
                 els.publishBtn.textContent = "✓";
                 els.publishBtn.classList.add("published");
                 els.publishBtn.disabled = false;
+                const isScheduledTextPost = data.queued || data.needsScheduling;
+                showPublishToast(
+                    isScheduledTextPost
+                        ? "ตั้งเวลาโพสต์สำเร็จแล้ว"
+                        : "โพสต์สำเร็จแล้ว",
+                );
 
-                if (data.queued || data.needsScheduling) {
+                if (isScheduledTextPost) {
                     invalidatePostsCache(getCurrentPageId());
                     setTimeout(() => {
                         window.location.hash = "#pending";
@@ -754,6 +974,7 @@ function setupPublishHandler(mode) {
                 els.publishBtn.textContent = "✓";
                 els.publishBtn.classList.add("published");
                 els.publishBtn.disabled = false;
+                showPublishToast("โพสต์สำเร็จแล้ว");
                 return;
             }
 
@@ -847,8 +1068,14 @@ function setupPublishHandler(mode) {
                 els.publishBtn.textContent = "✓";
                 els.publishBtn.classList.add("published");
                 els.publishBtn.disabled = false;
+                const isScheduledImagePost = data.queued || data.needsScheduling;
+                showPublishToast(
+                    isScheduledImagePost
+                        ? "ตั้งเวลาโพสต์สำเร็จแล้ว"
+                        : "โพสต์สำเร็จแล้ว",
+                );
 
-                if (data.queued || data.needsScheduling) {
+                if (isScheduledImagePost) {
                     invalidatePostsCache(getCurrentPageId());
                     setTimeout(() => {
                         window.location.hash = "#pending";
@@ -954,6 +1181,12 @@ function setupPublishHandler(mode) {
             const linkNameValue = isLinkMode
                 ? (descriptionText ? `พิกัด : ${descriptionText}` : (linkName?.value?.trim() || ""))
                 : "";
+            const ctaConfig = typeof getCurrentCtaConfig === "function"
+                ? getCurrentCtaConfig(mode)
+                : {
+                    label: "Shop Now",
+                    type: document.getElementById("cardButton")?.value || "SHOP_NOW",
+                };
 
             if (isLinkMode) {
                 console.log("[PUBLISH] === LINK PAYLOAD DEBUG ===");
@@ -963,6 +1196,7 @@ function setupPublishHandler(mode) {
                 console.log("[PUBLISH] description:", descriptionText);
                 console.log("[PUBLISH] primaryText:", primaryTextEl?.value || "(empty)");
                 console.log("[PUBLISH] imageUrl length:", imageToUpload?.length || 0);
+                console.log("[PUBLISH] callToAction:", ctaConfig.type, "| label:", ctaConfig.label);
                 console.log("[PUBLISH] === END PAYLOAD ===");
             }
 
@@ -985,7 +1219,8 @@ function setupPublishHandler(mode) {
                     cookieData: cookie,
                     pageId: pageId,
                     adAccountId: adAccountId,
-                    callToAction: document.getElementById("cardButton")?.value || "SHOP_NOW",
+                    callToAction: ctaConfig.type,
+                    callToActionLabel: ctaConfig.label,
                     fbDtsg: fbDtsg, // Required for GraphQL scheduling
                     scheduleInSystem: scheduleSource === "manual",
                     scheduledTime: scheduledTime
@@ -1102,6 +1337,7 @@ function setupPublishHandler(mode) {
                         els.publishBtn.textContent = "✓";
                         els.publishBtn.classList.add("published");
                         els.publishBtn.disabled = false;
+                        showPublishToast("ตั้งเวลาโพสต์สำเร็จแล้ว");
                         console.log(
                             "[FEWFEED] Post scheduled via GraphQL:",
                             lastPublishedUrl,
@@ -1162,6 +1398,7 @@ function setupPublishHandler(mode) {
                     els.publishBtn.textContent = "✓";
                     els.publishBtn.classList.add("published");
                     els.publishBtn.disabled = false;
+                    showPublishToast("โพสต์สำเร็จแล้ว");
                     console.log(
                         "[FEWFEED] Published successfully:",
                         lastPublishedUrl,
@@ -1347,7 +1584,7 @@ function getEmptyPageAvatarUrl() {
 }
 
 function refreshActivePagePanels() {
-    const hash = window.location.hash.slice(1) || "link";
+    const hash = window.location.hash.slice(1) || "news";
 
     if (hash === "pending") {
         showPendingPanel();

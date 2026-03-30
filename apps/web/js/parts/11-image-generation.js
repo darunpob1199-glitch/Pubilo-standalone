@@ -663,6 +663,84 @@ function showFullImage(imgSrc) {
 
 // Update preview on input change
 const linkDescriptionInput = document.getElementById("linkDescriptionInput");
+const newsPreviewCardButtonEl = document.getElementById("newsPreviewCardButton");
+const linkPreviewCardButtonEl = document.getElementById("previewCardButton");
+const newsCtaTypeSelectEl = document.getElementById("newsCtaTypeSelect");
+const cardButtonSelectEl = document.getElementById("cardButton");
+
+const CTA_TYPE_TO_LABEL = {
+    SHOP_NOW: "Shop Now",
+    LEARN_MORE: "Learn More",
+    SIGN_UP: "Sign Up",
+    BOOK_NOW: "Book Now",
+};
+
+function normalizeCtaType(rawType) {
+    const normalized = String(rawType || "").trim().toUpperCase();
+    return CTA_TYPE_TO_LABEL[normalized] ? normalized : "SHOP_NOW";
+}
+
+function getCtaLabelFromType(rawType) {
+    const type = normalizeCtaType(rawType);
+    return CTA_TYPE_TO_LABEL[type] || "Shop Now";
+}
+
+function applyCtaType(rawType) {
+    const type = normalizeCtaType(rawType);
+    const label = getCtaLabelFromType(type);
+
+    if (newsPreviewCardButtonEl) {
+        newsPreviewCardButtonEl.textContent = label;
+    }
+    if (linkPreviewCardButtonEl) {
+        linkPreviewCardButtonEl.textContent = label;
+    }
+
+    if (newsCtaTypeSelectEl && newsCtaTypeSelectEl.value !== type) {
+        newsCtaTypeSelectEl.value = type;
+    }
+
+    if (cardButtonSelectEl && cardButtonSelectEl.value !== type) {
+        cardButtonSelectEl.value = type;
+    }
+
+    return { type, label };
+}
+
+function getCurrentCtaConfig(mode = postMode) {
+    if (mode === "link") {
+        return applyCtaType(
+            cardButtonSelectEl?.value ||
+                newsCtaTypeSelectEl?.value ||
+                "SHOP_NOW",
+        );
+    }
+    return applyCtaType(
+        newsCtaTypeSelectEl?.value ||
+            cardButtonSelectEl?.value ||
+            "SHOP_NOW",
+    );
+}
+
+window.getCurrentCtaConfig = getCurrentCtaConfig;
+
+if (newsCtaTypeSelectEl) {
+    newsCtaTypeSelectEl.addEventListener("change", () => {
+        applyCtaType(newsCtaTypeSelectEl.value);
+    });
+}
+
+if (cardButtonSelectEl) {
+    cardButtonSelectEl.addEventListener("change", () => {
+        applyCtaType(cardButtonSelectEl.value);
+    });
+}
+
+applyCtaType(
+    newsCtaTypeSelectEl?.value ||
+        cardButtonSelectEl?.value ||
+        "SHOP_NOW",
+);
 
 caption.addEventListener(
     "input",
@@ -806,6 +884,7 @@ if (newsPublishBtn) {
         const newsPrimaryTextEl = document.getElementById("newsPrimaryText");
         const newsPreviewDescEl = document.getElementById("newsPreviewDescription");
         const newsPreviewCaptionEl = document.getElementById("newsPreviewCaption");
+        const ctaConfig = getCurrentCtaConfig("news");
         
         if (!pageId) {
             alert("กรุณาเลือกเพจก่อน");
@@ -838,7 +917,8 @@ if (newsPublishBtn) {
         }
         
         newsPublishBtn.disabled = true;
-        newsPublishBtn.innerHTML = '<span class="loading"></span>';
+        newsPublishBtn.innerHTML =
+            '<span class="loading"></span><span>กำลังโพสต์...</span>';
         
         try {
             // Compress image and keep data URL for direct Facebook multipart upload.
@@ -873,7 +953,8 @@ if (newsPublishBtn) {
                     primaryText,
                     postMode: "news",
                     adAccountId,
-                    callToAction: "SHOP_NOW",
+                    callToAction: ctaConfig.type,
+                    callToActionLabel: ctaConfig.label,
                     scheduleInSystem: scheduleSource === "manual",
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
@@ -937,6 +1018,13 @@ if (newsPublishBtn) {
                 newsPublishBtn.textContent = "✓";
                 newsPublishBtn.classList.add("published");
                 newsPublishBtn.disabled = false;
+                const isScheduledNewsPost =
+                    !!scheduledTime || data.queued || data.needsScheduling;
+                window.showPublishToast?.(
+                    isScheduledNewsPost
+                        ? "ตั้งเวลาโพสต์สำเร็จแล้ว"
+                        : "โพสต์สำเร็จแล้ว",
+                );
                 
                 if (scheduledTime) {
                     await refreshScheduledPostTimes();

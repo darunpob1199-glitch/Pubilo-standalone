@@ -1110,8 +1110,6 @@ if (autoFetchPageTokenBtn) {
 loadSettings();
 
 // Nav elements
-const dashboardNavItem =
-    document.getElementById("dashboardNavItem");
 const imageNavItem = document.getElementById("imageNavItem");
 const textNavItem = document.getElementById("textNavItem");
 const reelsNavItem = document.getElementById("reelsNavItem");
@@ -1176,7 +1174,7 @@ const cardButtonGroup = document.getElementById("cardButtonGroup");
 const cardLinkInfo = document.getElementById("cardLinkInfo");
 
 // Current post mode: 'link' or 'image'
-let postMode = "link";
+let postMode = "news";
 
 // State per mode - each mode has independent state
 const modeState = {
