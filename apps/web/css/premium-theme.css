@@ -30,14 +30,23 @@ header.header {
     padding: 0 2rem !important;
 }
 .logo {
-    color: var(--primary) !important;
-    font-size: 1.5rem !important;
-    letter-spacing: -0.5px !important;
+    display: flex !important;
+    align-items: center !important;
+    font-size: 1.6rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -1px !important;
+    text-decoration: none !important;
+}
+.logo-text {
+    background: linear-gradient(135deg, var(--primary) 0%, #a29bfe 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
 }
 .logo svg {
-    color: var(--primary) !important;
+    /* SVG styled directly via inline markup */
+    filter: drop-shadow(0 4px 6px rgba(108, 92, 231, 0.15)) !important;
 }
-.logo span {
+.logo span.badge {
     display: none !important; /* Hide the v3 text for cleaner look */
 }
 

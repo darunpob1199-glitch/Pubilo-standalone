@@ -25,10 +25,26 @@
 <body>
     <header class="header">
         <div class="logo">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 32px; height: 32px; margin-right: 4px;">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" fill="url(#shodai-layer1)" />
+                <path d="M2 12l10 5 10-5" stroke="url(#shodai-layer2)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M2 17l10 5 10-5" stroke="url(#shodai-layer3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                <defs>
+                    <linearGradient id="shodai-layer1" x1="12" y1="2" x2="12" y2="12" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#6c5ce7"/>
+                        <stop offset="1" stop-color="#8c7ae6"/>
+                    </linearGradient>
+                    <linearGradient id="shodai-layer2" x1="2" y1="12" x2="22" y2="17" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#a29bfe"/>
+                        <stop offset="1" stop-color="#c8d6e5"/>
+                    </linearGradient>
+                    <linearGradient id="shodai-layer3" x1="2" y1="17" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#dfe6e9"/>
+                        <stop offset="1" stop-color="#a29bfe"/>
+                    </linearGradient>
+                </defs>
             </svg>
-            Pubilo<span>v3</span>
+            <span class="logo-text">Pubilo</span><span class="badge" style="display:none">v3</span>
         </div>
         <div class="header-right">
             <div class="status-indicators" id="statusIndicators">
