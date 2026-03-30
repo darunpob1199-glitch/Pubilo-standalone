@@ -335,41 +335,74 @@ async function publishLinkCardViaFeed(params: {
     pictureUrl?: string;
     scheduledTime?: number | null;
 }): Promise<{ postId: string }> {
-    const body = new URLSearchParams({
-        access_token: params.pageToken,
-        link: params.linkUrl,
-    });
+    const hasRichMetadata = Boolean(
+        params.title ||
+        params.caption ||
+        params.description ||
+        params.pictureUrl,
+    );
 
-    if (params.message) body.set('message', params.message);
-    if (params.title) body.set('name', params.title);
-    if (params.caption) body.set('caption', params.caption);
-    if (params.description) body.set('description', params.description);
-    if (params.pictureUrl) body.set('picture', params.pictureUrl);
+    const execute = async (includeRichMetadata: boolean): Promise<{ postId: string }> => {
+        const body = new URLSearchParams({
+            access_token: params.pageToken,
+            link: params.linkUrl,
+        });
 
-    if (params.scheduledTime) {
-        body.set('published', 'false');
-        body.set('scheduled_publish_time', String(params.scheduledTime));
+        if (params.message) body.set('message', params.message);
+
+        if (includeRichMetadata) {
+            if (params.title) body.set('name', params.title);
+            if (params.caption) body.set('caption', params.caption);
+            if (params.description) body.set('description', params.description);
+            if (params.pictureUrl) body.set('picture', params.pictureUrl);
+        }
+
+        if (params.scheduledTime) {
+            body.set('published', 'false');
+            body.set('scheduled_publish_time', String(params.scheduledTime));
+        }
+
+        const response = await fetch(`${FB_API}/${params.pageId}/feed`, {
+            method: 'POST',
+            headers: {
+                ...(params.headers || {}),
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body.toString(),
+        });
+        const data = await response.json() as any;
+        if (data?.error) {
+            const error = new Error(data.error.message || 'Failed to create feed link card post') as Error & {
+                facebookError?: any;
+            };
+            error.facebookError = data.error;
+            throw error;
+        }
+
+        const postId = String(data?.id || data?.post_id || '');
+        if (!postId) {
+            throw new Error('Facebook did not return post id for feed link card');
+        }
+
+        return { postId };
+    };
+
+    try {
+        return await execute(hasRichMetadata);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const shouldRetryWithoutMetadata =
+            hasRichMetadata &&
+            message.includes('Only owners of the URL') &&
+            message.includes('picture, name, thumbnail or description');
+
+        if (!shouldRetryWithoutMetadata) {
+            throw error;
+        }
+
+        console.warn('[publish] Feed link metadata rejected by Facebook, retrying without metadata override');
+        return await execute(false);
     }
-
-    const response = await fetch(`${FB_API}/${params.pageId}/feed`, {
-        method: 'POST',
-        headers: {
-            ...(params.headers || {}),
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString(),
-    });
-    const data = await response.json() as any;
-    if (data?.error) {
-        throw new Error(data.error.message || 'Failed to create feed link card post');
-    }
-
-    const postId = String(data?.id || data?.post_id || '');
-    if (!postId) {
-        throw new Error('Facebook did not return post id for feed link card');
-    }
-
-    return { postId };
 }
 
 async function wait(ms: number): Promise<void> {
