@@ -1,10 +1,12 @@
 import type { Env } from '../index';
+import { decryptSecret } from './encryption';
 
 const FB_API = 'https://graph.facebook.com/v21.0';
 
 export type PostActionType = 'hide' | 'delete';
 
 export type PostActionJobInput = {
+    organizationId: string;
     pageId: string;
     action: PostActionType;
     posts: Array<{
@@ -20,6 +22,7 @@ export type PostActionJobInput = {
 
 type PostActionJobRow = {
     id: number;
+    organization_id: string;
     page_id: string;
     action: PostActionType;
     status: string;
@@ -122,19 +125,23 @@ export async function ensurePostActionTables(env: Env): Promise<void> {
     `).run();
 }
 
-async function resolvePageActionToken(env: Env, pageId: string, action: PostActionType): Promise<string> {
+async function resolvePageActionToken(env: Env, organizationId: string, pageId: string, action: PostActionType): Promise<string> {
     const result = await env.DB.prepare(`
-        SELECT post_token, hide_token
+        SELECT post_token_encrypted, hide_token_encrypted
         FROM page_settings
-        WHERE page_id = ?
+        WHERE organization_id = ? AND page_id = ?
         LIMIT 1
-    `).bind(pageId).first<{ post_token?: string | null; hide_token?: string | null }>();
+    `).bind(organizationId, pageId).first<{ post_token_encrypted?: string | null; hide_token_encrypted?: string | null }>();
 
     if (action === 'hide') {
-        return String(result?.hide_token || result?.post_token || '').trim();
+        return String(
+            (await decryptSecret(env, result?.hide_token_encrypted))
+            || (await decryptSecret(env, result?.post_token_encrypted))
+            || ''
+        ).trim();
     }
 
-    return String(result?.post_token || '').trim();
+    return String(await decryptSecret(env, result?.post_token_encrypted) || '').trim();
 }
 
 async function refreshPostActionJobStats(env: Env, jobId: number): Promise<void> {
@@ -209,14 +216,16 @@ export async function createPostActionJob(env: Env, input: PostActionJobInput) {
 
     const jobResult = await env.DB.prepare(`
         INSERT INTO post_action_jobs (
+            organization_id,
             page_id,
             action,
             total_count,
             requested_filters_json,
             created_at,
             updated_at
-        ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `).bind(
+        input.organizationId,
         pageId,
         action,
         posts.length,
@@ -258,6 +267,7 @@ export async function createPostActionJob(env: Env, input: PostActionJobInput) {
 }
 
 export async function listPostActionJobs(env: Env, params: {
+    organizationId: string;
     pageId?: string;
     action?: PostActionType | '';
     limit?: number;
@@ -271,6 +281,7 @@ export async function listPostActionJobs(env: Env, params: {
     const rows = await env.DB.prepare(`
         SELECT
             id,
+            organization_id,
             page_id,
             action,
             status,
@@ -285,21 +296,23 @@ export async function listPostActionJobs(env: Env, params: {
             started_at,
             finished_at
         FROM post_action_jobs
-        WHERE (? = '' OR page_id = ?)
+        WHERE organization_id = ?
+          AND (? = '' OR page_id = ?)
           AND (? = '' OR action = ?)
         ORDER BY id DESC
         LIMIT ?
-    `).bind(pageId, pageId, action, action, limit).all<Record<string, any>>();
+    `).bind(params.organizationId, pageId, pageId, action, action, limit).all<Record<string, any>>();
 
     return rows.results || [];
 }
 
-export async function getPostActionJobDetail(env: Env, jobId: number) {
+export async function getPostActionJobDetail(env: Env, organizationId: string, jobId: number) {
     await ensurePostActionTables(env);
 
     const job = await env.DB.prepare(`
         SELECT
             id,
+            organization_id,
             page_id,
             action,
             status,
@@ -314,9 +327,9 @@ export async function getPostActionJobDetail(env: Env, jobId: number) {
             started_at,
             finished_at
         FROM post_action_jobs
-        WHERE id = ?
+        WHERE organization_id = ? AND id = ?
         LIMIT 1
-    `).bind(jobId).first<Record<string, any>>();
+    `).bind(organizationId, jobId).first<Record<string, any>>();
 
     if (!job?.id) {
         throw new Error('Job not found');
@@ -362,7 +375,7 @@ export async function getPostActionJobDetail(env: Env, jobId: number) {
     };
 }
 
-export async function cancelPostActionJob(env: Env, jobId: number) {
+export async function cancelPostActionJob(env: Env, organizationId: string, jobId: number) {
     await ensurePostActionTables(env);
 
     await env.DB.prepare(`
@@ -370,8 +383,8 @@ export async function cancelPostActionJob(env: Env, jobId: number) {
         SET status = 'cancelled',
             updated_at = CURRENT_TIMESTAMP,
             finished_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND status IN ('pending', 'processing')
-    `).bind(jobId).run();
+        WHERE organization_id = ? AND id = ? AND status IN ('pending', 'processing')
+    `).bind(organizationId, jobId).run();
 
     await env.DB.prepare(`
         UPDATE post_action_items
@@ -384,15 +397,15 @@ export async function cancelPostActionJob(env: Env, jobId: number) {
     await refreshPostActionJobStats(env, jobId);
 }
 
-export async function retryFailedPostActionJob(env: Env, jobId: number, itemIds?: number[]) {
+export async function retryFailedPostActionJob(env: Env, organizationId: string, jobId: number, itemIds?: number[]) {
     await ensurePostActionTables(env);
 
     const job = await env.DB.prepare(`
         SELECT id, status, failed_count
         FROM post_action_jobs
-        WHERE id = ?
+        WHERE organization_id = ? AND id = ?
         LIMIT 1
-    `).bind(jobId).first<{ id?: number; status?: string | null; failed_count?: number | null }>();
+    `).bind(organizationId, jobId).first<{ id?: number; status?: string | null; failed_count?: number | null }>();
 
     if (!job?.id) {
         throw new Error('Job not found');
@@ -473,14 +486,14 @@ export async function processPendingPostActionJobs(env: Env, options?: {
 
     const jobsQuery = targetJobIds.length > 0
         ? `
-            SELECT id, page_id, action, status
+            SELECT id, organization_id, page_id, action, status
             FROM post_action_jobs
             WHERE id IN (${targetJobIds.map(() => '?').join(', ')})
               AND status IN ('pending', 'processing')
             ORDER BY id ASC
         `
         : `
-            SELECT id, page_id, action, status
+            SELECT id, organization_id, page_id, action, status
             FROM post_action_jobs
             WHERE status IN ('pending', 'processing')
             ORDER BY id ASC
@@ -506,7 +519,7 @@ export async function processPendingPostActionJobs(env: Env, options?: {
             }
         }
 
-        const token = await resolvePageActionToken(env, job.page_id, job.action);
+        const token = await resolvePageActionToken(env, job.organization_id, job.page_id, job.action);
         if (!token) {
             await env.DB.prepare(`
                 UPDATE post_action_items

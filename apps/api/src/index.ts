@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import type { Env } from './types';
 import { pageSettingsRouter } from './routes/page-settings';
 import { pagesRouter } from './routes/pages';
 import { tokensRouter } from './routes/tokens';
@@ -35,66 +36,23 @@ import { generateNewsRouter } from './routes/generate-news';
 import { tokenHealthRouter } from './routes/token-health';
 import { newsLinkRouter } from './routes/news-link';
 import { publishReelRouter } from './routes/publish-reel';
-
-
-export interface Env {
-    DB: D1Database;
-    IMAGES: R2Bucket;
-    GEMINI_API_KEY: string;
-    FREEIMAGE_API_KEY: string;
-    LINE_CHANNEL_ACCESS_TOKEN?: string;
-    LINE_CHANNEL_SECRET?: string;
-    LINE_USER_ID?: string;
-    OG_IMAGE_BASE_URL?: string;
-}
+import { authRouter } from './routes/auth';
+import { billingRouter } from './routes/billing';
+import { ensureAppSchema } from './lib/schema';
+import { requireAuth } from './middleware/require-auth';
+import { requireWorkspace } from './middleware/require-workspace';
+import { requireInternal } from './middleware/require-internal';
 
 const app = new Hono<{ Bindings: Env }>();
+export type { Env } from './types';
 
 type ScheduledQueueJob = {
     id: number;
+    organization_id: string;
     payload_json: string;
     scheduled_time: number;
     attempts: number;
 };
-
-async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
-    await env.DB.prepare(`
-        CREATE TABLE IF NOT EXISTS scheduled_publish_queue (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            page_id TEXT NOT NULL,
-            payload_json TEXT NOT NULL,
-            batch_id TEXT,
-            scheduled_time INTEGER NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            post_id TEXT,
-            facebook_url TEXT,
-            error_message TEXT,
-            attempts INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            processed_at TEXT
-        )
-    `).run();
-
-    try {
-        await env.DB.prepare(`
-            ALTER TABLE scheduled_publish_queue
-            ADD COLUMN batch_id TEXT
-        `).run();
-    } catch (_) {
-        // Ignore duplicate-column errors on existing databases.
-    }
-
-    await env.DB.prepare(`
-        CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_status_time
-        ON scheduled_publish_queue (status, scheduled_time)
-    `).run();
-
-    await env.DB.prepare(`
-        CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_batch_id
-        ON scheduled_publish_queue (batch_id, status, scheduled_time)
-    `).run();
-}
 
 function parseQueuePayload(raw: string): Record<string, any> {
     try {
@@ -106,10 +64,9 @@ function parseQueuePayload(raw: string): Record<string, any> {
 }
 
 async function processScheduledPublishQueue(env: Env, ctx: ExecutionContext): Promise<void> {
-    await ensureScheduledPublishQueueTable(env);
     const nowTs = Math.floor(Date.now() / 1000);
     const dueRows = await env.DB.prepare(`
-        SELECT id, payload_json, scheduled_time, attempts
+        SELECT id, organization_id, payload_json, scheduled_time, attempts
         FROM scheduled_publish_queue
         WHERE status = 'pending' AND scheduled_time <= ?
         ORDER BY scheduled_time ASC
@@ -143,9 +100,14 @@ async function processScheduledPublishQueue(env: Env, ctx: ExecutionContext): Pr
                 : '/api/publish';
             const publishReq = new Request(`https://internal${queueRoute}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-internal-secret': env.INTERNAL_API_SECRET || '',
+                    'x-workspace-id': job.organization_id,
+                },
                 body: JSON.stringify({
                     ...payload,
+                    organizationId: job.organization_id,
                     scheduledTime: null,
                     scheduleInSystem: false,
                     internalRun: true,
@@ -205,12 +167,41 @@ async function processScheduledPublishQueue(env: Env, ctx: ExecutionContext): Pr
     }
 }
 
-// CORS
+function isAllowedOrigin(origin: string, env: Env): boolean {
+    const normalized = origin.trim().replace(/\/+$/, '');
+    const explicitOrigins = [
+        env.APP_ORIGIN,
+        'http://localhost:3000',
+        'http://localhost:4173',
+        'http://localhost:8788',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:4173',
+    ].filter(Boolean).map((value) => String(value).replace(/\/+$/, ''));
+
+    if (explicitOrigins.includes(normalized)) return true;
+
+    try {
+        const hostname = new URL(normalized).hostname;
+        return hostname.endsWith('.pages.dev') || hostname.endsWith('.pubilo.com');
+    } catch {
+        return false;
+    }
+}
+
 app.use('*', cors({
-    origin: '*',
+    origin: (origin, c) => {
+        if (!origin) return c.env.APP_ORIGIN || origin || '*';
+        return isAllowedOrigin(origin, c.env) ? origin : '';
+    },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: ['Content-Type', 'Authorization', 'x-internal-secret'],
+    credentials: true,
 }));
+
+app.use('*', async (c, next) => {
+    await ensureAppSchema(c.env);
+    await next();
+});
 
 // Health check
 app.get('/', (c) => c.json({
@@ -228,7 +219,51 @@ app.get('/health', async (c) => {
     }
 });
 
-// Core API Routes
+const workspaceProtectedPaths = [
+    '/api/pages',
+    '/api/page-settings',
+    '/api/tokens',
+    '/api/prompts',
+    '/api/quotes',
+    '/api/global-settings',
+    '/api/generate',
+    '/api/publish',
+    '/api/publish-reel',
+    '/api/scheduled-posts',
+    '/api/delete-post',
+    '/api/earnings',
+    '/api/auto-post-config',
+    '/api/auto-hide-config',
+    '/api/upload-image',
+    '/api/auto-post-logs',
+    '/api/view-logs',
+    '/api/logs',
+    '/api/published-posts',
+    '/api/post-action-jobs',
+    '/api/text-post',
+    '/api/update-post-time',
+    '/api/generate-news',
+    '/api/check-pending-shares',
+    '/api/check-risky-quotes',
+    '/api/token-health',
+    '/api/billing/current',
+    '/api/billing/checkout-intent',
+];
+
+for (const path of workspaceProtectedPaths) {
+    app.use(path, requireAuth, requireWorkspace);
+    app.use(`${path}/*`, requireAuth, requireWorkspace);
+}
+
+app.use('/api/line-webhook', requireInternal);
+app.use('/api/line-webhook/*', requireInternal);
+app.use('/api/migrate', requireInternal);
+app.use('/api/migrate/*', requireInternal);
+app.use('/api/cron/*', requireInternal);
+
+app.route('/api/auth', authRouter);
+app.route('/api/billing', billingRouter);
+
 app.route('/api/pages', pagesRouter);
 app.route('/api/page-settings', pageSettingsRouter);
 app.route('/api/tokens', tokensRouter);
@@ -250,8 +285,6 @@ app.route('/api/logs', logsRouter);
 app.route('/api/published-posts', publishedPostsRouter);
 app.route('/api/post-action-jobs', postActionJobsRouter);
 app.route('/api/migrate', migrateRouter);
-
-// Additional API Routes
 app.route('/api/text-post', textPostRouter);
 app.route('/api/update-post-time', updatePostTimeRouter);
 app.route('/api/generate-news', generateNewsRouter);
@@ -261,7 +294,6 @@ app.route('/api/check-risky-quotes', checkRiskyQuotesRouter);
 app.route('/api/line-webhook', lineWebhookRouter);
 app.route('/api/token-health', tokenHealthRouter);
 
-// Cron Routes
 app.route('/api/cron/auto-post', cronAutoPostRouter);
 app.route('/api/cron/auto-hide', autoHideRouter);
 app.route('/api/cron/earnings', cronEarningsRouter);
@@ -274,11 +306,13 @@ app.route('/api/cron/cleanup-reels', cronCleanupReelsRouter);
 export default {
     fetch: app.fetch,
     async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+        await ensureAppSchema(env);
         const triggerTime = new Date(event.scheduledTime);
         const utcHour = triggerTime.getUTCHours();
         const utcMinute = triggerTime.getUTCMinutes();
         const cron = event.cron;
         console.log('[scheduled] Cron trigger fired at', triggerTime.toISOString(), 'cron:', cron);
+        const internalHeaders = { 'x-internal-secret': env.INTERNAL_API_SECRET || '' };
 
         // Every minute: Run auto-post and auto-hide
         if (cron === '* * * * *') {
@@ -298,7 +332,7 @@ export default {
 
             console.log('[scheduled] Every minute - Running auto-post');
             try {
-                const autoPostReq = new Request('https://internal/api/cron/auto-post');
+                const autoPostReq = new Request('https://internal/api/cron/auto-post', { headers: internalHeaders });
                 const autoPostRes = await app.fetch(autoPostReq, env, ctx);
                 const autoPostData = await autoPostRes.json();
                 console.log('[scheduled] auto-post result:', autoPostData);
@@ -309,7 +343,7 @@ export default {
             // Run auto-hide
             console.log('[scheduled] Every minute - Running auto-hide');
             try {
-                const autoHideReq = new Request('https://internal/api/cron/auto-hide');
+                const autoHideReq = new Request('https://internal/api/cron/auto-hide', { headers: internalHeaders });
                 const autoHideRes = await app.fetch(autoHideReq, env, ctx);
                 const autoHideData = await autoHideRes.json();
                 console.log('[scheduled] auto-hide result:', autoHideData);
@@ -322,7 +356,7 @@ export default {
         if (cron === '0 * * * *') {
             console.log('[scheduled] Every hour - Running health check');
             try {
-                const healthReq = new Request('https://internal/api/cron/health-check');
+                const healthReq = new Request('https://internal/api/cron/health-check', { headers: internalHeaders });
                 const healthRes = await app.fetch(healthReq, env, ctx);
                 const healthData = await healthRes.json();
                 console.log('[scheduled] health-check result:', healthData);
@@ -332,7 +366,7 @@ export default {
 
             console.log('[scheduled] Every hour - Cleaning up stale reel uploads');
             try {
-                const cleanupReq = new Request('https://internal/api/cron/cleanup-reels');
+                const cleanupReq = new Request('https://internal/api/cron/cleanup-reels', { headers: internalHeaders });
                 const cleanupRes = await app.fetch(cleanupReq, env, ctx);
                 const cleanupData = await cleanupRes.json();
                 console.log('[scheduled] cleanup-reels result:', cleanupData);
@@ -345,7 +379,7 @@ export default {
         if (utcHour === 17 && utcMinute === 0) {
             console.log('[scheduled] 00:00 TH - Fetching earnings (no notify)');
             try {
-                const earningsReq = new Request('https://internal/api/cron/earnings?notify=false');
+                const earningsReq = new Request('https://internal/api/cron/earnings?notify=false', { headers: internalHeaders });
                 const earningsRes = await app.fetch(earningsReq, env, ctx);
                 const earningsData = await earningsRes.json();
                 console.log('[scheduled] earnings fetch result:', earningsData);
@@ -358,7 +392,7 @@ export default {
         if (utcHour === 9 && utcMinute === 0) {
             console.log('[scheduled] 16:00 TH - Fetching earnings WITH notification');
             try {
-                const earningsReq = new Request('https://internal/api/cron/earnings?notify=true');
+                const earningsReq = new Request('https://internal/api/cron/earnings?notify=true', { headers: internalHeaders });
                 const earningsRes = await app.fetch(earningsReq, env, ctx);
                 const earningsData = await earningsRes.json();
                 console.log('[scheduled] earnings notify result:', earningsData);

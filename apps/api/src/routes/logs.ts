@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -10,13 +11,15 @@ app.get('/', async (c) => {
     const type = c.req.query('type'); // 'post' or 'share'
 
     try {
+        const workspaceId = getWorkspaceId(c);
         if (type === 'share') {
             // Get share logs
             const results = await c.env.DB.prepare(`
                 SELECT * FROM share_queue 
-                WHERE target_page_id = ? 
+                WHERE organization_id = ?
+                  AND target_page_id = ? 
                 ORDER BY created_at DESC LIMIT ?
-            `).bind(pageId, limit).all();
+            `).bind(workspaceId, pageId, limit).all();
             return c.json({ success: true, logs: results.results || [], type: 'share' });
         }
 
@@ -25,11 +28,14 @@ app.get('/', async (c) => {
                             apl.facebook_post_id, apl.error_message, apl.created_at,
                             sq.status as share_status, sq.shared_at, sq.shared_post_id
                      FROM auto_post_logs apl
-                     LEFT JOIN share_queue sq ON apl.facebook_post_id = sq.facebook_post_id`;
-        const params: any[] = [];
+                     LEFT JOIN share_queue sq
+                       ON apl.organization_id = sq.organization_id
+                      AND apl.facebook_post_id = sq.facebook_post_id
+                     WHERE apl.organization_id = ?`;
+        const params: any[] = [workspaceId];
 
         if (pageId) {
-            query += ' WHERE apl.page_id = ?';
+            query += ' AND apl.page_id = ?';
             params.push(pageId);
         }
 
@@ -48,7 +54,8 @@ app.get('/', async (c) => {
 app.delete('/:id', async (c) => {
     const id = c.req.param('id');
     try {
-        await c.env.DB.prepare('DELETE FROM auto_post_logs WHERE id = ?').bind(id).run();
+        const workspaceId = getWorkspaceId(c);
+        await c.env.DB.prepare('DELETE FROM auto_post_logs WHERE organization_id = ? AND id = ?').bind(workspaceId, id).run();
         return c.json({ success: true });
     } catch (error) {
         return c.json({ success: false, error: String(error) }, 500);

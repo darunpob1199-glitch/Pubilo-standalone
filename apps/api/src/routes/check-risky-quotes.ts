@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -25,7 +26,12 @@ app.get('/', async (c) => {
     const action = c.req.query('action');
 
     try {
-        const allQuotes = await c.env.DB.prepare(`SELECT id, quote_text FROM quotes`).all<{ id: number; quote_text: string }>();
+        const workspaceId = getWorkspaceId(c);
+        const allQuotes = await c.env.DB.prepare(`
+            SELECT id, quote_text
+            FROM quotes
+            WHERE organization_id = ?
+        `).bind(workspaceId).all<{ id: number; quote_text: string }>();
         const quotes = allQuotes.results || [];
 
         const riskyQuotes: any[] = [];
@@ -44,7 +50,7 @@ app.get('/', async (c) => {
         if (action === 'delete' && riskyQuotes.length > 0) {
             const ids = riskyQuotes.map(q => q.id);
             for (const id of ids) {
-                await c.env.DB.prepare(`DELETE FROM quotes WHERE id = ?`).bind(id).run();
+                await c.env.DB.prepare(`DELETE FROM quotes WHERE organization_id = ? AND id = ?`).bind(workspaceId, id).run();
             }
             return c.json({ success: true, action: 'deleted', totalScanned: quotes.length, deletedCount: riskyQuotes.length, deletedQuotes: riskyQuotes });
         }

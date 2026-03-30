@@ -1,5 +1,7 @@
 import { Context, Hono } from 'hono';
 import { Env } from '../index';
+import { decryptSecret } from '../lib/encryption';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -7,6 +9,7 @@ const FB_API = 'https://graph.facebook.com/v21.0';
 
 type ScheduledQueueRow = {
     id: number;
+    organization_id: string;
     page_id: string;
     payload_json: string;
     batch_id?: string | null;
@@ -81,6 +84,7 @@ async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
     await env.DB.prepare(`
         CREATE TABLE IF NOT EXISTS scheduled_publish_queue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id TEXT NOT NULL,
             page_id TEXT NOT NULL,
             payload_json TEXT NOT NULL,
             batch_id TEXT,
@@ -126,11 +130,12 @@ function safeJsonParse(value: string): Record<string, any> {
     }
 }
 
-async function fetchSystemQueuedPosts(env: Env, pageId: string) {
+async function fetchSystemQueuedPosts(env: Env, workspaceId: string, pageId: string) {
     await ensureScheduledPublishQueueTable(env);
     const primaryRows = await env.DB.prepare(`
         SELECT
             q.id,
+            q.organization_id,
             q.page_id,
             q.payload_json,
             q.batch_id,
@@ -139,11 +144,11 @@ async function fetchSystemQueuedPosts(env: Env, pageId: string) {
             q.created_at,
             ps.page_name
         FROM scheduled_publish_queue q
-        LEFT JOIN page_settings ps ON ps.page_id = q.page_id
-        WHERE q.page_id = ? AND q.status IN ('pending', 'processing')
+        LEFT JOIN page_settings ps ON ps.organization_id = q.organization_id AND ps.page_id = q.page_id
+        WHERE q.organization_id = ? AND q.page_id = ? AND q.status IN ('pending', 'processing')
         ORDER BY q.scheduled_time ASC
         LIMIT 200
-    `).bind(pageId).all<ScheduledQueueRow>();
+    `).bind(workspaceId, pageId).all<ScheduledQueueRow>();
 
     const batchIds = Array.from(
         new Set(
@@ -160,6 +165,7 @@ async function fetchSystemQueuedPosts(env: Env, pageId: string) {
         const batchRows = await env.DB.prepare(`
             SELECT
                 q.id,
+                q.organization_id,
                 q.page_id,
                 q.payload_json,
                 q.batch_id,
@@ -168,12 +174,13 @@ async function fetchSystemQueuedPosts(env: Env, pageId: string) {
                 q.created_at,
                 ps.page_name
             FROM scheduled_publish_queue q
-            LEFT JOIN page_settings ps ON ps.page_id = q.page_id
-            WHERE q.status IN ('pending', 'processing')
+            LEFT JOIN page_settings ps ON ps.organization_id = q.organization_id AND ps.page_id = q.page_id
+            WHERE q.organization_id = ?
+              AND q.status IN ('pending', 'processing')
               AND (q.page_id = ? OR q.batch_id IN (${placeholders}))
             ORDER BY q.scheduled_time ASC, q.created_at ASC
             LIMIT 500
-        `).bind(pageId, ...batchIds).all<ScheduledQueueRow>();
+        `).bind(workspaceId, pageId, ...batchIds).all<ScheduledQueueRow>();
 
         rows = batchRows.results || [];
     }
@@ -241,18 +248,19 @@ async function handleScheduledPosts(
     }
 
     try {
+        const workspaceId = getWorkspaceId(c);
         const fields = 'id,message,scheduled_publish_time,created_time,status_type,full_picture,attachments{media,subattachments},permalink_url';
-        const systemQueuedPosts = await fetchSystemQueuedPosts(c.env, pageId);
+        const systemQueuedPosts = await fetchSystemQueuedPosts(c.env, workspaceId, pageId);
         let storedPageToken = pageToken;
 
         if (!storedPageToken && pageId) {
             try {
                 const dbResult = await c.env.DB.prepare(
-                    'SELECT post_token FROM page_settings WHERE page_id = ? LIMIT 1'
-                ).bind(pageId).first<{ post_token: string | null }>();
+                    'SELECT post_token_encrypted FROM page_settings WHERE organization_id = ? AND page_id = ? LIMIT 1'
+                ).bind(workspaceId, pageId).first<{ post_token_encrypted: string | null }>();
 
-                if (dbResult?.post_token) {
-                    storedPageToken = dbResult.post_token;
+                if (dbResult?.post_token_encrypted) {
+                    storedPageToken = await decryptSecret(c.env, dbResult.post_token_encrypted) || '';
                 }
             } catch (dbErr) {
                 console.error('[scheduled-posts] D1 error:', dbErr);

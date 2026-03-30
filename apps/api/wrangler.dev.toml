@@ -6,6 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 NODE_ENV = "development"
+APP_ORIGIN = "http://localhost:8788"
+API_ORIGIN = "http://localhost:8787"
 
 [[d1_databases]]
 binding = "DB"

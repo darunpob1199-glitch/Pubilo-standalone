@@ -15,7 +15,13 @@ if (
     window.location.replace(stableUrl);
 }
 
+if (window.location.hostname === 'pubilo.com') {
+    const appUrl = `https://app.pubilo.com${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.location.replace(appUrl);
+}
+
 const HOST_API_MAP = {
+    'app.pubilo.com': 'https://api.pubilo.com',
     'pubilo-web-prod.pages.dev': 'https://pubilo-api-prod.lungnuek.workers.dev',
     'pubilo-web-dev.pages.dev': 'https://pubilo-api-dev.lungnuek.workers.dev',
     'pubilo.com': 'https://pubilo-api-prod.lungnuek.workers.dev',
@@ -95,9 +101,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Override fetch to automatically prefix API calls
 const originalFetch = window.fetch;
+window.__PUBILO_NATIVE_FETCH__ = originalFetch.bind(window);
+window.PUBILO_AUTH_READY_PROMISE = window.PUBILO_AUTH_READY_PROMISE || Promise.resolve();
 window.fetch = function (url, options) {
-    if (typeof url === 'string' && url.startsWith('/api/')) {
+    const isApiRequest = typeof url === 'string' && url.startsWith('/api/');
+    const bypassAuth =
+        typeof url === 'string' && (
+            url.startsWith('/api/auth/')
+            || url === '/api/billing/plans'
+            || url === '/api/news-link'
+            || url === '/health'
+            || url === '/'
+        );
+
+    if (isApiRequest) {
         url = window.API_BASE + url;
+        options = {
+            ...(options || {}),
+            credentials: 'include',
+        };
     }
-    return originalFetch.call(this, url, options);
+
+    return (async () => {
+        if (isApiRequest && !bypassAuth && window.PUBILO_AUTH_READY_PROMISE) {
+            await window.PUBILO_AUTH_READY_PROMISE;
+        }
+
+        const response = await originalFetch.call(this, url, options);
+
+        if (isApiRequest && response.status === 401 && window.PubiloAuth?.handleUnauthenticated) {
+            window.PubiloAuth.handleUnauthenticated();
+        }
+
+        return response;
+    })();
 };

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -9,14 +10,17 @@ app.post('/', async (c) => {
         const { prompt, model = 'gemini-2.0-flash-exp' } = await c.req.json();
         if (!prompt) return c.json({ success: false, error: 'Missing prompt' }, 400);
 
+        const workspaceId = getWorkspaceId(c);
         // Get API key from database or environment
         let apiKey = c.env.GEMINI_API_KEY;
 
         if (!apiKey) {
             try {
                 const settings = await c.env.DB.prepare(`
-                    SELECT setting_value FROM global_settings WHERE setting_key = ?
-                `).bind('gemini_api_key').first<{ setting_value: string }>();
+                    SELECT setting_value
+                    FROM organization_settings
+                    WHERE workspace_id = ? AND setting_key = ?
+                `).bind(workspaceId, 'gemini_api_key').first<{ setting_value: string }>();
                 apiKey = settings?.setting_value;
             } catch {
                 // Fall back to legacy schema if it still exists.

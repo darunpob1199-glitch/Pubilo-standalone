@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { decryptSecret, encryptSecret } from '../lib/encryption';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -9,9 +11,10 @@ app.get('/', async (c) => {
     if (!pageId) return c.json({ success: false, error: 'Missing pageId' }, 400);
 
     try {
+        const workspaceId = getWorkspaceId(c);
         const result = await c.env.DB.prepare(`
-            SELECT page_id, hide_types, hide_token FROM page_settings WHERE page_id = ?
-        `).bind(pageId).first();
+            SELECT page_id, hide_types, hide_token_encrypted FROM page_settings WHERE organization_id = ? AND page_id = ?
+        `).bind(workspaceId, pageId).first<any>();
 
         if (result) {
             return c.json({
@@ -19,7 +22,7 @@ app.get('/', async (c) => {
                 config: {
                     enabled: !!result.hide_types,
                     hide_types: result.hide_types || 'shared_story,mobile_status_update,added_photos',
-                    hide_token: result.hide_token || '',
+                    hide_token: await decryptSecret(c.env, result.hide_token_encrypted) || '',
                 },
             });
         }
@@ -43,17 +46,25 @@ app.post('/', async (c) => {
         const { pageId, enabled, hideTypes, hideToken } = await c.req.json();
         if (!pageId) return c.json({ success: false, error: 'Missing pageId' }, 400);
 
+        const workspaceId = getWorkspaceId(c);
         const now = new Date().toISOString();
 
         await c.env.DB.prepare(`
-            INSERT INTO page_settings (page_id, auto_hide, hide_types, hide_token, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(page_id) DO UPDATE SET
+            INSERT INTO page_settings (organization_id, page_id, auto_hide, hide_types, hide_token_encrypted, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(organization_id, page_id) DO UPDATE SET
                 auto_hide = excluded.auto_hide,
                 hide_types = excluded.hide_types,
-                hide_token = excluded.hide_token,
+                hide_token_encrypted = excluded.hide_token_encrypted,
                 updated_at = excluded.updated_at
-        `).bind(pageId, enabled ? 1 : 0, enabled ? hideTypes : null, hideToken || null, now).run();
+        `).bind(
+            workspaceId,
+            pageId,
+            enabled ? 1 : 0,
+            enabled ? hideTypes : null,
+            await encryptSecret(c.env, hideToken || null),
+            now,
+        ).run();
 
         return c.json({
             success: true,

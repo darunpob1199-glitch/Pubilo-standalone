@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -28,14 +29,17 @@ app.post('/', async (c) => {
             return c.json({ error: 'No images provided' }, 400);
         }
 
+        const workspaceId = getWorkspaceId(c);
         // Get API key from environment first, then fallback to database settings.
         let apiKey: string | undefined = c.env.GEMINI_API_KEY;
 
         if (!apiKey) {
             try {
                 const settings = await c.env.DB.prepare(`
-                    SELECT setting_value FROM global_settings WHERE setting_key = ?
-                `).bind('gemini_api_key').first<{ setting_value: string }>();
+                    SELECT setting_value
+                    FROM organization_settings
+                    WHERE workspace_id = ? AND setting_key = ?
+                `).bind(workspaceId, 'gemini_api_key').first<{ setting_value: string }>();
                 apiKey = settings?.setting_value;
             } catch {
                 // Fall back to legacy schema if it still exists.

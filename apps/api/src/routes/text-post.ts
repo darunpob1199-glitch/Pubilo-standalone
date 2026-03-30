@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
 import { recordPublishHistory } from '../lib/publish-history';
+import { decryptSecret } from '../lib/encryption';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -10,14 +12,30 @@ const DOC_ID = "25358568403813021";
 app.post('/', async (c) => {
     try {
         const { pageId, message, shareToPages, userId, iUser } = await c.req.json();
+        const workspaceId = getWorkspaceId(c);
 
         if (!pageId || !message || !userId) {
             return c.json({ error: 'Missing pageId, message, or userId' }, 400);
         }
 
         // Get user token
-        const user = await c.env.DB.prepare(`SELECT post_token, cookie, fb_dtsg FROM tokens WHERE user_id = ?`)
-            .bind(userId).first<{ post_token: string; cookie: string; fb_dtsg: string }>();
+        const credential = await c.env.DB.prepare(`
+            SELECT ads_token_encrypted, cookie_encrypted, fb_dtsg_encrypted
+            FROM facebook_credentials
+            WHERE workspace_id = ? AND facebook_user_id = ?
+            ORDER BY updated_at DESC
+            LIMIT 1
+        `).bind(workspaceId, userId).first<{
+            ads_token_encrypted: string | null;
+            cookie_encrypted: string | null;
+            fb_dtsg_encrypted: string | null;
+        }>();
+
+        const user = credential ? {
+            post_token: await decryptSecret(c.env, credential.ads_token_encrypted),
+            cookie: await decryptSecret(c.env, credential.cookie_encrypted),
+            fb_dtsg: await decryptSecret(c.env, credential.fb_dtsg_encrypted),
+        } : null;
 
         if (!user?.post_token) {
             return c.json({ error: 'Missing user token' }, 400);
@@ -84,11 +102,14 @@ app.post('/', async (c) => {
 
         // Log to auto_post_logs with Thai time
         const thaiTimestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
-        const logResult = await c.env.DB.prepare(`INSERT INTO auto_post_logs (page_id, post_type, quote_text, status, facebook_post_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
-            .bind(pageId, 'text', message.slice(0, 500), 'success', postId, thaiTimestamp).run();
+        const logResult = await c.env.DB.prepare(`
+            INSERT INTO auto_post_logs (organization_id, page_id, post_type, quote_text, status, facebook_post_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).bind(workspaceId, pageId, 'text', message.slice(0, 500), 'success', postId, thaiTimestamp).run();
         const logId = Number(logResult.meta?.last_row_id || 0);
 
         await recordPublishHistory(c.env, {
+            organizationId: workspaceId,
             externalKey: logId ? `auto-post-log:${logId}` : `publish:${pageId}:${postId}`,
             pageId,
             source: 'auto_post',
@@ -105,15 +126,20 @@ app.post('/', async (c) => {
         const queuedShares: { pageId: string; queued: boolean }[] = [];
         if (shareToPages?.length) {
             // Get share_schedule_minutes from page_settings
-            const pageSettings = await c.env.DB.prepare(`SELECT share_schedule_minutes FROM page_settings WHERE page_id = ?`)
-                .bind(pageId).first<{ share_schedule_minutes: string }>();
+            const pageSettings = await c.env.DB.prepare(`
+                SELECT share_schedule_minutes
+                FROM page_settings
+                WHERE organization_id = ? AND page_id = ?
+            `).bind(workspaceId, pageId).first<{ share_schedule_minutes: string }>();
             const shareScheduleMinutes = pageSettings?.share_schedule_minutes || '';
 
             for (const targetPageId of shareToPages) {
                 if (targetPageId === pageId) continue;
                 try {
-                    await c.env.DB.prepare(`INSERT INTO share_queue (source_page_id, target_page_id, facebook_post_id, post_type, share_schedule_minutes) VALUES (?, ?, ?, ?, ?)`)
-                        .bind(pageId, targetPageId, postId, 'text', shareScheduleMinutes).run();
+                    await c.env.DB.prepare(`
+                        INSERT INTO share_queue (organization_id, source_page_id, target_page_id, facebook_post_id, post_type, share_schedule_minutes)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    `).bind(workspaceId, pageId, targetPageId, postId, 'text', shareScheduleMinutes).run();
                     queuedShares.push({ pageId: targetPageId, queued: true });
                 } catch (err) {
                     queuedShares.push({ pageId: targetPageId, queued: false });

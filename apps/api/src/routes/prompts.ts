@@ -1,21 +1,23 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
 // GET /api/prompts
 app.get('/', async (c) => {
     try {
+        const workspaceId = getWorkspaceId(c);
         const pageId = c.req.query('pageId');
         const promptType = c.req.query('promptType');
         let query = `
-            SELECT id, page_id, prompt_type,
+            SELECT id, organization_id, page_id, prompt_type,
                    COALESCE(prompt_text, prompt) as prompt_text,
                    name, prompt, category, created_at, updated_at
             FROM prompts
         `;
-        const conditions: string[] = [];
-        const params: string[] = [];
+        const conditions: string[] = ['organization_id = ?'];
+        const params: string[] = [workspaceId];
 
         if (pageId) {
             conditions.push('page_id = ?');
@@ -43,6 +45,7 @@ app.get('/', async (c) => {
 // POST /api/prompts
 app.post('/', async (c) => {
     try {
+        const workspaceId = getWorkspaceId(c);
         const body = await c.req.json();
         const now = new Date().toISOString();
 
@@ -50,14 +53,15 @@ app.post('/', async (c) => {
             const promptText = body.promptText ?? body.prompt ?? '';
             if (!promptText) return c.json({ success: false, error: 'Missing promptText' }, 400);
 
-            const promptId = body.id || `${body.pageId}:${body.promptType}`;
+            const promptId = body.id || `${workspaceId}:${body.pageId}:${body.promptType}`;
 
             await c.env.DB.prepare(`
                 INSERT INTO prompts (
-                    id, page_id, prompt_type, prompt_text, name, prompt, category, created_at, updated_at
+                    id, organization_id, page_id, prompt_type, prompt_text, name, prompt, category, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
+                    organization_id = excluded.organization_id,
                     page_id = excluded.page_id,
                     prompt_type = excluded.prompt_type,
                     prompt_text = excluded.prompt_text,
@@ -67,6 +71,7 @@ app.post('/', async (c) => {
                     updated_at = excluded.updated_at
             `).bind(
                 promptId,
+                workspaceId,
                 body.pageId,
                 body.promptType,
                 promptText,
@@ -83,17 +88,18 @@ app.post('/', async (c) => {
         const { id, name, prompt, category } = body;
         if (!name || !prompt) return c.json({ success: false, error: 'Missing name or prompt' }, 400);
 
-        const promptId = id || crypto.randomUUID();
+        const promptId = id || `${workspaceId}:${crypto.randomUUID()}`;
 
         await c.env.DB.prepare(`
-            INSERT INTO prompts (id, name, prompt, category, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO prompts (id, organization_id, name, prompt, category, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
+                organization_id = excluded.organization_id,
                 name = excluded.name,
                 prompt = excluded.prompt,
                 category = excluded.category,
                 updated_at = excluded.updated_at
-        `).bind(promptId, name, prompt, category || 'general', now, now).run();
+        `).bind(promptId, workspaceId, name, prompt, category || 'general', now, now).run();
 
         return c.json({ success: true, id: promptId });
     } catch (error) {
@@ -107,7 +113,8 @@ app.delete('/', async (c) => {
     if (!id) return c.json({ success: false, error: 'Missing id' }, 400);
 
     try {
-        await c.env.DB.prepare(`DELETE FROM prompts WHERE id = ?`).bind(id).run();
+        const workspaceId = getWorkspaceId(c);
+        await c.env.DB.prepare(`DELETE FROM prompts WHERE organization_id = ? AND id = ?`).bind(workspaceId, id).run();
         return c.json({ success: true });
     } catch (error) {
         return c.json({ success: false, error: String(error) }, 500);

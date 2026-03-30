@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { decryptSecret } from '../lib/encryption';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -16,25 +18,29 @@ interface TokenHealthResult {
 // GET /api/token-health - Check token validity for all pages
 app.get('/', async (c) => {
     try {
+        const workspaceId = getWorkspaceId(c);
         // Get all pages with their tokens
         const pagesResult = await c.env.DB.prepare(`
-            SELECT page_id, page_name, post_token
+            SELECT page_id, page_name, post_token_encrypted
             FROM page_settings
-            WHERE post_token IS NOT NULL AND post_token != ''
-        `).all<{ page_id: string; page_name: string; post_token: string }>();
+            WHERE organization_id = ?
+              AND post_token_encrypted IS NOT NULL
+              AND post_token_encrypted != ''
+        `).bind(workspaceId).all<{ page_id: string; page_name: string; post_token_encrypted: string }>();
 
         const pages = pagesResult.results || [];
         const results: TokenHealthResult[] = [];
 
         for (const page of pages) {
+            const pageToken = await decryptSecret(c.env, page.post_token_encrypted);
             const result: TokenHealthResult = {
                 page_id: page.page_id,
                 page_name: page.page_name || 'Unknown',
-                has_token: !!page.post_token,
+                has_token: !!pageToken,
                 token_valid: false,
             };
 
-            if (!page.post_token) {
+            if (!pageToken) {
                 result.error = 'No token';
                 results.push(result);
                 continue;
@@ -44,7 +50,7 @@ app.get('/', async (c) => {
                 // Use Facebook Graph API to validate token
                 // Simple check: try to get page info
                 const response = await fetch(
-                    `https://graph.facebook.com/v21.0/${page.page_id}?fields=id,name&access_token=${page.post_token}`
+                    `https://graph.facebook.com/v21.0/${page.page_id}?fields=id,name&access_token=${pageToken}`
                 );
                 const data = await response.json() as any;
 
@@ -67,7 +73,7 @@ app.get('/', async (c) => {
                     // Try to get more token info
                     try {
                         const debugResponse = await fetch(
-                            `https://graph.facebook.com/v21.0/debug_token?input_token=${page.post_token}&access_token=${page.post_token}`
+                            `https://graph.facebook.com/v21.0/debug_token?input_token=${pageToken}&access_token=${pageToken}`
                         );
                         const debugData = await debugResponse.json() as any;
                         

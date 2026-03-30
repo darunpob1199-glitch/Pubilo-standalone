@@ -1,6 +1,7 @@
 import type { Env } from '../index';
 
 export type PublishHistoryInput = {
+    organizationId: string;
     externalKey: string;
     pageId: string;
     source: 'publish' | 'scheduled_queue' | 'reel' | 'auto_post';
@@ -56,6 +57,7 @@ export async function ensurePublishHistoryTable(env: Env): Promise<void> {
     await env.DB.prepare(`
         CREATE TABLE IF NOT EXISTS publish_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id TEXT NOT NULL,
             external_key TEXT NOT NULL UNIQUE,
             page_id TEXT NOT NULL,
             source TEXT NOT NULL,
@@ -79,7 +81,7 @@ export async function ensurePublishHistoryTable(env: Env): Promise<void> {
 
     await env.DB.prepare(`
         CREATE INDEX IF NOT EXISTS idx_publish_history_page_published
-        ON publish_history (page_id, published_at DESC)
+        ON publish_history (organization_id, page_id, published_at DESC)
     `).run();
 
     await env.DB.prepare(`
@@ -89,10 +91,11 @@ export async function ensurePublishHistoryTable(env: Env): Promise<void> {
 }
 
 export async function recordPublishHistory(env: Env, input: PublishHistoryInput): Promise<void> {
+    const organizationId = String(input.organizationId || '').trim();
     const externalKey = String(input.externalKey || '').trim();
     const pageId = String(input.pageId || '').trim();
 
-    if (!externalKey || !pageId) {
+    if (!organizationId || !externalKey || !pageId) {
         return;
     }
 
@@ -104,6 +107,7 @@ export async function recordPublishHistory(env: Env, input: PublishHistoryInput)
 
     await env.DB.prepare(`
         INSERT INTO publish_history (
+            organization_id,
             external_key,
             page_id,
             source,
@@ -121,8 +125,9 @@ export async function recordPublishHistory(env: Env, input: PublishHistoryInput)
             published_at,
             warning_message,
             extra_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(external_key) DO UPDATE SET
+            organization_id = excluded.organization_id,
             page_id = excluded.page_id,
             source = excluded.source,
             source_ref = excluded.source_ref,
@@ -140,6 +145,7 @@ export async function recordPublishHistory(env: Env, input: PublishHistoryInput)
             warning_message = excluded.warning_message,
             extra_json = excluded.extra_json
     `).bind(
+        organizationId,
         externalKey,
         pageId,
         input.source,
@@ -166,6 +172,7 @@ export async function backfillLegacyPublishHistory(env: Env): Promise<void> {
     if (await hasTable(env, 'auto_post_logs')) {
         await env.DB.prepare(`
             INSERT OR IGNORE INTO publish_history (
+                organization_id,
                 external_key,
                 page_id,
                 source,
@@ -179,6 +186,7 @@ export async function backfillLegacyPublishHistory(env: Env): Promise<void> {
                 created_at
             )
             SELECT
+                apl.organization_id,
                 'auto-post-log:' || apl.id,
                 apl.page_id,
                 'auto_post',
@@ -211,6 +219,7 @@ export async function backfillLegacyPublishHistory(env: Env): Promise<void> {
     if (await hasTable(env, 'scheduled_publish_queue')) {
         await env.DB.prepare(`
             INSERT OR IGNORE INTO publish_history (
+                organization_id,
                 external_key,
                 page_id,
                 source,
@@ -229,6 +238,7 @@ export async function backfillLegacyPublishHistory(env: Env): Promise<void> {
                 created_at
             )
             SELECT
+                q.organization_id,
                 'scheduled-queue:' || q.id,
                 q.page_id,
                 'scheduled_queue',

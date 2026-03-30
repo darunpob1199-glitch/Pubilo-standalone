@@ -1,16 +1,18 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
 import { recordPublishHistory } from '../lib/publish-history';
+import { decryptSecret } from '../lib/encryption';
 
 const app = new Hono<{ Bindings: Env }>();
 
 interface AutoPostConfig {
+    organization_id: string;
     page_id: string;
     auto_schedule: number;
     schedule_minutes: string;
     working_hours_start: number;
     working_hours_end: number;
-    post_token: string | null;
+    post_token_encrypted: string | null;
     post_mode: 'image' | 'text' | 'alternate' | null;
     color_bg: number;
     share_page_id: string | null;
@@ -159,7 +161,7 @@ app.get('/', async (c) => {
     // Get enabled configs (select only needed columns to save D1 rows read)
     const configs = await c.env.DB.prepare(`
         SELECT page_id, auto_schedule, schedule_minutes, working_hours_start, working_hours_end,
-               post_token, post_mode, color_bg, color_bg_presets, color_bg_index, page_color, page_name,
+               organization_id, post_token_encrypted, post_mode, color_bg, color_bg_presets, color_bg_index, page_color, page_name,
                last_post_type, image_source, og_background_url, og_font, ai_model, ai_resolution,
                image_image_size, share_page_id, share_mode, share_schedule_minutes
         FROM page_settings WHERE auto_schedule = 1 AND post_mode IS NOT NULL
@@ -204,7 +206,8 @@ app.get('/', async (c) => {
     for (const config of dueConfigs) {
         // Each page has its own try-catch to prevent one page's error from affecting others
         try {
-            if (!config.post_token) {
+            const postToken = await decryptSecret(c.env, config.post_token_encrypted);
+            if (!postToken) {
                 results.push({ page_id: config.page_id, status: 'skipped', reason: 'no_token' });
                 continue;
             }
@@ -215,17 +218,22 @@ app.get('/', async (c) => {
             // Try completely unused quotes first (reads ~1 row with index)
             const freshQuote = await c.env.DB.prepare(`
                 SELECT id, quote_text, used_by_pages FROM quotes
-                WHERE used_by_pages IS NULL OR used_by_pages = '[]' OR used_by_pages = ''
+                WHERE organization_id = ?
+                  AND (used_by_pages IS NULL OR used_by_pages = '[]' OR used_by_pages = '')
                 ORDER BY created_at DESC LIMIT 1
-            `).first<{ id: number; quote_text: string; used_by_pages: string }>();
+            `).bind(config.organization_id).first<{ id: number; quote_text: string; used_by_pages: string }>();
 
             if (freshQuote) {
                 unusedQuote = freshQuote;
             } else {
                 // Fall back: scan recent 50 quotes (reduced from 200)
                 const quotesResult = await c.env.DB.prepare(`
-                    SELECT id, quote_text, used_by_pages FROM quotes ORDER BY created_at DESC LIMIT 50
-                `).all<{ id: number; quote_text: string; used_by_pages: string }>();
+                    SELECT id, quote_text, used_by_pages
+                    FROM quotes
+                    WHERE organization_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT 50
+                `).bind(config.organization_id).all<{ id: number; quote_text: string; used_by_pages: string }>();
 
                 unusedQuote = quotesResult.results?.find(q => {
                     const usedBy = q.used_by_pages ? JSON.parse(q.used_by_pages) : [];
@@ -249,14 +257,18 @@ app.get('/', async (c) => {
             if (nextPostType === 'text') {
                 let presetId: string | null = null;
                 if (config.color_bg) {
-                    const presets = (config.color_bg_presets || '').split(',').filter(s => s.trim());
-                    if (presets.length) {
-                        presetId = presets[config.color_bg_index % presets.length];
-                        await c.env.DB.prepare(`UPDATE page_settings SET color_bg_index = ? WHERE page_id = ?`)
-                            .bind((config.color_bg_index + 1) % presets.length, config.page_id).run();
-                    }
+                        const presets = (config.color_bg_presets || '').split(',').filter(s => s.trim());
+                        if (presets.length) {
+                            presetId = presets[config.color_bg_index % presets.length];
+                            await c.env.DB.prepare(`
+                                UPDATE page_settings
+                                SET color_bg_index = ?
+                                WHERE organization_id = ? AND page_id = ?
+                            `)
+                                .bind((config.color_bg_index + 1) % presets.length, config.organization_id, config.page_id).run();
+                        }
                 }
-                facebookPostId = await createTextPost(config.page_id, config.post_token, unusedQuote.quote_text, presetId);
+                facebookPostId = await createTextPost(config.page_id, postToken, unusedQuote.quote_text, presetId);
             } else {
                 let imageUrl: string;
                 
@@ -273,11 +285,12 @@ app.get('/', async (c) => {
                     const promptResult = await c.env.DB.prepare(`
                         SELECT COALESCE(prompt_text, prompt) as prompt_text
                         FROM prompts
-                        WHERE (page_id = ? AND prompt_type = 'image_post')
-                           OR (page_id = '_default' AND prompt_type = 'image_post')
+                        WHERE organization_id = ?
+                          AND ((page_id = ? AND prompt_type = 'image_post')
+                           OR (page_id = '_default' AND prompt_type = 'image_post'))
                         ORDER BY CASE WHEN page_id = ? THEN 0 ELSE 1 END, updated_at DESC
                         LIMIT 1
-                    `).bind(config.page_id, config.page_id).first<{ prompt_text: string }>();
+                    `).bind(config.organization_id, config.page_id, config.page_id).first<{ prompt_text: string }>();
 
                     const base64Image = await generateAIImage(
                         unusedQuote.quote_text,
@@ -286,31 +299,39 @@ app.get('/', async (c) => {
                         config.page_name || undefined,
                         config.ai_model || 'gemini-2.0-flash-exp',
                         config.ai_resolution || '2K',
-                        c.env.GEMINI_API_KEY
+                        c.env.GEMINI_API_KEY || ''
                     );
-                    imageUrl = await uploadImageToHost(base64Image, c.env.FREEIMAGE_API_KEY);
+                    imageUrl = await uploadImageToHost(base64Image, c.env.FREEIMAGE_API_KEY || '');
                 }
                 
-                facebookPostId = await createImagePost(config.page_id, config.post_token, imageUrl, unusedQuote.quote_text);
+                facebookPostId = await createImagePost(config.page_id, postToken, imageUrl, unusedQuote.quote_text);
             }
 
             // Update last_post_type
-            await c.env.DB.prepare(`UPDATE page_settings SET last_post_type = ?, updated_at = ? WHERE page_id = ?`)
-                .bind(nextPostType, now.toISOString(), config.page_id).run();
+            await c.env.DB.prepare(`
+                UPDATE page_settings
+                SET last_post_type = ?, updated_at = ?
+                WHERE organization_id = ? AND page_id = ?
+            `)
+                .bind(nextPostType, now.toISOString(), config.organization_id, config.page_id).run();
 
             // Mark quote as used
             const usedBy = unusedQuote.used_by_pages ? JSON.parse(unusedQuote.used_by_pages) : [];
             usedBy.push(config.page_id);
-            await c.env.DB.prepare(`UPDATE quotes SET used_by_pages = ? WHERE id = ?`)
-                .bind(JSON.stringify(usedBy), unusedQuote.id).run();
+            await c.env.DB.prepare(`UPDATE quotes SET used_by_pages = ? WHERE organization_id = ? AND id = ?`)
+                .bind(JSON.stringify(usedBy), config.organization_id, unusedQuote.id).run();
 
             // Log to auto_post_logs with Thai time
             const thaiTimestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
-            const logResult = await c.env.DB.prepare(`INSERT INTO auto_post_logs (page_id, post_type, quote_text, status, facebook_post_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
-                .bind(config.page_id, nextPostType, unusedQuote.quote_text, 'success', facebookPostId, thaiTimestamp).run();
+            const logResult = await c.env.DB.prepare(`
+                INSERT INTO auto_post_logs (organization_id, page_id, post_type, quote_text, status, facebook_post_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `)
+                .bind(config.organization_id, config.page_id, nextPostType, unusedQuote.quote_text, 'success', facebookPostId, thaiTimestamp).run();
             const logId = Number(logResult.meta?.last_row_id || 0);
 
             await recordPublishHistory(c.env, {
+                organizationId: config.organization_id,
                 externalKey: logId ? `auto-post-log:${logId}` : `publish:${config.page_id}:${facebookPostId}`,
                 pageId: config.page_id,
                 source: 'auto_post',
@@ -331,8 +352,11 @@ app.get('/', async (c) => {
                     (shareMode === 'text' && nextPostType === 'text');
 
                 if (shouldQueue) {
-                    await c.env.DB.prepare(`INSERT INTO share_queue (source_page_id, target_page_id, facebook_post_id, post_type, share_schedule_minutes) VALUES (?, ?, ?, ?, ?)`)
-                        .bind(config.page_id, config.share_page_id, facebookPostId, nextPostType, config.share_schedule_minutes).run();
+                    await c.env.DB.prepare(`
+                        INSERT INTO share_queue (organization_id, source_page_id, target_page_id, facebook_post_id, post_type, share_schedule_minutes)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    `)
+                        .bind(config.organization_id, config.page_id, config.share_page_id, facebookPostId, nextPostType, config.share_schedule_minutes).run();
                 }
             }
 
@@ -340,8 +364,11 @@ app.get('/', async (c) => {
             results.push({ page_id: config.page_id, status: 'success', post_type: nextPostType, post_id: facebookPostId });
         } catch (err) {
             const thaiTimestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
-            await c.env.DB.prepare(`INSERT INTO auto_post_logs (page_id, post_type, status, error_message, created_at) VALUES (?, ?, ?, ?, ?)`)
-                .bind(config.page_id, 'unknown', 'failed', err instanceof Error ? err.message : String(err), thaiTimestamp).run();
+            await c.env.DB.prepare(`
+                INSERT INTO auto_post_logs (organization_id, page_id, post_type, status, error_message, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `)
+                .bind(config.organization_id, config.page_id, 'unknown', 'failed', err instanceof Error ? err.message : String(err), thaiTimestamp).run();
             results.push({ page_id: config.page_id, status: 'failed', error: err instanceof Error ? err.message : String(err) });
         }
     }
@@ -350,18 +377,19 @@ app.get('/', async (c) => {
     const shareResults: any[] = [];
     try {
         const pendingShares = await c.env.DB.prepare(`
-            SELECT sq.id, sq.source_page_id, sq.target_page_id, sq.facebook_post_id, sq.post_type, sq.created_at,
-                   ps_source.share_schedule_minutes, ps_target.post_token as target_token
+            SELECT sq.id, sq.organization_id, sq.source_page_id, sq.target_page_id, sq.facebook_post_id, sq.post_type, sq.created_at,
+                   ps_source.share_schedule_minutes, ps_target.post_token_encrypted as target_token_encrypted
             FROM share_queue sq
-            JOIN page_settings ps_source ON sq.source_page_id = ps_source.page_id
-            JOIN page_settings ps_target ON sq.target_page_id = ps_target.page_id
+            JOIN page_settings ps_source ON sq.organization_id = ps_source.organization_id AND sq.source_page_id = ps_source.page_id
+            JOIN page_settings ps_target ON sq.organization_id = ps_target.organization_id AND sq.target_page_id = ps_target.page_id
             WHERE sq.status = 'pending'
         `).all<any>();
 
         for (const item of pendingShares.results || []) {
             const shareMins = (item.share_schedule_minutes || '').split(',').map((m: string) => parseInt(m.trim())).filter((m: number) => !isNaN(m));
             if (!shareMins.includes(currentMinute) && !forcePost) continue;
-            if (!item.target_token) continue;
+            const targetToken = await decryptSecret(c.env, item.target_token_encrypted);
+            if (!targetToken) continue;
 
             // Skip if created less than 1 minute ago (wait for next share cycle)
             const createdAt = new Date(item.created_at);
@@ -372,7 +400,7 @@ app.get('/', async (c) => {
             }
 
             try {
-                const sharedPostId = await sharePost(item.facebook_post_id, item.target_page_id, item.target_token);
+                const sharedPostId = await sharePost(item.facebook_post_id, item.target_page_id, targetToken);
                 await c.env.DB.prepare(`UPDATE share_queue SET status = 'shared', shared_post_id = ?, shared_at = ? WHERE id = ?`)
                     .bind(sharedPostId, now.toISOString(), item.id).run();
                 shareResults.push({ target_page_id: item.target_page_id, status: 'shared', shared_post_id: sharedPostId });

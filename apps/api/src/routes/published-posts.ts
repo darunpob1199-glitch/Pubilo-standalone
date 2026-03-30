@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import type { Env } from '../index';
 import { backfillLegacyPublishHistory, ensurePublishHistoryTable } from '../lib/publish-history';
+import { decryptSecret } from '../lib/encryption';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 const FB_API = 'https://graph.facebook.com/v21.0';
@@ -8,6 +10,7 @@ const FB_API = 'https://graph.facebook.com/v21.0';
 type PublishedSource = 'merged' | 'facebook' | 'history';
 
 type PublishedQueryInput = {
+    workspaceId: string;
     pageId: string;
     limit: number;
     source: PublishedSource;
@@ -266,27 +269,27 @@ async function fetchPinnedPostIds(
     return pinnedIds;
 }
 
-async function getStoredPageToken(env: Env, pageId: string): Promise<string> {
+async function getStoredPageToken(env: Env, workspaceId: string, pageId: string): Promise<string> {
     if (!pageId) return '';
 
     const result = await env.DB.prepare(`
-        SELECT post_token
+        SELECT post_token_encrypted
         FROM page_settings
-        WHERE page_id = ?
+        WHERE organization_id = ? AND page_id = ?
         LIMIT 1
-    `).bind(pageId).first<{ post_token?: string }>();
+    `).bind(workspaceId, pageId).first<{ post_token_encrypted?: string }>();
 
-    return String(result?.post_token || '').trim();
+    return String(await decryptSecret(env, result?.post_token_encrypted) || '').trim();
 }
 
 async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput) {
-    const { pageId, limit, after, pageToken, accessToken, cookieData } = input;
+    const { workspaceId, pageId, limit, after, pageToken, accessToken, cookieData } = input;
 
     if (!pageId) {
         return { success: false, error: 'Missing pageId' };
     }
 
-    const storedPageToken = pageToken?.trim() || await getStoredPageToken(env, pageId);
+    const storedPageToken = pageToken?.trim() || await getStoredPageToken(env, workspaceId, pageId);
     const freshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
     const authCandidates = buildAuthCandidates([
         freshPageToken,
@@ -361,7 +364,7 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
 }
 
 async function fetchHistoryPublishedPosts(env: Env, input: PublishedQueryInput) {
-    const { pageId, limit } = input;
+    const { workspaceId, pageId, limit } = input;
 
     await ensurePublishHistoryTable(env);
     await backfillLegacyPublishHistory(env);
@@ -386,12 +389,13 @@ async function fetchHistoryPublishedPosts(env: Env, input: PublishedQueryInput) 
             ph.warning_message,
             ph.created_at
         FROM publish_history ph
-        WHERE (? = '' OR ph.page_id = ?)
+        WHERE ph.organization_id = ?
+          AND (? = '' OR ph.page_id = ?)
         ORDER BY datetime(COALESCE(ph.published_at, ph.created_at)) DESC, ph.id DESC
         LIMIT ?
     `;
 
-    const results = await env.DB.prepare(query).bind(pageId, pageId, limit).all<Record<string, any>>();
+    const results = await env.DB.prepare(query).bind(workspaceId, pageId, pageId, limit).all<Record<string, any>>();
     const logs = (results.results || []).map((row) => ({
         ...row,
         facebook_url: buildFacebookPostUrl({
@@ -494,6 +498,7 @@ async function handleListRequest(env: Env, input: PublishedQueryInput) {
 
 app.get('/', async (c) => {
     const input: PublishedQueryInput = {
+        workspaceId: getWorkspaceId(c),
         pageId: String(c.req.query('pageId') || c.req.query('page_id') || '').trim(),
         limit: Math.min(parseInt(c.req.query('limit') || '200', 10) || 200, 500),
         source: normalizeSource(c.req.query('source')),
@@ -514,6 +519,7 @@ app.get('/', async (c) => {
 app.post('/', async (c) => {
     const body = await c.req.json().catch(() => ({})) as Partial<PublishedQueryInput>;
     const input: PublishedQueryInput = {
+        workspaceId: getWorkspaceId(c),
         pageId: String(body.pageId || '').trim(),
         limit: Math.min(parseInt(String(body.limit || '200'), 10) || 200, 500),
         source: normalizeSource(body.source),
@@ -535,14 +541,15 @@ app.delete('/:id', async (c) => {
     const id = String(c.req.param('id') || '').trim();
 
     try {
+        const workspaceId = getWorkspaceId(c);
         await ensurePublishHistoryTable(c.env);
 
         const row = await c.env.DB.prepare(`
             SELECT id, source, source_ref
             FROM publish_history
-            WHERE id = ?
+            WHERE organization_id = ? AND id = ?
             LIMIT 1
-        `).bind(id).first<{ id: number; source: string | null; source_ref: string | null }>();
+        `).bind(workspaceId, id).first<{ id: number; source: string | null; source_ref: string | null }>();
 
         if (!row?.id) {
             return c.json({ success: false, error: 'Published row not found' }, 404);
@@ -552,15 +559,18 @@ app.delete('/:id', async (c) => {
         const sourceRef = String(row.source_ref || '').trim();
 
         if (source === 'auto_post' && sourceRef) {
-            await c.env.DB.prepare('DELETE FROM auto_post_logs WHERE id = ?').bind(sourceRef).run();
+            await c.env.DB.prepare('DELETE FROM auto_post_logs WHERE organization_id = ? AND id = ?').bind(workspaceId, sourceRef).run();
         } else if (source === 'scheduled_queue' && sourceRef) {
-            await c.env.DB.prepare('DELETE FROM scheduled_publish_queue WHERE id = ?').bind(sourceRef).run();
+            await c.env.DB.prepare('DELETE FROM scheduled_publish_queue WHERE organization_id = ? AND id = ?').bind(workspaceId, sourceRef).run();
         } else if (source === 'reel' && sourceRef) {
-            await c.env.DB.prepare('DELETE FROM reel_uploads WHERE video_key = ? OR post_id = ? OR video_id = ?')
-                .bind(sourceRef, sourceRef, sourceRef).run();
+            await c.env.DB.prepare(`
+                DELETE FROM reel_uploads
+                WHERE organization_id = ?
+                  AND (video_key = ? OR post_id = ? OR video_id = ?)
+            `).bind(workspaceId, sourceRef, sourceRef, sourceRef).run();
         }
 
-        await c.env.DB.prepare('DELETE FROM publish_history WHERE id = ?').bind(id).run();
+        await c.env.DB.prepare('DELETE FROM publish_history WHERE organization_id = ? AND id = ?').bind(workspaceId, id).run();
         return c.json({ success: true });
     } catch (error) {
         return c.json({ success: false, error: String(error) }, 500);

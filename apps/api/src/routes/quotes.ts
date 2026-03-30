@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -12,13 +13,15 @@ app.get('/', async (c) => {
     const countOnly = c.req.query('countOnly');
 
     try {
+        const workspaceId = getWorkspaceId(c);
         // Get counts in single query (avoids 2 full table scans)
         const counts = await c.env.DB.prepare(`
             SELECT
                 COUNT(*) as total,
                 SUM(CASE WHEN used_by_pages IS NULL OR used_by_pages = '[]' OR used_by_pages = '' THEN 1 ELSE 0 END) as unused
             FROM quotes
-        `).first<{ total: number; unused: number }>();
+            WHERE organization_id = ?
+        `).bind(workspaceId).first<{ total: number; unused: number }>();
 
         const totalCount = counts?.total || 0;
         const unusedCount = { count: counts?.unused || 0 };
@@ -35,8 +38,8 @@ app.get('/', async (c) => {
 
         // Build query
         let query = 'SELECT * FROM quotes';
-        const conditions: string[] = [];
-        const params: any[] = [];
+        const conditions: string[] = ['organization_id = ?'];
+        const params: any[] = [workspaceId];
 
         // Get filter param (frontend sends filter=unused or filter=used)
         const filter = c.req.query('filter');
@@ -83,13 +86,14 @@ app.get('/', async (c) => {
 // POST /api/quotes - add new quote
 app.post('/', async (c) => {
     try {
+        const workspaceId = getWorkspaceId(c);
         const body = await c.req.json();
         const content = body.content || body.quote_text;
         if (!content) return c.json({ success: false, error: 'Missing content' }, 400);
 
         await c.env.DB.prepare(`
-            INSERT INTO quotes (quote_text, created_at) VALUES (?, ?)
-        `).bind(content, new Date().toISOString()).run();
+            INSERT INTO quotes (organization_id, quote_text, created_at) VALUES (?, ?, ?)
+        `).bind(workspaceId, content, new Date().toISOString()).run();
 
         return c.json({ success: true });
     } catch (error) {
@@ -100,8 +104,9 @@ app.post('/', async (c) => {
 // DELETE /api/quotes/:id or DELETE /api/quotes?id=xxx
 app.delete('/:id', async (c) => {
     try {
+        const workspaceId = getWorkspaceId(c);
         const id = c.req.param('id');
-        await c.env.DB.prepare(`DELETE FROM quotes WHERE id = ?`).bind(id).run();
+        await c.env.DB.prepare(`DELETE FROM quotes WHERE organization_id = ? AND id = ?`).bind(workspaceId, id).run();
         return c.json({ success: true });
     } catch (error) {
         return c.json({ success: false, error: String(error) }, 500);
@@ -111,9 +116,10 @@ app.delete('/:id', async (c) => {
 // Support query param: DELETE /api/quotes?id=xxx
 app.delete('/', async (c) => {
     try {
+        const workspaceId = getWorkspaceId(c);
         const id = c.req.query('id');
         if (!id) return c.json({ success: false, error: 'Missing id' }, 400);
-        await c.env.DB.prepare(`DELETE FROM quotes WHERE id = ?`).bind(id).run();
+        await c.env.DB.prepare(`DELETE FROM quotes WHERE organization_id = ? AND id = ?`).bind(workspaceId, id).run();
         return c.json({ success: true });
     } catch (error) {
         return c.json({ success: false, error: String(error) }, 500);
@@ -123,11 +129,12 @@ app.delete('/', async (c) => {
 // PUT /api/quotes/:id - mark as used
 app.put('/:id', async (c) => {
     try {
+        const workspaceId = getWorkspaceId(c);
         const id = c.req.param('id');
         const { used_by_pages } = await c.req.json();
 
-        await c.env.DB.prepare(`UPDATE quotes SET used_by_pages = ? WHERE id = ?`)
-            .bind(JSON.stringify(used_by_pages), id).run();
+        await c.env.DB.prepare(`UPDATE quotes SET used_by_pages = ? WHERE organization_id = ? AND id = ?`)
+            .bind(JSON.stringify(used_by_pages), workspaceId, id).run();
 
         return c.json({ success: true });
     } catch (error) {
