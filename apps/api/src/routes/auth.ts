@@ -34,7 +34,21 @@ function makeFallbackEmail(lineUserId: string) {
     return `line-${lineUserId}@users.pubilo.local`;
 }
 
+function isNonEmptyString(value: unknown): value is string {
+    return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasLineLoginConfig(env: Env) {
+    return isNonEmptyString(env.LINE_LOGIN_CHANNEL_ID)
+        && isNonEmptyString(env.LINE_LOGIN_CHANNEL_SECRET);
+}
+
 app.get('/login/line', async (c) => {
+    if (!hasLineLoginConfig(c.env)) {
+        console.error('[auth] LINE login is not configured: missing LINE_LOGIN_CHANNEL_ID or LINE_LOGIN_CHANNEL_SECRET');
+        return c.redirect(`${getAppOrigin(c.env, c.req.url)}/?auth_error=line_not_configured`);
+    }
+
     const returnTo = c.req.query('returnTo') || `${getAppOrigin(c.env, c.req.url)}/`;
     const state = crypto.randomUUID();
     const nonce = createLineNonce();
@@ -58,6 +72,11 @@ app.get('/login/line', async (c) => {
 });
 
 app.get('/callback/line', async (c) => {
+    if (!hasLineLoginConfig(c.env)) {
+        console.error('[auth] LINE callback is not configured: missing LINE_LOGIN_CHANNEL_ID or LINE_LOGIN_CHANNEL_SECRET');
+        return c.redirect(`${getAppOrigin(c.env, c.req.url)}/?auth_error=line_not_configured`);
+    }
+
     const oauthError = c.req.query('error');
     const code = c.req.query('code');
     const state = c.req.query('state');

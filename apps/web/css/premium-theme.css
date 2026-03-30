@@ -1,503 +1,285 @@
-/* Premium Theme Overrides */
+/* Premium Theme Overrides - "Shodai" Style */
+
+:root {
+    --primary: #6c5ce7; /* Shodai Purple */
+    --primary-hover: #5a4bcf;
+    --bg-color: #f5f6fa;
+    --card-bg: #ffffff;
+    --sidebar-bg: #ffffff;
+    --text-main: #2d3436;
+    --text-muted: #636e72;
+    --border-color: #f1f2f6;
+    --border-radius: 16px;
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.02);
+    --shadow-md: 0 8px 24px rgba(0,0,0,0.04);
+}
 
 /* Global Settings */
 body {
-    background: #f4f6fa !important; /* Slightly cooler, softer bg */
-    color: #0f172a !important; /* Richer text color */
+    background: var(--bg-color) !important;
+    color: var(--text-main) !important;
+    font-family: 'Inter', sans-serif !important;
 }
 
-/* Header styling with glassmorphism */
+/* Header styling */
 header.header {
-    background: rgba(255, 255, 255, 0.85) !important;
-    backdrop-filter: blur(12px) !important;
-    -webkit-backdrop-filter: blur(12px) !important;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.04) !important;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.02) !important;
+    background: var(--card-bg) !important;
+    border-bottom: none !important;
+    box-shadow: var(--shadow-sm) !important;
+    height: 70px !important;
+    padding: 0 2rem !important;
 }
 .logo {
-    color: #0f172a !important;
+    color: var(--primary) !important;
+    font-size: 1.5rem !important;
+    letter-spacing: -0.5px !important;
+}
+.logo svg {
+    color: var(--primary) !important;
+}
+.logo span {
+    display: none !important; /* Hide the v3 text for cleaner look */
 }
 
 /* Sidebar improvements */
 .sidebar {
-    background: rgba(255, 255, 255, 0.95) !important;
-    border-radius: 16px !important;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04) !important;
-    border: 1px solid rgba(0, 0, 0, 0.03) !important;
+    background: var(--sidebar-bg) !important;
+    border-radius: 0 !important;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.02) !important;
+    border: none !important;
+    border-right: 1px solid var(--border-color) !important;
+    padding-top: 1.5rem !important;
+    height: calc(100vh - 70px) !important;
+    top: 70px !important;
 }
-.sidebar-page-selector {
+
+.sidebar-page-selector, .sidebar-nav {
     background: transparent !important;
 }
-.sidebar-nav {
-    background: transparent !important;
-}
+
 .nav-section-title {
-    color: #94a3b8 !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.08em !important;
+    color: #b2bec3 !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.1em !important;
+    font-size: 0.7rem !important;
+    margin-bottom: 0.8rem !important;
+    padding-left: 1rem !important;
 }
+
 .nav-item {
-    border-radius: 12px !important;
-    padding: 0.75rem 1rem !important;
-    margin-bottom: 4px !important;
-    color: #475569 !important;
+    border-radius: 10px !important;
+    padding: 0.8rem 1rem !important;
+    margin: 0 1rem 8px 1rem !important;
+    color: var(--text-muted) !important;
     font-weight: 500 !important;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    font-size: 0.9rem !important;
+    transition: all 0.2s ease !important;
 }
+
 .nav-item:hover {
-    background: #f1f5f9 !important;
-    color: #0f172a !important;
-    transform: translateX(2px) !important;
+    background: #f8f9fa !important;
+    color: var(--primary) !important;
+    transform: none !important;
 }
 .nav-item.active {
-    background: #0f172a !important;
+    background: var(--primary) !important;
     color: #ffffff !important;
-    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15) !important;
+    box-shadow: 0 4px 12px rgba(108, 92, 231, 0.25) !important;
 }
 .nav-item.active svg {
     color: #ffffff !important;
 }
 
-/* Status Indicators */
-.status-indicator {
-    border-radius: 8px !important;
-    padding: 0.4rem 0.75rem !important;
+/* Main Layout adjustments */
+.app-layout {
+    background: var(--bg-color) !important;
+    padding: 2rem !important;
+    padding-left: calc(280px + 2rem) !important;
+    padding-top: calc(70px + 2rem) !important;
 }
-.status-indicator.valid {
-    background: #ecfdf5 !important;
-    color: #059669 !important;
-    box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.2) !important;
-}
-.status-indicator.invalid {
-    background: #fef2f2 !important;
-    color: #dc2626 !important;
-    box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.2) !important;
+
+/* Main Content Area Layout */
+.main-content {
+    gap: 1.5rem !important;
 }
 
 /* Core Layout Shadows & Borders */
 .card-preview, .card, .pending-panel {
-    border-radius: 20px !important;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.06) !important;
-    border: 1px solid rgba(255, 255, 255, 0.8) !important;
-    background: #ffffff !important;
+    border-radius: var(--border-radius) !important;
+    box-shadow: var(--shadow-md) !important;
+    border: none !important;
+    background: var(--card-bg) !important;
 }
 .card {
-    padding: 1.75rem !important;
+    padding: 2rem !important;
+}
+
+/* Card image area (Preview top part) */
+.card-image-area {
+    border-radius: var(--border-radius) var(--border-radius) 0 0 !important;
+    background: #f8f9fa !important;
+    border: 1px dashed #dfe6e9 !important;
 }
 
 /* Input Fields Premium Feel */
 .form-input, .form-select, .form-textarea {
-    border-radius: 12px !important;
-    border: 1px solid #e2e8f0 !important;
-    background: #f8fafc !important;
-    padding: 0.85rem 1rem !important;
-    color: #0f172a !important;
-    font-size: 0.9rem !important;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.01) !important;
-    transition: all 0.25s ease !important;
+    border-radius: 10px !important;
+    border: 1px solid #dfe6e9 !important;
+    background: #fdfdfd !important;
+    padding: 0.85rem 1.25rem !important;
+    color: var(--text-main) !important;
+    font-size: 0.95rem !important;
+    box-shadow: none !important;
+    transition: all 0.2s ease !important;
 }
 .form-label {
-    font-weight: 600 !important;
-    color: #334155 !important;
-    margin-bottom: 0.6rem !important;
+    font-weight: 500 !important;
+    color: var(--text-muted) !important;
+    margin-bottom: 0.5rem !important;
+    font-size: 0.9rem !important;
 }
 .form-input:focus, .form-select:focus, .form-textarea:focus {
     background: #ffffff !important;
-    border-color: #6366f1 !important;
-    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15) !important;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.1) !important;
     outline: none !important;
 }
 
 /* Premium Primary Buttons */
 .btn-publish {
-    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
-    border-radius: 14px !important;
-    padding: 0.9rem 2rem !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.5px !important;
-    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.25) !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    background: var(--primary) !important;
+    border-radius: 10px !important;
+    padding: 0.85rem 2rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0 !important;
+    color: white !important;
+    box-shadow: 0 4px 12px rgba(108, 92, 231, 0.2) !important;
+    transition: all 0.2s ease !important;
+    border: none !important;
+    width: 100% !important; /* Shodai buttons are typically full width or prominent */
+}
+.btn-publish:hover:not(:disabled) {
+    background: var(--primary-hover) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 16px rgba(108, 92, 231, 0.3) !important;
 }
 .btn-publish:disabled,
 .btn-publish.disabled {
-    background: #cbd5e1 !important;
-    color: #94a3b8 !important;
+    background: #dfe6e9 !important;
+    color: #b2bec3 !important;
     box-shadow: none !important;
-    transform: none !important;
-    cursor: not-allowed !important;
-    opacity: 0.55 !important;
-    pointer-events: none !important;
-}
-.btn-publish:hover:not(:disabled) {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35) !important;
-    background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%) !important;
-}
-.btn-publish:active:not(:disabled) {
-    transform: translateY(0) !important;
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2) !important;
-}
-.btn-publish.published {
-    background: linear-gradient(135deg, #10b981 0%, #34d399 100%) !important;
-    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.25) !important;
 }
 
-/* Setup area specific overrides */
-.card-image-area {
-    border-radius: 20px 20px 0 0 !important;
-    background: #0f172a !important; /* Slightly nicer dark */
-}
-
-/* The Upload Area Dashed Border */
+/* Upload Buttons */
 .upload-btn {
-    border: 2px dashed #cbd5e1 !important;
-    background: #f8fafc !important;
-    border-radius: 16px !important;
-    color: #64748b !important;
-    transition: all 0.3s ease !important;
+    border: 1.5px dashed #b2bec3 !important;
+    background: #ffffff !important;
+    border-radius: var(--border-radius) !important;
+    color: var(--text-muted) !important;
 }
 .upload-btn:hover {
-    border-color: #6366f1 !important;
-    background: rgba(99, 102, 241, 0.04) !important;
-    color: #6366f1 !important;
-    transform: scale(1.03) !important;
+    border-color: var(--primary) !important;
+    background: rgba(108, 92, 231, 0.02) !important;
+    color: var(--primary) !important;
 }
 .upload-btn svg {
-    color: #6366f1 !important; /* Tint the icon */
-    opacity: 0.8;
+    color: inherit !important;
 }
 
-/* Previews / Cards inside preview */
-.card-link-info {
-    background: #ffffff !important;
-    border-top: 1px solid #f1f5f9 !important;
+/* Status Badges */
+.status-indicator {
+    border-radius: 6px !important;
+    background: #f1f2f6 !important;
+    border: 1px solid #dfe6e9 !important;
 }
-.btn-learn-more {
-    border-radius: 8px !important;
-    background: #f1f5f9 !important;
-    border: 1px solid #e2e8f0 !important;
-    color: #334155 !important;
-    font-weight: 600 !important;
+.status-indicator.valid {
+    background: rgba(0, 184, 148, 0.1) !important;
+    color: #00b894 !important;
+    border-color: rgba(0, 184, 148, 0.2) !important;
 }
-.btn-learn-more:hover {
-    background: #e2e8f0 !important;
-}
-
-/* Adjustments for text mode stage */
-.text-preview-stage {
-    border-radius: 20px !important;
-    box-shadow: inset 0 2px 10px rgba(0,0,0,0.02) !important;
+.status-indicator.valid svg {
+    color: #00b894 !important;
 }
 
-/* Add subtle micro animations to all clickable elements */
-button {
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s !important;
+/* Data Tables (Pending / Published) */
+.table-header {
+    background: white !important;
+    color: #b2bec3 !important;
+    font-weight: 500 !important;
+    border-bottom: 2px solid #f1f2f6 !important;
+}
+.table-row {
+    border-bottom: 1px solid #f1f2f6 !important;
+    transition: background 0.2s ease !important;
+}
+.table-row:hover {
+    background: #fcfcfc !important;
 }
 
-/* Make manual schedule button look cooler */
-#newsManualScheduleClearBtn, #linkManualScheduleClearBtn, .schedule-clear-btn {
-    border-radius: 10px !important;
-    background: #f1f5f9 !important;
-    border: 1px solid #cbd5e1 !important;
-    color: #475569 !important;
-    transition: all 0.2s !important;
-}
-#newsManualScheduleClearBtn:hover, #linkManualScheduleClearBtn:hover, .schedule-clear-btn:hover {
-    background: #e2e8f0 !important;
-    color: #0f172a !important;
-}
-
-/* Page Selector dropdowns and inputs */
+/* Specific Page Selectors */
 .page-selector {
     background: #ffffff !important;
-    border: 1px solid #e2e8f0 !important;
-    border-radius: 14px !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.02) !important;
+    border: 1px solid #dfe6e9 !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
 }
 .page-selector:hover {
-    border-color: #cbd5e1 !important;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.04) !important;
-}
-.pubilo-auth-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: grid;
-    place-items: center;
-    background:
-        radial-gradient(circle at top left, rgba(255, 179, 71, 0.28), transparent 36%),
-        radial-gradient(circle at bottom right, rgba(245, 158, 11, 0.22), transparent 28%),
-        rgba(11, 18, 32, 0.92);
-    backdrop-filter: blur(12px);
+    border-color: #b2bec3 !important;
 }
 
-.pubilo-auth-overlay.is-hidden {
-    display: none;
+.text-background-pill {
+    background: #f1f2f6 !important;
+    color: var(--text-muted) !important;
+    border-radius: 8px !important;
 }
 
-.pubilo-auth-shell {
-    width: min(960px, calc(100vw - 32px));
-    display: grid;
-    grid-template-columns: minmax(260px, 1fr) minmax(320px, 440px);
-    gap: 24px;
-    align-items: stretch;
+/* Custom Checkboxes / Radios resembling Shodai */
+input[type="checkbox"] {
+    accent-color: var(--primary) !important;
 }
 
-.pubilo-auth-brand {
-    color: #f8fafc;
-    padding: 32px;
-    border-radius: 28px;
-    background: linear-gradient(145deg, rgba(245, 158, 11, 0.16), rgba(15, 23, 42, 0.35));
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 22px 80px rgba(15, 23, 42, 0.42);
+/* Schedule section buttons */
+#newsManualScheduleClearBtn, #linkManualScheduleClearBtn, .schedule-clear-btn {
+    background: white !important;
+    border: 1px solid #dfe6e9 !important;
+    color: var(--text-muted) !important;
+    border-radius: 8px !important;
+    font-weight: 500 !important;
+}
+#newsManualScheduleClearBtn:hover, #linkManualScheduleClearBtn:hover, .schedule-clear-btn:hover {
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
+    background: rgba(108, 92, 231, 0.05) !important;
 }
 
-.pubilo-auth-brand h1 {
-    margin: 0 0 12px;
-    font-size: clamp(2rem, 3vw, 3.1rem);
-    line-height: 1;
+/* Action buttons (like edit icons in the reference image) */
+.action-btn-edit {
+    background: var(--primary) !important;
+    color: white !important;
+    border-radius: 6px !important;
+    padding: 0.4rem 0.8rem !important;
+    font-size: 0.8rem !important;
+    border: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.4rem !important;
+    cursor: pointer !important;
+}
+.action-btn-delete {
+    background: white !important;
+    border: 1px solid #dfe6e9 !important;
+    color: var(--text-muted) !important;
+    border-radius: 6px !important;
+    padding: 0.4rem !important;
+    cursor: pointer !important;
 }
 
-.pubilo-auth-brand p {
-    margin: 0;
-    color: rgba(248, 250, 252, 0.74);
-    font-size: 1rem;
+/* Modals */
+.token-modal {
+    border-radius: var(--border-radius) !important;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.1) !important;
+    border: none !important;
 }
-
-.pubilo-auth-kicker,
-.pubilo-auth-label {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.4rem 0.75rem;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #fde68a;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-size: 0.72rem;
-    font-weight: 700;
-}
-
-.pubilo-auth-card {
-    display: grid;
-}
-
-.pubilo-auth-panel {
-    display: grid;
-    gap: 16px;
-    padding: 28px;
-    border-radius: 28px;
-    background: #fffaf2;
-    box-shadow: 0 24px 90px rgba(15, 23, 42, 0.24);
-}
-
-.pubilo-auth-panel h2 {
-    margin: 0;
-    color: #1f2937;
-    font-size: 1.7rem;
-    line-height: 1.1;
-}
-
-.pubilo-auth-copy,
-.pubilo-auth-note {
-    margin: 0;
-    color: #6b7280;
-    line-height: 1.6;
-}
-
-.pubilo-auth-error {
-    margin: 0;
-    padding: 12px 14px;
-    border-radius: 16px;
-    color: #991b1b;
-    background: #fee2e2;
-}
-
-.pubilo-auth-provider-btn,
-.pubilo-primary-btn {
-    display: inline-flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 52px;
-    border-radius: 16px;
-    border: 0;
-    background: linear-gradient(135deg, #f59e0b, #ea580c);
-    color: white;
-    font-weight: 700;
-    text-decoration: none;
-    cursor: pointer;
-}
-
-.pubilo-auth-provider-btn {
-    background: linear-gradient(135deg, #06c755, #00b900);
-}
-
-.pubilo-field {
-    display: grid;
-    gap: 8px;
-}
-
-.pubilo-field input {
-    min-height: 48px;
-    border: 1px solid #e5e7eb;
-    border-radius: 14px;
-    padding: 0 14px;
-    font: inherit;
-}
-
-.pubilo-plan-grid {
-    display: grid;
-    gap: 12px;
-}
-
-.pubilo-plan-card {
-    display: grid;
-    gap: 8px;
-    padding: 14px 16px;
-    border-radius: 18px;
-    border: 1px solid #e5e7eb;
-    background: white;
-    cursor: pointer;
-}
-
-.pubilo-plan-card input {
-    display: none;
-}
-
-.pubilo-plan-card.selected {
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.16);
-}
-
-.pubilo-plan-top {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: baseline;
-}
-
-.pubilo-plan-name {
-    font-weight: 700;
-    color: #111827;
-}
-
-.pubilo-workspace-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
-    margin-right: 12px;
-}
-
-.pubilo-workspace-chip button {
-    border: 0;
-    background: rgba(255, 255, 255, 0.16);
-    color: inherit;
-    border-radius: 999px;
-    padding: 6px 10px;
-    cursor: pointer;
-}
-
-.pubilo-billing-banner {
-    position: fixed;
-    left: 16px;
-    right: 16px;
-    bottom: 16px;
-    z-index: 9998;
-    padding: 12px 16px;
-    border-radius: 16px;
-    background: rgba(17, 24, 39, 0.94);
-    color: #fef3c7;
-    text-align: center;
-    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.28);
-}
-
-.pubilo-connect-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 18px;
-    margin: 16px 24px 0;
-    padding: 18px 20px;
-    border-radius: 20px;
-    background: linear-gradient(135deg, rgba(255, 247, 237, 0.95), rgba(254, 243, 199, 0.96));
-    border: 1px solid rgba(245, 158, 11, 0.22);
-    box-shadow: 0 16px 40px rgba(245, 158, 11, 0.12);
-}
-
-.pubilo-connect-banner.is-hidden {
-    display: none;
-}
-
-.pubilo-connect-copy {
-    display: grid;
-    gap: 6px;
-}
-
-.pubilo-connect-kicker {
-    font-size: 0.75rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #b45309;
-}
-
-.pubilo-connect-copy strong {
-    color: #111827;
-    font-size: 1.05rem;
-}
-
-.pubilo-connect-copy p {
-    margin: 0;
-    color: #6b7280;
-    line-height: 1.5;
-}
-
-.pubilo-connect-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-}
-
-.pubilo-connect-secondary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 52px;
-    padding: 0 18px;
-    border-radius: 16px;
-    border: 1px solid rgba(15, 23, 42, 0.12);
-    background: rgba(255, 255, 255, 0.82);
-    color: #111827;
-    font-weight: 700;
-    cursor: pointer;
-}
-
-@media (max-width: 860px) {
-    .pubilo-auth-shell {
-        grid-template-columns: 1fr;
-    }
-
-    .pubilo-workspace-chip {
-        display: none;
-    }
-
-    .pubilo-connect-banner {
-        margin: 12px 16px 0;
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    .pubilo-connect-actions {
-        width: 100%;
-        flex-direction: column;
-    }
-
-    .pubilo-connect-actions > * {
-        width: 100%;
-    }
+.token-modal-header {
+    border-bottom: 1px solid #f1f2f6 !important;
 }

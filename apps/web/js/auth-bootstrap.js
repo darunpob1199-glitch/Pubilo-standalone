@@ -34,6 +34,7 @@
             invalid_state: 'Session login หมดอายุ ลองกดเข้าสู่ระบบอีกครั้ง',
             access_denied: 'LINE login ถูกยกเลิกจากฝั่งผู้ใช้',
             line_callback: 'LINE login ล้มเหลว ลองใหม่อีกครั้ง',
+            line_not_configured: 'ระบบยังไม่ได้ตั้งค่า LINE Login (LINE_LOGIN_CHANNEL_ID/SECRET) บน API',
         };
 
         return messages[code] || 'เข้าสู่ระบบไม่สำเร็จ';
