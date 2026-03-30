@@ -61,10 +61,12 @@ async function ensureBaseTables(env: Env) {
     `).run();
 
     await env.DB.prepare(`
-        CREATE TABLE IF NOT EXISTS google_accounts (
-            google_sub TEXT PRIMARY KEY,
+        CREATE TABLE IF NOT EXISTS line_accounts (
+            line_user_id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
-            email TEXT NOT NULL,
+            email TEXT,
+            display_name TEXT,
+            picture_url TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
@@ -75,6 +77,8 @@ async function ensureBaseTables(env: Env) {
             state TEXT PRIMARY KEY,
             return_to TEXT,
             expires_at TEXT NOT NULL,
+            nonce TEXT,
+            code_verifier TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     `).run();
@@ -234,6 +238,18 @@ async function ensureBaseTables(env: Env) {
             plan.durationDays,
             plan.description,
         ).run();
+    }
+}
+
+async function ensureOauthStateColumns(env: Env) {
+    if (!(await tableExists(env, 'oauth_states'))) return;
+
+    if (!(await columnExists(env, 'oauth_states', 'nonce'))) {
+        await env.DB.prepare(`ALTER TABLE oauth_states ADD COLUMN nonce TEXT`).run();
+    }
+
+    if (!(await columnExists(env, 'oauth_states', 'code_verifier'))) {
+        await env.DB.prepare(`ALTER TABLE oauth_states ADD COLUMN code_verifier TEXT`).run();
     }
 }
 
@@ -708,6 +724,7 @@ async function ensureReelUploadsWorkspaceColumn(env: Env) {
 
 async function ensureSchemaInternal(env: Env) {
     await ensureBaseTables(env);
+    await ensureOauthStateColumns(env);
     await runMigration(env, 'page_settings_workspace_scope_v1', async () => {
         await migratePageSettings(env);
     });

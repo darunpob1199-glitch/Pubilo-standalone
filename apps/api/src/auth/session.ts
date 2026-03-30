@@ -45,6 +45,24 @@ export function resolveCookieDomain(appOrigin: string, apiOrigin: string): strin
     }
 }
 
+function rootSite(origin: string): string | null {
+    try {
+        const host = new URL(origin).hostname;
+        if (host === 'localhost') return 'localhost';
+        const parts = host.split('.');
+        if (parts.length < 2) return host;
+        return parts.slice(-2).join('.');
+    } catch {
+        return null;
+    }
+}
+
+function resolveSameSite(appOrigin: string, apiOrigin: string): 'Lax' | 'None' {
+    const appSite = rootSite(appOrigin);
+    const apiSite = rootSite(apiOrigin);
+    return appSite && apiSite && appSite === apiSite ? 'Lax' : 'None';
+}
+
 export async function hashToken(secret: string, token: string): Promise<string> {
     const digest = await crypto.subtle.digest(
         'SHA-256',
@@ -78,10 +96,11 @@ export function setSessionCookie(
     appOrigin: string,
     apiOrigin: string,
 ) {
+    const sameSite = resolveSameSite(appOrigin, apiOrigin);
     setCookie(c, SESSION_COOKIE_NAME, token, {
         httpOnly: true,
-        secure: appOrigin.startsWith('https://'),
-        sameSite: 'Lax',
+        secure: appOrigin.startsWith('https://') || apiOrigin.startsWith('https://'),
+        sameSite,
         path: '/',
         expires: new Date(expiresAt),
         domain: resolveCookieDomain(appOrigin, apiOrigin),

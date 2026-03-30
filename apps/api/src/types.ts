@@ -3,6 +3,8 @@ export interface Env {
     IMAGES: R2Bucket;
     GEMINI_API_KEY?: string;
     FREEIMAGE_API_KEY?: string;
+    LINE_LOGIN_CHANNEL_ID: string;
+    LINE_LOGIN_CHANNEL_SECRET: string;
     LINE_CHANNEL_ACCESS_TOKEN?: string;
     LINE_CHANNEL_SECRET?: string;
     LINE_USER_ID?: string;
@@ -10,8 +12,6 @@ export interface Env {
     APP_ORIGIN?: string;
     API_ORIGIN?: string;
     AUTH_SECRET: string;
-    GOOGLE_CLIENT_ID: string;
-    GOOGLE_CLIENT_SECRET: string;
     DATA_ENCRYPTION_KEY: string;
     INTERNAL_API_SECRET?: string;
 }

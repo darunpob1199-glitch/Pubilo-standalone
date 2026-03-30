@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { clearSessionCookie, createSession, deleteSessionByToken, getApiOrigin, getAppOrigin, getSessionFromRequest, SESSION_COOKIE_NAME, setSessionCookie, updateSessionWorkspace } from '../auth/session';
-import { buildGoogleAuthUrl, exchangeGoogleCode, fetchGoogleProfile } from '../auth/google';
+import { buildLineAuthUrl, createCodeChallenge, createCodeVerifier, createLineNonce, exchangeLineCode, fetchLineUserInfo, verifyLineIdToken } from '../auth/line';
 import type { Env } from '../types';
 import { getBillingPlan } from '../config/plans';
 import { getCookie } from 'hono/cookie';
@@ -30,39 +30,58 @@ async function uniqueWorkspaceSlug(env: Env, baseSlug: string) {
     }
 }
 
-app.get('/login/google', async (c) => {
+function makeFallbackEmail(lineUserId: string) {
+    return `line-${lineUserId}@users.pubilo.local`;
+}
+
+app.get('/login/line', async (c) => {
     const returnTo = c.req.query('returnTo') || `${getAppOrigin(c.env, c.req.url)}/`;
     const state = crypto.randomUUID();
+    const nonce = createLineNonce();
+    const codeVerifier = createCodeVerifier();
+    const codeChallenge = await createCodeChallenge(codeVerifier);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    const redirectUri = `${getApiOrigin(c.env, c.req.url)}/api/auth/callback/google`;
+    const redirectUri = `${getApiOrigin(c.env, c.req.url)}/api/auth/callback/line`;
 
     await c.env.DB.prepare(`
-        INSERT INTO oauth_states (state, return_to, expires_at, created_at)
-        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-    `).bind(state, returnTo, expiresAt).run();
+        INSERT INTO oauth_states (state, return_to, expires_at, nonce, code_verifier, created_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).bind(state, returnTo, expiresAt, nonce, codeVerifier).run();
 
-    return c.redirect(buildGoogleAuthUrl({
-        clientId: c.env.GOOGLE_CLIENT_ID,
+    return c.redirect(buildLineAuthUrl({
+        channelId: c.env.LINE_LOGIN_CHANNEL_ID,
         redirectUri,
         state,
+        nonce,
+        codeChallenge,
     }));
 });
 
-app.get('/callback/google', async (c) => {
+app.get('/callback/line', async (c) => {
+    const oauthError = c.req.query('error');
     const code = c.req.query('code');
     const state = c.req.query('state');
+
+    if (oauthError) {
+        return c.redirect(`${getAppOrigin(c.env, c.req.url)}/?auth_error=${encodeURIComponent(oauthError)}`);
+    }
 
     if (!code || !state) {
         return c.redirect(`${getAppOrigin(c.env, c.req.url)}/?auth_error=missing_code`);
     }
 
     const stateRow = await c.env.DB.prepare(`
-        SELECT state, return_to
+        SELECT state, return_to, nonce, code_verifier
         FROM oauth_states
         WHERE state = ?
           AND datetime(expires_at) > datetime('now')
         LIMIT 1
-    `).bind(state).first<{ state: string; return_to: string | null }>();
+    `).bind(state).first<{
+        state: string;
+        return_to: string | null;
+        nonce: string | null;
+        code_verifier: string | null;
+    }>();
 
     if (!stateRow) {
         return c.redirect(`${getAppOrigin(c.env, c.req.url)}/?auth_error=invalid_state`);
@@ -71,23 +90,56 @@ app.get('/callback/google', async (c) => {
     await c.env.DB.prepare(`DELETE FROM oauth_states WHERE state = ?`).bind(state).run();
 
     try {
-        const redirectUri = `${getApiOrigin(c.env, c.req.url)}/api/auth/callback/google`;
-        const token = await exchangeGoogleCode({
+        const redirectUri = `${getApiOrigin(c.env, c.req.url)}/api/auth/callback/line`;
+        const token = await exchangeLineCode({
             env: c.env,
             code,
             redirectUri,
+            codeVerifier: stateRow.code_verifier || '',
         });
-        const profile = await fetchGoogleProfile(token.access_token);
+
+        if (!token.id_token) {
+            throw new Error('LINE response missing id_token');
+        }
+
+        const verified = await verifyLineIdToken({
+            env: c.env,
+            idToken: token.id_token,
+            nonce: stateRow.nonce,
+        });
+        const profile = await fetchLineUserInfo(token.access_token).catch(() => null);
+
+        if (profile?.sub && verified.sub && profile.sub !== verified.sub) {
+            throw new Error('LINE userinfo subject mismatch');
+        }
+
+        const lineUserId = verified.sub || profile?.sub;
+        if (!lineUserId) {
+            throw new Error('LINE account is missing sub');
+        }
+
+        const realEmail = verified.email || profile?.email || null;
+        const accountEmail = realEmail || makeFallbackEmail(lineUserId);
+        const accountName = profile?.name || verified.name || `LINE User ${lineUserId.slice(0, 6)}`;
+        const avatarUrl = profile?.picture || verified.picture || null;
 
         const existingAccount = await c.env.DB.prepare(`
-            SELECT ga.user_id, u.name
-            FROM google_accounts ga
-            JOIN users u ON u.id = ga.user_id
-            WHERE ga.google_sub = ?
+            SELECT la.user_id
+            FROM line_accounts la
+            WHERE la.line_user_id = ?
             LIMIT 1
-        `).bind(profile.sub).first<{ user_id: string; name: string | null }>();
+        `).bind(lineUserId).first<{ user_id: string }>();
 
-        const userId = existingAccount?.user_id || crypto.randomUUID();
+        const existingUserByEmail = realEmail
+            ? await c.env.DB.prepare(`
+                SELECT id
+                FROM users
+                WHERE email = ?
+                LIMIT 1
+            `).bind(realEmail).first<{ id: string }>()
+            : null;
+
+        const userId = existingAccount?.user_id || existingUserByEmail?.id || crypto.randomUUID();
         const now = new Date().toISOString();
 
         await c.env.DB.prepare(`
@@ -101,22 +153,24 @@ app.get('/callback/google', async (c) => {
                 last_login_at = excluded.last_login_at
         `).bind(
             userId,
-            profile.email,
-            profile.name || profile.email,
-            profile.picture || null,
+            accountEmail,
+            accountName,
+            avatarUrl,
             now,
             now,
             now,
         ).run();
 
         await c.env.DB.prepare(`
-            INSERT INTO google_accounts (google_sub, user_id, email, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(google_sub) DO UPDATE SET
+            INSERT INTO line_accounts (line_user_id, user_id, email, display_name, picture_url, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(line_user_id) DO UPDATE SET
                 user_id = excluded.user_id,
                 email = excluded.email,
+                display_name = excluded.display_name,
+                picture_url = excluded.picture_url,
                 updated_at = excluded.updated_at
-        `).bind(profile.sub, userId, profile.email, now, now).run();
+        `).bind(lineUserId, userId, realEmail, accountName, avatarUrl, now, now).run();
 
         const memberships = await c.env.DB.prepare(`
             SELECT workspace_id
@@ -133,8 +187,8 @@ app.get('/callback/google', async (c) => {
 
         return c.redirect(stateRow.return_to || `${appOrigin}/`);
     } catch (error) {
-        console.error('[auth] Google callback failed:', error);
-        return c.redirect(`${getAppOrigin(c.env, c.req.url)}/?auth_error=google_callback`);
+        console.error('[auth] LINE callback failed:', error);
+        return c.redirect(`${getAppOrigin(c.env, c.req.url)}/?auth_error=line_callback`);
     }
 });
 

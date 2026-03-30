@@ -9,6 +9,8 @@ import {
     retryFailedPostActionJob,
     type PostActionType,
 } from '../lib/post-action-jobs';
+import { encryptSecret } from '../lib/encryption';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -18,7 +20,9 @@ function normalizeAction(value: unknown): PostActionType {
 
 app.get('/', async (c) => {
     try {
+        const workspaceId = getWorkspaceId(c);
         const jobs = await listPostActionJobs(c.env, {
+            organizationId: workspaceId,
             pageId: String(c.req.query('pageId') || '').trim(),
             action: String(c.req.query('action') || '').trim() as PostActionType | '',
             limit: Number(c.req.query('limit') || 20),
@@ -32,6 +36,7 @@ app.get('/', async (c) => {
 
 app.post('/', async (c) => {
     try {
+        const workspaceId = getWorkspaceId(c);
         const body = await c.req.json() as Record<string, any>;
         const pageId = String(body.pageId || '').trim();
         const action = normalizeAction(body.action);
@@ -53,22 +58,24 @@ app.post('/', async (c) => {
 
         if (postToken || hideToken || pageName) {
             await c.env.DB.prepare(`
-                INSERT INTO page_settings (page_id, page_name, post_token, hide_token, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(page_id) DO UPDATE SET
+                INSERT INTO page_settings (organization_id, page_id, page_name, post_token_encrypted, hide_token_encrypted, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(organization_id, page_id) DO UPDATE SET
                     page_name = COALESCE(excluded.page_name, page_settings.page_name),
-                    post_token = COALESCE(excluded.post_token, page_settings.post_token),
-                    hide_token = COALESCE(excluded.hide_token, page_settings.hide_token),
+                    post_token_encrypted = COALESCE(excluded.post_token_encrypted, page_settings.post_token_encrypted),
+                    hide_token_encrypted = COALESCE(excluded.hide_token_encrypted, page_settings.hide_token_encrypted),
                     updated_at = CURRENT_TIMESTAMP
             `).bind(
+                workspaceId,
                 pageId,
                 pageName || null,
-                postToken || null,
-                hideToken || null,
+                await encryptSecret(c.env, postToken || null),
+                await encryptSecret(c.env, hideToken || null),
             ).run();
         }
 
         const jobId = await createPostActionJob(c.env, {
+            organizationId: workspaceId,
             pageId,
             action,
             posts: posts.map((post: Record<string, any>) => ({
@@ -98,7 +105,7 @@ app.get('/:id', async (c) => {
     }
 
     try {
-        const detail = await getPostActionJobDetail(c.env, jobId);
+        const detail = await getPostActionJobDetail(c.env, getWorkspaceId(c), jobId);
         return c.json({ success: true, ...detail });
     } catch (error) {
         const message = String(error);
@@ -115,9 +122,10 @@ app.post('/:id/retry-failed', async (c) => {
     }
 
     try {
+        const workspaceId = getWorkspaceId(c);
         const body = await c.req.json().catch(() => ({})) as Record<string, any>;
         const itemIds = Array.isArray(body.itemIds) ? body.itemIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0) : [];
-        await retryFailedPostActionJob(c.env, jobId, itemIds);
+        await retryFailedPostActionJob(c.env, workspaceId, jobId, itemIds);
         c.executionCtx.waitUntil(processPendingPostActionJobs(c.env, { jobIds: [jobId], perJobLimit: 20, maxJobs: 1 }));
         return c.json({ success: true, jobId });
     } catch (error) {
@@ -135,7 +143,7 @@ app.post('/:id/cancel', async (c) => {
     }
 
     try {
-        await cancelPostActionJob(c.env, jobId);
+        await cancelPostActionJob(c.env, getWorkspaceId(c), jobId);
         return c.json({ success: true, jobId });
     } catch (error) {
         return c.json({ success: false, error: String(error) }, 500);

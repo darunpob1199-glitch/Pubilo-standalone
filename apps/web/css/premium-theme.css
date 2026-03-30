@@ -218,3 +218,209 @@ button {
     border-color: #cbd5e1 !important;
     box-shadow: 0 6px 16px rgba(0,0,0,0.04) !important;
 }
+.pubilo-auth-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    background:
+        radial-gradient(circle at top left, rgba(255, 179, 71, 0.28), transparent 36%),
+        radial-gradient(circle at bottom right, rgba(245, 158, 11, 0.22), transparent 28%),
+        rgba(11, 18, 32, 0.92);
+    backdrop-filter: blur(12px);
+}
+
+.pubilo-auth-overlay.is-hidden {
+    display: none;
+}
+
+.pubilo-auth-shell {
+    width: min(960px, calc(100vw - 32px));
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(320px, 440px);
+    gap: 24px;
+    align-items: stretch;
+}
+
+.pubilo-auth-brand {
+    color: #f8fafc;
+    padding: 32px;
+    border-radius: 28px;
+    background: linear-gradient(145deg, rgba(245, 158, 11, 0.16), rgba(15, 23, 42, 0.35));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 22px 80px rgba(15, 23, 42, 0.42);
+}
+
+.pubilo-auth-brand h1 {
+    margin: 0 0 12px;
+    font-size: clamp(2rem, 3vw, 3.1rem);
+    line-height: 1;
+}
+
+.pubilo-auth-brand p {
+    margin: 0;
+    color: rgba(248, 250, 252, 0.74);
+    font-size: 1rem;
+}
+
+.pubilo-auth-kicker,
+.pubilo-auth-label {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.75rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fde68a;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.pubilo-auth-card {
+    display: grid;
+}
+
+.pubilo-auth-panel {
+    display: grid;
+    gap: 16px;
+    padding: 28px;
+    border-radius: 28px;
+    background: #fffaf2;
+    box-shadow: 0 24px 90px rgba(15, 23, 42, 0.24);
+}
+
+.pubilo-auth-panel h2 {
+    margin: 0;
+    color: #1f2937;
+    font-size: 1.7rem;
+    line-height: 1.1;
+}
+
+.pubilo-auth-copy,
+.pubilo-auth-note {
+    margin: 0;
+    color: #6b7280;
+    line-height: 1.6;
+}
+
+.pubilo-auth-error {
+    margin: 0;
+    padding: 12px 14px;
+    border-radius: 16px;
+    color: #991b1b;
+    background: #fee2e2;
+}
+
+.pubilo-auth-provider-btn,
+.pubilo-primary-btn {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 52px;
+    border-radius: 16px;
+    border: 0;
+    background: linear-gradient(135deg, #f59e0b, #ea580c);
+    color: white;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.pubilo-auth-provider-btn {
+    background: linear-gradient(135deg, #06c755, #00b900);
+}
+
+.pubilo-field {
+    display: grid;
+    gap: 8px;
+}
+
+.pubilo-field input {
+    min-height: 48px;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 0 14px;
+    font: inherit;
+}
+
+.pubilo-plan-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.pubilo-plan-card {
+    display: grid;
+    gap: 8px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    border: 1px solid #e5e7eb;
+    background: white;
+    cursor: pointer;
+}
+
+.pubilo-plan-card input {
+    display: none;
+}
+
+.pubilo-plan-card.selected {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.16);
+}
+
+.pubilo-plan-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+}
+
+.pubilo-plan-name {
+    font-weight: 700;
+    color: #111827;
+}
+
+.pubilo-workspace-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    margin-right: 12px;
+}
+
+.pubilo-workspace-chip button {
+    border: 0;
+    background: rgba(255, 255, 255, 0.16);
+    color: inherit;
+    border-radius: 999px;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.pubilo-billing-banner {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    z-index: 9998;
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: rgba(17, 24, 39, 0.94);
+    color: #fef3c7;
+    text-align: center;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.28);
+}
+
+@media (max-width: 860px) {
+    .pubilo-auth-shell {
+        grid-template-columns: 1fr;
+    }
+
+    .pubilo-workspace-chip {
+        display: none;
+    }
+}

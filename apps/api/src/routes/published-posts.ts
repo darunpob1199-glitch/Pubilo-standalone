@@ -364,7 +364,7 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
 }
 
 async function fetchHistoryPublishedPosts(env: Env, input: PublishedQueryInput) {
-    const { pageId, limit } = input;
+    const { workspaceId, pageId, limit } = input;
 
     await ensurePublishHistoryTable(env);
     await backfillLegacyPublishHistory(env);
@@ -389,12 +389,13 @@ async function fetchHistoryPublishedPosts(env: Env, input: PublishedQueryInput) 
             ph.warning_message,
             ph.created_at
         FROM publish_history ph
-        WHERE (? = '' OR ph.page_id = ?)
+        WHERE ph.organization_id = ?
+          AND (? = '' OR ph.page_id = ?)
         ORDER BY datetime(COALESCE(ph.published_at, ph.created_at)) DESC, ph.id DESC
         LIMIT ?
     `;
 
-    const results = await env.DB.prepare(query).bind(pageId, pageId, limit).all<Record<string, any>>();
+    const results = await env.DB.prepare(query).bind(workspaceId, pageId, pageId, limit).all<Record<string, any>>();
     const logs = (results.results || []).map((row) => ({
         ...row,
         facebook_url: buildFacebookPostUrl({
@@ -540,14 +541,15 @@ app.delete('/:id', async (c) => {
     const id = String(c.req.param('id') || '').trim();
 
     try {
+        const workspaceId = getWorkspaceId(c);
         await ensurePublishHistoryTable(c.env);
 
         const row = await c.env.DB.prepare(`
             SELECT id, source, source_ref
             FROM publish_history
-            WHERE id = ?
+            WHERE organization_id = ? AND id = ?
             LIMIT 1
-        `).bind(id).first<{ id: number; source: string | null; source_ref: string | null }>();
+        `).bind(workspaceId, id).first<{ id: number; source: string | null; source_ref: string | null }>();
 
         if (!row?.id) {
             return c.json({ success: false, error: 'Published row not found' }, 404);
@@ -557,15 +559,18 @@ app.delete('/:id', async (c) => {
         const sourceRef = String(row.source_ref || '').trim();
 
         if (source === 'auto_post' && sourceRef) {
-            await c.env.DB.prepare('DELETE FROM auto_post_logs WHERE id = ?').bind(sourceRef).run();
+            await c.env.DB.prepare('DELETE FROM auto_post_logs WHERE organization_id = ? AND id = ?').bind(workspaceId, sourceRef).run();
         } else if (source === 'scheduled_queue' && sourceRef) {
-            await c.env.DB.prepare('DELETE FROM scheduled_publish_queue WHERE id = ?').bind(sourceRef).run();
+            await c.env.DB.prepare('DELETE FROM scheduled_publish_queue WHERE organization_id = ? AND id = ?').bind(workspaceId, sourceRef).run();
         } else if (source === 'reel' && sourceRef) {
-            await c.env.DB.prepare('DELETE FROM reel_uploads WHERE video_key = ? OR post_id = ? OR video_id = ?')
-                .bind(sourceRef, sourceRef, sourceRef).run();
+            await c.env.DB.prepare(`
+                DELETE FROM reel_uploads
+                WHERE organization_id = ?
+                  AND (video_key = ? OR post_id = ? OR video_id = ?)
+            `).bind(workspaceId, sourceRef, sourceRef, sourceRef).run();
         }
 
-        await c.env.DB.prepare('DELETE FROM publish_history WHERE id = ?').bind(id).run();
+        await c.env.DB.prepare('DELETE FROM publish_history WHERE organization_id = ? AND id = ?').bind(workspaceId, id).run();
         return c.json({ success: true });
     } catch (error) {
         return c.json({ success: false, error: String(error) }, 500);

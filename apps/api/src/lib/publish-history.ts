@@ -172,6 +172,7 @@ export async function backfillLegacyPublishHistory(env: Env): Promise<void> {
     if (await hasTable(env, 'auto_post_logs')) {
         await env.DB.prepare(`
             INSERT OR IGNORE INTO publish_history (
+                organization_id,
                 external_key,
                 page_id,
                 source,
@@ -185,6 +186,7 @@ export async function backfillLegacyPublishHistory(env: Env): Promise<void> {
                 created_at
             )
             SELECT
+                apl.organization_id,
                 'auto-post-log:' || apl.id,
                 apl.page_id,
                 'auto_post',
@@ -217,6 +219,7 @@ export async function backfillLegacyPublishHistory(env: Env): Promise<void> {
     if (await hasTable(env, 'scheduled_publish_queue')) {
         await env.DB.prepare(`
             INSERT OR IGNORE INTO publish_history (
+                organization_id,
                 external_key,
                 page_id,
                 source,
@@ -235,6 +238,7 @@ export async function backfillLegacyPublishHistory(env: Env): Promise<void> {
                 created_at
             )
             SELECT
+                q.organization_id,
                 'scheduled-queue:' || q.id,
                 q.page_id,
                 'scheduled_queue',
