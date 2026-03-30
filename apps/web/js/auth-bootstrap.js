@@ -1,5 +1,7 @@
 (function () {
     const SHOW_BILLING_BANNER = false;
+    let authReadyResolved = false;
+    let resolveAuthReadyPromise = null;
     const state = {
         authenticated: false,
         user: null,
@@ -8,6 +10,13 @@
         latestPaymentOrder: null,
         plans: [],
     };
+    const authReadyPromise = new Promise((resolve) => {
+        resolveAuthReadyPromise = (payload) => {
+            if (authReadyResolved) return;
+            authReadyResolved = true;
+            resolve(payload || true);
+        };
+    });
 
     const domReady = new Promise((resolve) => {
         if (document.readyState === 'loading') {
@@ -247,6 +256,7 @@
         ensureOverlay().classList.add('is-hidden');
         ensureHeaderControls();
         ensureBillingBanner();
+        resolveAuthReadyPromise?.(payload);
         return payload;
     }
 
@@ -264,5 +274,8 @@
         },
     };
 
-    window.PUBILO_AUTH_READY_PROMISE = bootstrap();
+    window.PUBILO_AUTH_READY_PROMISE = authReadyPromise;
+    bootstrap().catch((error) => {
+        console.warn('[PubiloAuth] bootstrap failed:', error);
+    });
 })();

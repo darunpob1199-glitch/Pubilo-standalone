@@ -3067,9 +3067,10 @@ async function bootstrapWorkspaceFacebookFlow() {
         userName: localStorage.getItem("fewfeed_userName") || "",
     };
 
-    if (hasAnyExtensionSessionData(localSession)) {
-        persistWorkspaceFacebookSessionSnapshot(localSession);
-        updateFacebookConnectBanner({ connected: true });
+    const hasLocalSession = hasAnyExtensionSessionData(localSession);
+
+    if (hasLocalSession) {
+        applyExtensionSessionData(localSession, "workspace-local-bootstrap");
     } else {
         const cachedWorkspaceSession = loadWorkspaceFacebookSessionSnapshot();
         if (cachedWorkspaceSession) {
@@ -3083,7 +3084,14 @@ async function bootstrapWorkspaceFacebookFlow() {
     });
 
     if (!hydrated && !hasLocalSessionData()) {
-        updateFacebookConnectBanner({ connected: false });
+        const synced = await syncWithExtensionNow().catch((error) => {
+            console.warn("[FEWFEED] Workspace bootstrap sync failed:", error);
+            return false;
+        });
+
+        if (!synced) {
+            updateFacebookConnectBanner({ connected: false });
+        }
     }
 }
 
