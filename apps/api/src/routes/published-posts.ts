@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import type { Env } from '../index';
 import { backfillLegacyPublishHistory, ensurePublishHistoryTable } from '../lib/publish-history';
+import { decryptSecret } from '../lib/encryption';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 const FB_API = 'https://graph.facebook.com/v21.0';
@@ -8,6 +10,7 @@ const FB_API = 'https://graph.facebook.com/v21.0';
 type PublishedSource = 'merged' | 'facebook' | 'history';
 
 type PublishedQueryInput = {
+    workspaceId: string;
     pageId: string;
     limit: number;
     source: PublishedSource;
@@ -266,27 +269,27 @@ async function fetchPinnedPostIds(
     return pinnedIds;
 }
 
-async function getStoredPageToken(env: Env, pageId: string): Promise<string> {
+async function getStoredPageToken(env: Env, workspaceId: string, pageId: string): Promise<string> {
     if (!pageId) return '';
 
     const result = await env.DB.prepare(`
-        SELECT post_token
+        SELECT post_token_encrypted
         FROM page_settings
-        WHERE page_id = ?
+        WHERE organization_id = ? AND page_id = ?
         LIMIT 1
-    `).bind(pageId).first<{ post_token?: string }>();
+    `).bind(workspaceId, pageId).first<{ post_token_encrypted?: string }>();
 
-    return String(result?.post_token || '').trim();
+    return String(await decryptSecret(env, result?.post_token_encrypted) || '').trim();
 }
 
 async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput) {
-    const { pageId, limit, after, pageToken, accessToken, cookieData } = input;
+    const { workspaceId, pageId, limit, after, pageToken, accessToken, cookieData } = input;
 
     if (!pageId) {
         return { success: false, error: 'Missing pageId' };
     }
 
-    const storedPageToken = pageToken?.trim() || await getStoredPageToken(env, pageId);
+    const storedPageToken = pageToken?.trim() || await getStoredPageToken(env, workspaceId, pageId);
     const freshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
     const authCandidates = buildAuthCandidates([
         freshPageToken,
@@ -494,6 +497,7 @@ async function handleListRequest(env: Env, input: PublishedQueryInput) {
 
 app.get('/', async (c) => {
     const input: PublishedQueryInput = {
+        workspaceId: getWorkspaceId(c),
         pageId: String(c.req.query('pageId') || c.req.query('page_id') || '').trim(),
         limit: Math.min(parseInt(c.req.query('limit') || '200', 10) || 200, 500),
         source: normalizeSource(c.req.query('source')),
@@ -514,6 +518,7 @@ app.get('/', async (c) => {
 app.post('/', async (c) => {
     const body = await c.req.json().catch(() => ({})) as Partial<PublishedQueryInput>;
     const input: PublishedQueryInput = {
+        workspaceId: getWorkspaceId(c),
         pageId: String(body.pageId || '').trim(),
         limit: Math.min(parseInt(String(body.limit || '200'), 10) || 200, 500),
         source: normalizeSource(body.source),

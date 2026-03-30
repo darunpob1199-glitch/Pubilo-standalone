@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
 import { recordPublishHistory } from '../lib/publish-history';
+import { decryptSecret } from '../lib/encryption';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -230,6 +232,7 @@ async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
     await env.DB.prepare(`
         CREATE TABLE IF NOT EXISTS scheduled_publish_queue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id TEXT NOT NULL,
             page_id TEXT NOT NULL,
             payload_json TEXT NOT NULL,
             batch_id TEXT,
@@ -272,6 +275,7 @@ async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
 
 async function enqueueScheduledPublish(
     env: Env,
+    organizationId: string,
     pageId: string,
     scheduledTime: number,
     payload: Record<string, unknown>,
@@ -281,13 +285,15 @@ async function enqueueScheduledPublish(
 
     const result = await env.DB.prepare(`
         INSERT INTO scheduled_publish_queue (
+            organization_id,
             page_id,
             payload_json,
             batch_id,
             scheduled_time,
             status
-        ) VALUES (?, ?, ?, ?, 'pending')
+        ) VALUES (?, ?, ?, ?, ?, 'pending')
     `).bind(
+        organizationId,
         pageId,
         JSON.stringify(payload),
         batchId || null,
@@ -769,10 +775,18 @@ app.post('/', async (c) => {
             historySourceRef,
             historyQueueJobId,
             historyScheduledTime,
+            organizationId: organizationIdFromBody,
         } = body;
 
         if (!pageId) {
             return c.json({ success: false, error: 'Missing pageId' }, 400);
+        }
+
+        const organizationId = String(
+            internalRun ? (organizationIdFromBody || c.req.header('x-workspace-id') || '') : getWorkspaceId(c)
+        ).trim();
+        if (!organizationId) {
+            return c.json({ success: false, error: 'Missing organizationId' }, 400);
         }
 
         let storedPageToken = pageToken;
@@ -781,11 +795,11 @@ app.post('/', async (c) => {
             console.log('[publish] No direct pageToken provided, checking D1 page_settings...');
             try {
                 const dbResult = await c.env.DB.prepare(
-                    'SELECT post_token FROM page_settings WHERE page_id = ? LIMIT 1'
-                ).bind(pageId).first<{ post_token: string | null }>();
+                    'SELECT post_token_encrypted FROM page_settings WHERE organization_id = ? AND page_id = ? LIMIT 1'
+                ).bind(organizationId, pageId).first<{ post_token_encrypted: string | null }>();
 
-                if (dbResult?.post_token) {
-                    storedPageToken = dbResult.post_token;
+                if (dbResult?.post_token_encrypted) {
+                    storedPageToken = await decryptSecret(c.env, dbResult.post_token_encrypted) || '';
                     console.log('[publish] Got stored Page Token from D1 page_settings');
                 }
             } catch (dbErr) {
@@ -886,6 +900,7 @@ app.post('/', async (c) => {
             }
 
             await recordPublishHistory(c.env, {
+                organizationId,
                 externalKey: String(historyExternalKey || `publish:${pageId}:${postId}`).trim(),
                 pageId,
                 source: historySourceName,
@@ -910,6 +925,7 @@ app.post('/', async (c) => {
                 for (const targetPageId of publishTargetPageIds) {
                     const queuePayload: Record<string, unknown> = {
                         ...body,
+                        organizationId,
                         pageId: targetPageId,
                         pageToken: '',
                         imageUrl: hostedImageUrl || finalImageUrl,
@@ -923,6 +939,7 @@ app.post('/', async (c) => {
 
                     const queueId = await enqueueScheduledPublish(
                         c.env,
+                        organizationId,
                         targetPageId,
                         scheduleTimestamp,
                         queuePayload,
@@ -1034,6 +1051,7 @@ app.post('/', async (c) => {
 
             const queueId = await enqueueScheduledPublish(
                 c.env,
+                organizationId,
                 pageId,
                 scheduleTimestamp,
                 queuePayload,

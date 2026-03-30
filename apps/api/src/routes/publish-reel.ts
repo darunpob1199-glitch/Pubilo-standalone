@@ -7,6 +7,8 @@ import {
     upsertReelUploadStage,
 } from '../lib/reel-uploads';
 import { recordPublishHistory } from '../lib/publish-history';
+import { decryptSecret } from '../lib/encryption';
+import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -553,15 +555,22 @@ app.post('/', async (c) => {
             });
         }
 
+        const organizationId = String(
+            internalRun ? (getValue('organizationId') || c.req.header('x-workspace-id') || '') : getWorkspaceId(c)
+        ).trim();
+        if (!organizationId) {
+            return c.json({ success: false, error: 'Missing organizationId' }, 400);
+        }
+
         let storedPageToken = pageToken;
         if (!storedPageToken) {
             try {
                 const dbResult = await c.env.DB.prepare(
-                    'SELECT post_token FROM page_settings WHERE page_id = ? LIMIT 1',
-                ).bind(pageId).first<{ post_token: string | null }>();
+                    'SELECT post_token_encrypted FROM page_settings WHERE organization_id = ? AND page_id = ? LIMIT 1',
+                ).bind(organizationId, pageId).first<{ post_token_encrypted: string | null }>();
 
-                if (dbResult?.post_token) {
-                    storedPageToken = dbResult.post_token.trim();
+                if (dbResult?.post_token_encrypted) {
+                    storedPageToken = (await decryptSecret(c.env, dbResult.post_token_encrypted) || '').trim();
                 }
             } catch (dbErr) {
                 console.error('[publish-reel] D1 error:', dbErr);
@@ -714,6 +723,7 @@ app.post('/', async (c) => {
             const parsedScheduledTime = Number(historyScheduledTimeRaw);
 
             await recordPublishHistory(c.env, {
+                organizationId,
                 externalKey: historyExternalKey || `reel:${videoKeyUsed || postId || videoId}`,
                 pageId,
                 source: historySource === 'scheduled_queue' ? 'scheduled_queue' : 'reel',

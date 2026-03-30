@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { decryptSecret } from '../lib/encryption';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -40,10 +41,16 @@ app.get('/', async (c) => {
     try {
         // Get all pages with auto_hide enabled
         const configs = await c.env.DB.prepare(`
-            SELECT page_id, hide_token, post_token, hide_types 
+            SELECT organization_id, page_id, hide_token_encrypted, post_token_encrypted, hide_types 
             FROM page_settings 
             WHERE auto_hide = 1 AND hide_types IS NOT NULL AND hide_types != ''
-        `).all<{ page_id: string; hide_token: string | null; post_token: string | null; hide_types: string }>();
+        `).all<{
+            organization_id: string;
+            page_id: string;
+            hide_token_encrypted: string | null;
+            post_token_encrypted: string | null;
+            hide_types: string;
+        }>();
 
         if (!configs.results?.length) {
             return c.json({ success: true, message: 'No pages with auto-hide enabled', processed: 0 });
@@ -55,7 +62,8 @@ app.get('/', async (c) => {
         const results: any[] = [];
 
         for (const config of configs.results) {
-            const token = config.hide_token || config.post_token;
+            const token = (await decryptSecret(c.env, config.hide_token_encrypted))
+                || (await decryptSecret(c.env, config.post_token_encrypted));
 
             if (!token) {
                 results.push({ page_id: config.page_id, status: 'skipped', reason: 'no_token' });
@@ -69,8 +77,12 @@ app.get('/', async (c) => {
             // Check each post individually using point lookup (uses autoindex, reads 1 row each)
             const postsToHide: string[] = [];
             for (const postId of recentPosts) {
-                const existing = await c.env.DB.prepare(`SELECT 1 FROM hidden_posts WHERE page_id = ? AND post_id = ? LIMIT 1`)
-                    .bind(config.page_id, postId).first();
+                const existing = await c.env.DB.prepare(`
+                    SELECT 1
+                    FROM hidden_posts
+                    WHERE organization_id = ? AND page_id = ? AND post_id = ?
+                    LIMIT 1
+                `).bind(config.organization_id, config.page_id, postId).first();
                 if (!existing) {
                     postsToHide.push(postId);
                 }
@@ -84,8 +96,10 @@ app.get('/', async (c) => {
             for (const postId of postsToProcess) {
                 const success = await hidePost(postId, token);
                 if (success) {
-                    await c.env.DB.prepare(`INSERT OR IGNORE INTO hidden_posts (page_id, post_id, hidden_at) VALUES (?, ?, ?)`)
-                        .bind(config.page_id, postId, new Date().toISOString()).run();
+                    await c.env.DB.prepare(`
+                        INSERT OR IGNORE INTO hidden_posts (organization_id, page_id, post_id, hidden_at)
+                        VALUES (?, ?, ?, ?)
+                    `).bind(config.organization_id, config.page_id, postId, new Date().toISOString()).run();
                     hiddenCount++;
                     totalHidden++;
                 }

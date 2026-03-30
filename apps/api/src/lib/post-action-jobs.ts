@@ -1,4 +1,5 @@
 import type { Env } from '../index';
+import { decryptSecret } from './encryption';
 
 const FB_API = 'https://graph.facebook.com/v21.0';
 
@@ -20,6 +21,7 @@ export type PostActionJobInput = {
 
 type PostActionJobRow = {
     id: number;
+    organization_id: string;
     page_id: string;
     action: PostActionType;
     status: string;
@@ -122,19 +124,23 @@ export async function ensurePostActionTables(env: Env): Promise<void> {
     `).run();
 }
 
-async function resolvePageActionToken(env: Env, pageId: string, action: PostActionType): Promise<string> {
+async function resolvePageActionToken(env: Env, organizationId: string, pageId: string, action: PostActionType): Promise<string> {
     const result = await env.DB.prepare(`
-        SELECT post_token, hide_token
+        SELECT post_token_encrypted, hide_token_encrypted
         FROM page_settings
-        WHERE page_id = ?
+        WHERE organization_id = ? AND page_id = ?
         LIMIT 1
-    `).bind(pageId).first<{ post_token?: string | null; hide_token?: string | null }>();
+    `).bind(organizationId, pageId).first<{ post_token_encrypted?: string | null; hide_token_encrypted?: string | null }>();
 
     if (action === 'hide') {
-        return String(result?.hide_token || result?.post_token || '').trim();
+        return String(
+            (await decryptSecret(env, result?.hide_token_encrypted))
+            || (await decryptSecret(env, result?.post_token_encrypted))
+            || ''
+        ).trim();
     }
 
-    return String(result?.post_token || '').trim();
+    return String(await decryptSecret(env, result?.post_token_encrypted) || '').trim();
 }
 
 async function refreshPostActionJobStats(env: Env, jobId: number): Promise<void> {
@@ -473,14 +479,14 @@ export async function processPendingPostActionJobs(env: Env, options?: {
 
     const jobsQuery = targetJobIds.length > 0
         ? `
-            SELECT id, page_id, action, status
+            SELECT id, organization_id, page_id, action, status
             FROM post_action_jobs
             WHERE id IN (${targetJobIds.map(() => '?').join(', ')})
               AND status IN ('pending', 'processing')
             ORDER BY id ASC
         `
         : `
-            SELECT id, page_id, action, status
+            SELECT id, organization_id, page_id, action, status
             FROM post_action_jobs
             WHERE status IN ('pending', 'processing')
             ORDER BY id ASC
@@ -506,7 +512,7 @@ export async function processPendingPostActionJobs(env: Env, options?: {
             }
         }
 
-        const token = await resolvePageActionToken(env, job.page_id, job.action);
+        const token = await resolvePageActionToken(env, job.organization_id, job.page_id, job.action);
         if (!token) {
             await env.DB.prepare(`
                 UPDATE post_action_items

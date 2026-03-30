@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { decryptSecret } from '../lib/encryption';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -14,10 +15,10 @@ app.get('/', async (c) => {
 
         // Get pages with post_token
         const pages = await c.env.DB.prepare(`
-            SELECT page_id, page_name, post_token, page_color 
+            SELECT organization_id, page_id, page_name, post_token_encrypted, page_color 
             FROM page_settings 
-            WHERE auto_schedule = 1 AND post_token IS NOT NULL
-        `).all<{ page_id: string; page_name: string; post_token: string; page_color: string }>();
+            WHERE auto_schedule = 1 AND post_token_encrypted IS NOT NULL
+        `).all<{ organization_id: string; page_id: string; page_name: string; post_token_encrypted: string; page_color: string }>();
 
         if (!pages.results?.length) {
             return c.json({ success: true, message: 'No pages with auto_schedule enabled', count: 0 });
@@ -27,7 +28,12 @@ app.get('/', async (c) => {
 
         for (const page of pages.results) {
             try {
-                const fbUrl = `https://graph.facebook.com/v21.0/${page.page_id}/insights?metric=monetization_approximate_earnings&access_token=${page.post_token}`;
+                const postToken = await decryptSecret(c.env, page.post_token_encrypted);
+                if (!postToken) {
+                    results.push({ pageId: page.page_id, pageName: page.page_name, error: 'Missing page token' });
+                    continue;
+                }
+                const fbUrl = `https://graph.facebook.com/v21.0/${page.page_id}/insights?metric=monetization_approximate_earnings&access_token=${postToken}`;
                 const fbResponse = await fetch(fbUrl);
                 const fbData = await fbResponse.json() as any;
 
@@ -48,13 +54,13 @@ app.get('/', async (c) => {
 
                 // Upsert earnings
                 await c.env.DB.prepare(`
-                    INSERT INTO earnings_history (page_id, page_name, date, daily_earnings, weekly_earnings, monthly_earnings)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(page_id, date) DO UPDATE SET 
+                    INSERT INTO earnings_history (organization_id, page_id, page_name, date, daily_earnings, weekly_earnings, monthly_earnings)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(organization_id, page_id, date) DO UPDATE SET 
                         daily_earnings = excluded.daily_earnings,
                         weekly_earnings = excluded.weekly_earnings,
                         monthly_earnings = excluded.monthly_earnings
-                `).bind(page.page_id, page.page_name, dailyDate, dailyEarnings, weeklyEarnings, monthlyEarnings).run();
+                `).bind(page.organization_id, page.page_id, page.page_name, dailyDate, dailyEarnings, weeklyEarnings, monthlyEarnings).run();
 
                 results.push({
                     pageId: page.page_id,
