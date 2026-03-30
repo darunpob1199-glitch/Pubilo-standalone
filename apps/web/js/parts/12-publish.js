@@ -1539,6 +1539,7 @@ let fbCookie = null;
 let fbToken = null; // Ads Token (for creating ad creatives)
 let fbPostToken = null; // Post Token from Postcron (for fetching pages)
 let allPages = [];
+let lastSessionDrivenFetchKey = "";
 let selectedPageIndex = 0;
 let selectedTargetPageIds = [];
 let targetPageSearchQuery = "";
@@ -2677,6 +2678,16 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
         return false;
     }
 
+    const previousAdsToken =
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        fbToken ||
+        "";
+    const previousPostToken =
+        localStorage.getItem("fewfeed_postToken") ||
+        fbPostToken ||
+        "";
+
     persistWorkspaceFacebookSessionSnapshot(session);
 
     if (session.adsToken) {
@@ -2727,7 +2738,16 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
         !!effectivePostToken,
     );
 
-    if (effectiveAdsToken || effectivePostToken) {
+    const currentFetchKey = `${effectiveAdsToken}::${effectivePostToken}::${effectiveUserId}`;
+    const tokenChanged =
+        effectiveAdsToken !== previousAdsToken ||
+        effectivePostToken !== previousPostToken;
+    const shouldRefreshFromSession =
+        !!(effectiveAdsToken || effectivePostToken) &&
+        (allPages.length === 0 || tokenChanged || currentFetchKey !== lastSessionDrivenFetchKey);
+
+    if (shouldRefreshFromSession) {
+        lastSessionDrivenFetchKey = currentFetchKey;
         fetchPages(effectiveAdsToken || effectivePostToken);
         fetchAdAccounts(effectiveAdsToken || effectivePostToken);
     }

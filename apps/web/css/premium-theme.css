@@ -212,7 +212,84 @@ header.header {
     color: #00b894 !important;
 }
 
-/* Data Tables (Pending / Published) */
+/* Data Tables & Filters (Pending / Published / Tool) */
+.pending-stat {
+    background: #ffffff !important;
+    border-radius: var(--border-radius) !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow: var(--shadow-sm) !important;
+    padding: 1.5rem !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+.pending-stat:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: var(--shadow-md) !important;
+}
+
+.pending-filter-bar {
+    background: #ffffff !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius) !important;
+    box-shadow: var(--shadow-sm) !important;
+    padding: 1.25rem 1.5rem !important;
+    gap: 1rem !important;
+}
+
+.pending-filter-input, .pending-filter-select {
+    border-radius: 12px !important;
+    border: 1px solid #dfe6e9 !important;
+    background: #fdfdfd !important;
+    padding: 0.75rem 1.25rem !important;
+    color: var(--text-main) !important;
+    font-size: 0.9rem !important;
+    transition: all 0.2s ease !important;
+}
+
+.pending-filter-input:focus, .pending-filter-select:focus {
+    background: #ffffff !important;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.1) !important;
+    outline: none !important;
+}
+
+.pending-filter-chip {
+    border-radius: 24px !important;
+    padding: 0.6rem 1.25rem !important;
+    background: #f1f2f6 !important;
+    border: 1px solid transparent !important;
+    color: var(--text-muted) !important;
+    font-weight: 500 !important;
+    font-size: 0.85rem !important;
+    transition: all 0.2s ease !important;
+}
+
+.pending-filter-chip:hover {
+    background: #dfe6e9 !important;
+    color: var(--text-main) !important;
+}
+
+.pending-filter-chip.is-active {
+    background: var(--primary) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(108, 92, 231, 0.25) !important;
+}
+
+.pending-refresh-btn {
+    border-radius: 12px !important;
+    padding: 0.75rem 1.5rem !important;
+    background: #ffffff !important;
+    border: 1px solid #dfe6e9 !important;
+    color: var(--text-main) !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+
+.pending-refresh-btn:hover {
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
+    background: rgba(108, 92, 231, 0.05) !important;
+}
+
 .table-header {
     background: white !important;
     color: #b2bec3 !important;

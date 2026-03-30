@@ -293,6 +293,46 @@
             .published-date-filter {
                 flex: 0 0 170px;
                 min-width: 170px;
+                position: relative;
+            }
+
+            .published-date-filter .pending-filter-input,
+            .published-date-filter .flatpickr-input {
+                padding-right: 2.25rem;
+                font-weight: 600;
+                letter-spacing: 0.01em;
+            }
+
+            .published-date-filter .flatpickr-input {
+                background: #ffffff;
+                color: #0f172a;
+            }
+
+            .published-date-filter .flatpickr-input::placeholder {
+                color: #94a3b8;
+                font-weight: 500;
+            }
+
+            .published-date-filter::after {
+                content: "";
+                position: absolute;
+                right: 0.78rem;
+                top: 50%;
+                width: 1.05rem;
+                height: 1.05rem;
+                transform: translateY(-50%);
+                pointer-events: none;
+                opacity: 0.75;
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364758b' stroke-width='2'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'/%3E%3Cline x1='16' y1='2' x2='16' y2='6'/%3E%3Cline x1='8' y1='2' x2='8' y2='6'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3C/svg%3E");
+                background-size: contain;
+                background-repeat: no-repeat;
+                background-position: center;
+            }
+
+            .flatpickr-calendar {
+                border: 1px solid #dbe4f0;
+                border-radius: 12px;
+                box-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
             }
 
             .published-source-badge {

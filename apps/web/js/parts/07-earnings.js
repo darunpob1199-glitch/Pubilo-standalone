@@ -130,7 +130,12 @@ function showPublishedPanel() {
     publishedPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
     document.body.style.overflow = "hidden";
-    loadPublishedPosts();
+    const currentPageId = getCurrentPageId();
+    const shouldSilentRefresh =
+        currentPublishedPosts.length > 0 &&
+        currentPublishedPageId &&
+        currentPublishedPageId === currentPageId;
+    loadPublishedPosts({ silent: shouldSilentRefresh });
 }
 
 const publishedFilters = {
@@ -141,6 +146,12 @@ const publishedFilters = {
 };
 
 let currentPublishedPosts = [];
+let currentPublishedPageId = "";
+const publishedLoadState = {
+    loading: false,
+    activePageId: "",
+    lastLoadedAt: 0,
+};
 
 function getPublishedEmptyCopy() {
     return "ยังไม่พบโพสต์ของเพจนี้";
@@ -468,7 +479,12 @@ function syncPublishedFilterInputs() {
     syncPublishedDayFiltersUi();
 }
 
-async function loadPublishedPosts() {
+async function loadPublishedPosts(options = {}) {
+    const opts = {
+        silent: false,
+        force: false,
+        ...(options || {}),
+    };
     const pageId = getCurrentPageId();
     const summaryEl = document.getElementById("publishedSummaryBar");
     const adsToken =
@@ -483,18 +499,44 @@ async function loadPublishedPosts() {
     const cookie = fbCookie || localStorage.getItem("fewfeed_cookie") || "";
 
     if (!pageId) {
+        currentPublishedPosts = [];
+        currentPublishedPageId = "";
+        publishedLoadState.activePageId = "";
+        publishedLoadState.loading = false;
         if (summaryEl) summaryEl.innerHTML = "";
         publishedTableContainer.innerHTML = '<div class="pending-empty">Please select a Page first</div>';
         return;
     }
 
-    publishedTableContainer.innerHTML = `
+    const now = Date.now();
+    const samePageRequest = publishedLoadState.activePageId === pageId;
+    const requestedTooSoon = samePageRequest && now - publishedLoadState.lastLoadedAt < 700;
+    if (!opts.force) {
+        if (publishedLoadState.loading && samePageRequest) {
+            return;
+        }
+        if (requestedTooSoon) {
+            return;
+        }
+    }
+
+    const isPageChanged = currentPublishedPageId !== pageId;
+    if (isPageChanged) {
+        currentPublishedPosts = [];
+    }
+
+    publishedLoadState.loading = true;
+    publishedLoadState.activePageId = pageId;
+
+    if (!opts.silent && (isPageChanged || currentPublishedPosts.length === 0)) {
+        publishedTableContainer.innerHTML = `
         <div class="pending-skeleton">
           <div class="pending-skeleton-row"><div class="sk-img"></div><div class="sk-text"></div><div class="sk-date"></div><div class="sk-badge"></div></div>
           <div class="pending-skeleton-row"><div class="sk-img"></div><div class="sk-text"></div><div class="sk-date"></div><div class="sk-badge"></div></div>
           <div class="pending-skeleton-row"><div class="sk-img"></div><div class="sk-text"></div><div class="sk-date"></div><div class="sk-badge"></div></div>
         </div>
     `;
+    }
 
     try {
         const response = await fetch("/api/published-posts", {
@@ -517,11 +559,15 @@ async function loadPublishedPosts() {
         }
 
         currentPublishedPosts = Array.isArray(data.logs) ? data.logs : [];
+        currentPublishedPageId = pageId;
+        publishedLoadState.lastLoadedAt = Date.now();
         renderPublishedOverview(currentPublishedPosts);
         syncPublishedFilterInputs();
         renderPublishedPostsWithFilters();
     } catch (err) {
         publishedTableContainer.innerHTML = `<div class="pending-empty">Error: ${err.message}</div>`;
+    } finally {
+        publishedLoadState.loading = false;
     }
 }
 
@@ -533,7 +579,7 @@ const publishedDateInput = document.getElementById("publishedDateInput");
 
 if (publishedRefreshBtn && !publishedRefreshBtn.dataset.bound) {
     publishedRefreshBtn.dataset.bound = "true";
-    publishedRefreshBtn.addEventListener("click", () => loadPublishedPosts());
+    publishedRefreshBtn.addEventListener("click", () => loadPublishedPosts({ force: true }));
 }
 
 if (publishedSearchInput && !publishedSearchInput.dataset.bound) {
