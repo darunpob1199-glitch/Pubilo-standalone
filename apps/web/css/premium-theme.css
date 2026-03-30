@@ -1,0 +1,210 @@
+/* Premium Theme Overrides */
+
+/* Global Settings */
+body {
+    background: #f4f6fa !important; /* Slightly cooler, softer bg */
+    color: #0f172a !important; /* Richer text color */
+}
+
+/* Header styling with glassmorphism */
+header.header {
+    background: rgba(255, 255, 255, 0.85) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04) !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.02) !important;
+}
+.logo {
+    color: #0f172a !important;
+}
+
+/* Sidebar improvements */
+.sidebar {
+    background: rgba(255, 255, 255, 0.95) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04) !important;
+    border: 1px solid rgba(0, 0, 0, 0.03) !important;
+}
+.sidebar-page-selector {
+    background: transparent !important;
+}
+.sidebar-nav {
+    background: transparent !important;
+}
+.nav-section-title {
+    color: #94a3b8 !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.08em !important;
+}
+.nav-item {
+    border-radius: 12px !important;
+    padding: 0.75rem 1rem !important;
+    margin-bottom: 4px !important;
+    color: #475569 !important;
+    font-weight: 500 !important;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+.nav-item:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    transform: translateX(2px) !important;
+}
+.nav-item.active {
+    background: #0f172a !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15) !important;
+}
+.nav-item.active svg {
+    color: #ffffff !important;
+}
+
+/* Status Indicators */
+.status-indicator {
+    border-radius: 8px !important;
+    padding: 0.4rem 0.75rem !important;
+}
+.status-indicator.valid {
+    background: #ecfdf5 !important;
+    color: #059669 !important;
+    box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.2) !important;
+}
+.status-indicator.invalid {
+    background: #fef2f2 !important;
+    color: #dc2626 !important;
+    box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.2) !important;
+}
+
+/* Core Layout Shadows & Borders */
+.card-preview, .card, .pending-panel {
+    border-radius: 20px !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.8) !important;
+    background: #ffffff !important;
+}
+.card {
+    padding: 1.75rem !important;
+}
+
+/* Input Fields Premium Feel */
+.form-input, .form-select, .form-textarea {
+    border-radius: 12px !important;
+    border: 1px solid #e2e8f0 !important;
+    background: #f8fafc !important;
+    padding: 0.85rem 1rem !important;
+    color: #0f172a !important;
+    font-size: 0.9rem !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.01) !important;
+    transition: all 0.25s ease !important;
+}
+.form-label {
+    font-weight: 600 !important;
+    color: #334155 !important;
+    margin-bottom: 0.6rem !important;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+    background: #ffffff !important;
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15) !important;
+    outline: none !important;
+}
+
+/* Premium Primary Buttons */
+.btn-publish {
+    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
+    border-radius: 14px !important;
+    padding: 0.9rem 2rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.5px !important;
+    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.25) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+.btn-publish:hover:not(:disabled) {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35) !important;
+    background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%) !important;
+}
+.btn-publish:active:not(:disabled) {
+    transform: translateY(0) !important;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2) !important;
+}
+.btn-publish.published {
+    background: linear-gradient(135deg, #10b981 0%, #34d399 100%) !important;
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.25) !important;
+}
+
+/* Setup area specific overrides */
+.card-image-area {
+    border-radius: 20px 20px 0 0 !important;
+    background: #0f172a !important; /* Slightly nicer dark */
+}
+
+/* The Upload Area Dashed Border */
+.upload-btn {
+    border: 2px dashed #cbd5e1 !important;
+    background: #f8fafc !important;
+    border-radius: 16px !important;
+    color: #64748b !important;
+    transition: all 0.3s ease !important;
+}
+.upload-btn:hover {
+    border-color: #6366f1 !important;
+    background: rgba(99, 102, 241, 0.04) !important;
+    color: #6366f1 !important;
+    transform: scale(1.03) !important;
+}
+.upload-btn svg {
+    color: #6366f1 !important; /* Tint the icon */
+    opacity: 0.8;
+}
+
+/* Previews / Cards inside preview */
+.card-link-info {
+    background: #ffffff !important;
+    border-top: 1px solid #f1f5f9 !important;
+}
+.btn-learn-more {
+    border-radius: 8px !important;
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #334155 !important;
+    font-weight: 600 !important;
+}
+.btn-learn-more:hover {
+    background: #e2e8f0 !important;
+}
+
+/* Adjustments for text mode stage */
+.text-preview-stage {
+    border-radius: 20px !important;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.02) !important;
+}
+
+/* Add subtle micro animations to all clickable elements */
+button {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s !important;
+}
+
+/* Make manual schedule button look cooler */
+#newsManualScheduleClearBtn, #linkManualScheduleClearBtn, .schedule-clear-btn {
+    border-radius: 10px !important;
+    background: #f1f5f9 !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #475569 !important;
+    transition: all 0.2s !important;
+}
+#newsManualScheduleClearBtn:hover, #linkManualScheduleClearBtn:hover, .schedule-clear-btn:hover {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+/* Page Selector dropdowns and inputs */
+.page-selector {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 14px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.02) !important;
+}
+.page-selector:hover {
+    border-color: #cbd5e1 !important;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.04) !important;
+}
