@@ -2,8 +2,11 @@
 // ============================================
 let lastPublishedUrl = null;
 const TEXT_BACKGROUND_STORAGE_KEY_PREFIX = "fewfeed_textBackgroundPreset_";
+const WORKSPACE_FACEBOOK_SESSION_MAP_KEY = "fewfeed_workspaceFacebookSessions_v1";
 let hasSeenExtensionReadySignal = false;
 let extensionMissingHintShown = false;
+let lastPersistedFacebookSessionSignature = "";
+let workspaceFacebookBootstrapPromise = null;
 
 const DEFAULT_TEXT_BACKGROUND_OPTIONS = [
     {
@@ -713,7 +716,7 @@ async function uploadTextPostSquareImage(dataUrl) {
 
 window.renderTextComposerUi = renderTextComposerUi;
 let publishToastTimer = null;
-const AFTER_PUBLISH_ACTION_STORAGE_PREFIX = "fewfeed_afterPublishAction";
+const PUBLISH_AFTER_ACTION_STORAGE_PREFIX = "fewfeed_afterPublishAction";
 
 function showPublishToast(message, type = "success") {
     if (!message) return;
@@ -754,13 +757,13 @@ function normalizeAfterPublishAction(value) {
 
 function getAfterPublishActionStorageKey(pageId) {
     const id = String(pageId || "").trim();
-    return `${AFTER_PUBLISH_ACTION_STORAGE_PREFIX}:${id || "_default"}`;
+    return `${PUBLISH_AFTER_ACTION_STORAGE_PREFIX}:${id || "_default"}`;
 }
 
 function getAfterPublishActionForCurrentPage() {
     const pageId = typeof getCurrentPageId === "function" ? getCurrentPageId() : "";
     const pageScoped = localStorage.getItem(getAfterPublishActionStorageKey(pageId));
-    const fallback = localStorage.getItem(AFTER_PUBLISH_ACTION_STORAGE_PREFIX);
+    const fallback = localStorage.getItem(PUBLISH_AFTER_ACTION_STORAGE_PREFIX);
     return normalizeAfterPublishAction(pageScoped || fallback || "stay");
 }
 
@@ -2395,6 +2398,227 @@ function isInvalidFacebookSessionError(data) {
         (Number(data?.errorCode) === 1 && data?.errorType === 'OAuthException');
 }
 
+function getActiveWorkspace() {
+    return window.PUBILO_CURRENT_WORKSPACE || window.PUBILO_AUTH_STATE?.workspace || null;
+}
+
+function getActiveWorkspaceId() {
+    return String(getActiveWorkspace()?.id || "").trim();
+}
+
+function readWorkspaceFacebookSessionMap() {
+    try {
+        const raw = localStorage.getItem(WORKSPACE_FACEBOOK_SESSION_MAP_KEY) || "{}";
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function writeWorkspaceFacebookSessionMap(sessionMap) {
+    localStorage.setItem(WORKSPACE_FACEBOOK_SESSION_MAP_KEY, JSON.stringify(sessionMap || {}));
+}
+
+function persistWorkspaceFacebookSessionSnapshot(sessionData) {
+    const workspaceId = getActiveWorkspaceId();
+    const normalized = normalizeExtensionSessionData(sessionData);
+    if (!workspaceId || !hasAnyExtensionSessionData(normalized)) return;
+
+    const sessionMap = readWorkspaceFacebookSessionMap();
+    sessionMap[workspaceId] = {
+        ...normalized,
+        updatedAt: new Date().toISOString(),
+    };
+    writeWorkspaceFacebookSessionMap(sessionMap);
+}
+
+function loadWorkspaceFacebookSessionSnapshot() {
+    const workspaceId = getActiveWorkspaceId();
+    if (!workspaceId) return null;
+
+    const sessionMap = readWorkspaceFacebookSessionMap();
+    return sessionMap[workspaceId] || null;
+}
+
+function getFacebookConnectBannerElements() {
+    const banner = document.getElementById("pubiloFacebookConnectBanner");
+    if (!banner) return null;
+    return {
+        banner,
+        title: banner.querySelector("[data-connect-title]"),
+        body: banner.querySelector("[data-connect-body]"),
+        primary: banner.querySelector("[data-connect-primary]"),
+        secondary: banner.querySelector("[data-connect-secondary]"),
+    };
+}
+
+function ensureFacebookConnectBanner() {
+    const existing = getFacebookConnectBannerElements();
+    if (existing) return existing;
+
+    const banner = document.createElement("section");
+    banner.id = "pubiloFacebookConnectBanner";
+    banner.className = "pubilo-connect-banner is-hidden";
+    banner.innerHTML = `
+        <div class="pubilo-connect-copy">
+            <span class="pubilo-connect-kicker">Workspace Setup</span>
+            <strong data-connect-title>เชื่อม Facebook ให้ workspace นี้ก่อน</strong>
+            <p data-connect-body>เปิด Pubilo พร้อม extension แล้วกดดึง credential จาก browser นี้ ระบบจะผูก cookie, fb_dtsg และ Ads Token เข้ากับ workspace ปัจจุบันทันที</p>
+        </div>
+        <div class="pubilo-connect-actions">
+            <button type="button" class="pubilo-primary-btn" data-connect-primary>ดึงจาก Extension</button>
+            <button type="button" class="pubilo-connect-secondary" data-connect-secondary>เปิด Token</button>
+        </div>
+    `;
+
+    const header = document.querySelector("header.header");
+    const appLayout = document.querySelector(".app-layout");
+    if (header?.parentNode) {
+        header.parentNode.insertBefore(banner, appLayout || header.nextSibling);
+    } else {
+        document.body.prepend(banner);
+    }
+
+    const elements = getFacebookConnectBannerElements();
+    if (!elements) return null;
+
+    elements.primary?.addEventListener("click", async () => {
+        const button = elements.primary;
+        if (button) {
+            button.disabled = true;
+            button.textContent = "กำลังดึงข้อมูล...";
+        }
+
+        try {
+            const synced = await syncWithExtensionNow();
+            if (synced) {
+                showPublishToast("เชื่อม Facebook เข้ากับ workspace แล้ว");
+            } else {
+                showPublishToast("ยังดึงข้อมูลจาก Extension ไม่ได้ ลองเปิด extension แล้วกดอีกครั้ง", "warning");
+            }
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = "ดึงจาก Extension";
+            }
+        }
+    });
+
+    elements.secondary?.addEventListener("click", () => {
+        openTokenModal("ads");
+    });
+
+    return elements;
+}
+
+function updateFacebookConnectBanner(options = {}) {
+    const workspaceId = getActiveWorkspaceId();
+    const elements = ensureFacebookConnectBanner();
+    if (!elements) return;
+
+    if (!workspaceId) {
+        elements.banner.classList.add("is-hidden");
+        return;
+    }
+
+    const connected = !!options.connected;
+    const workspaceName = getActiveWorkspace()?.name || "workspace นี้";
+
+    if (connected) {
+        elements.banner.classList.add("is-hidden");
+        return;
+    }
+
+    elements.banner.classList.remove("is-hidden");
+    elements.title.textContent = `เชื่อม Facebook ให้ ${workspaceName} ก่อน`;
+    elements.body.textContent = options.message || "เปิด extension บนหน้านี้แล้วกดดึง credential เพื่อให้ระบบ import เพจและออก page token ภายใต้ workspace ปัจจุบัน";
+  }
+
+function buildFacebookSessionSignature(sessionData) {
+    const session = normalizeExtensionSessionData(sessionData);
+    return [
+        getActiveWorkspaceId(),
+        session.userId,
+        session.adsToken,
+        session.postToken,
+        session.cookie,
+        session.fbDtsg,
+        session.userName,
+    ].join("|");
+}
+
+async function persistWorkspaceFacebookCredentials(sessionData, source = "extension") {
+    const workspaceId = getActiveWorkspaceId();
+    const session = normalizeExtensionSessionData(sessionData);
+
+    if (!workspaceId) return false;
+    if (!session.userId) return false;
+    if (!(session.adsToken || session.cookie || session.fbDtsg)) return false;
+
+    const signature = buildFacebookSessionSignature(session);
+    if (signature === lastPersistedFacebookSessionSignature) {
+        return true;
+    }
+
+    const response = await fetch("/api/tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            userId: session.userId,
+            adsToken: session.adsToken || null,
+            cookie: session.cookie || null,
+            fbDtsg: session.fbDtsg || null,
+            userName: session.userName || null,
+        }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok || !payload.success) {
+        throw new Error(payload.error || `Persist Facebook credentials failed from ${source}`);
+    }
+
+    lastPersistedFacebookSessionSignature = signature;
+    updateFacebookConnectBanner({ connected: true });
+    return true;
+}
+
+async function hydrateFacebookCredentialsFromWorkspace() {
+    const workspaceId = getActiveWorkspaceId();
+    if (!workspaceId) return false;
+
+    const response = await fetch("/api/tokens");
+    const payload = await response.json().catch(() => ({}));
+    const tokens = Array.isArray(payload.tokens) ? payload.tokens : [];
+
+    if (!response.ok || !payload.success || tokens.length === 0) {
+        updateFacebookConnectBanner({ connected: false });
+        return false;
+    }
+
+    const currentUserId = localStorage.getItem("fewfeed_userId") || "";
+    const preferred =
+        tokens.find((token) => String(token.user_id || "") === currentUserId) ||
+        tokens[0];
+
+    if (!preferred) {
+        updateFacebookConnectBanner({ connected: false });
+        return false;
+    }
+
+    applyExtensionSessionData({
+        adsToken: preferred.ads_token,
+        postToken: preferred.post_token,
+        cookie: preferred.cookie,
+        fbDtsg: preferred.fb_dtsg,
+        userId: preferred.user_id,
+        userName: preferred.user_name,
+    }, "workspace-backend", { skipPersist: true, fromWorkspace: true });
+
+    updateFacebookConnectBanner({ connected: true });
+    return true;
+}
+
 function normalizeExtensionSessionData(rawData = {}) {
     const pickString = (...values) => {
         for (const value of values) {
@@ -2433,11 +2657,13 @@ function hasAnyExtensionSessionData(session = {}) {
     );
 }
 
-function applyExtensionSessionData(sessionData, source = "extension") {
+function applyExtensionSessionData(sessionData, source = "extension", options = {}) {
     const session = normalizeExtensionSessionData(sessionData);
     if (!hasAnyExtensionSessionData(session)) {
         return false;
     }
+
+    persistWorkspaceFacebookSessionSnapshot(session);
 
     if (session.adsToken) {
         localStorage.setItem("fewfeed_accessToken", session.adsToken);
@@ -2491,6 +2717,32 @@ function applyExtensionSessionData(sessionData, source = "extension") {
         fetchPages(effectiveAdsToken || effectivePostToken);
         fetchAdAccounts(effectiveAdsToken || effectivePostToken);
     }
+
+    if (!options.skipPersist) {
+        persistWorkspaceFacebookCredentials({
+            ...session,
+            userId: effectiveUserId,
+            userName: effectiveUserName,
+            adsToken: effectiveAdsToken,
+            postToken: effectivePostToken,
+            cookie: effectiveCookie,
+            fbDtsg: localStorage.getItem("fewfeed_fbDtsg") || session.fbDtsg || "",
+        }, source).catch((error) => {
+            console.warn("[FEWFEED] Failed to sync Facebook credentials to workspace:", error);
+        });
+    } else {
+        lastPersistedFacebookSessionSignature = buildFacebookSessionSignature({
+            ...session,
+            userId: effectiveUserId,
+            userName: effectiveUserName,
+            adsToken: effectiveAdsToken,
+            postToken: effectivePostToken,
+            cookie: effectiveCookie,
+            fbDtsg: localStorage.getItem("fewfeed_fbDtsg") || session.fbDtsg || "",
+        });
+    }
+
+    updateFacebookConnectBanner({ connected: true });
 
     console.log("[FEWFEED] Session applied from", source, {
         hasAdsToken: !!effectiveAdsToken,
@@ -2784,6 +3036,41 @@ function scheduleEarlyExtensionSyncRetries() {
         );
         console.warn("[FEWFEED] Extension not detected on page after startup retries");
     }, 9500);
+}
+
+async function bootstrapWorkspaceFacebookFlow() {
+    const workspaceId = getActiveWorkspaceId();
+    if (!workspaceId) return;
+
+    ensureFacebookConnectBanner();
+
+    const localSession = {
+        adsToken: localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token") || "",
+        postToken: localStorage.getItem("fewfeed_postToken") || "",
+        cookie: localStorage.getItem("fewfeed_cookie") || "",
+        fbDtsg: localStorage.getItem("fewfeed_fbDtsg") || "",
+        userId: localStorage.getItem("fewfeed_userId") || "",
+        userName: localStorage.getItem("fewfeed_userName") || "",
+    };
+
+    if (hasAnyExtensionSessionData(localSession)) {
+        persistWorkspaceFacebookSessionSnapshot(localSession);
+        updateFacebookConnectBanner({ connected: true });
+    } else {
+        const cachedWorkspaceSession = loadWorkspaceFacebookSessionSnapshot();
+        if (cachedWorkspaceSession) {
+            applyExtensionSessionData(cachedWorkspaceSession, "workspace-local-cache", { skipPersist: true, fromWorkspace: true });
+        }
+    }
+
+    const hydrated = await hydrateFacebookCredentialsFromWorkspace().catch((error) => {
+        console.warn("[FEWFEED] Failed to load Facebook credentials from workspace:", error);
+        return false;
+    });
+
+    if (!hydrated && !hasLocalSessionData()) {
+        updateFacebookConnectBanner({ connected: false });
+    }
 }
 
 // Sync when page becomes visible (user switches back to tab)
@@ -3434,6 +3721,15 @@ function loadSavedData() {
 
 // Load on startup
 loadSavedData();
+
+window.PUBILO_AUTH_READY_PROMISE = window.PUBILO_AUTH_READY_PROMISE || Promise.resolve();
+window.PUBILO_AUTH_READY_PROMISE.then(() => {
+    if (!workspaceFacebookBootstrapPromise) {
+        workspaceFacebookBootstrapPromise = bootstrapWorkspaceFacebookFlow();
+    }
+}).catch((error) => {
+    console.warn("[FEWFEED] Workspace Facebook bootstrap failed:", error);
+});
 
 // Lightbox functionality - get elements on demand since they're after the script
 window.showLightbox = function (src) {
