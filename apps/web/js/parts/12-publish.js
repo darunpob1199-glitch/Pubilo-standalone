@@ -782,7 +782,10 @@ function focusPrimaryComposerField(mode, els) {
     let targetField = null;
 
     if (mode === "news") {
-        targetField = document.getElementById("newsUrlInput");
+        targetField =
+            els?.primaryText ||
+            document.getElementById("newsPrimaryText") ||
+            document.getElementById("newsUrlInput");
     } else if (mode === "link") {
         targetField = document.getElementById("linkUrl");
     } else if (mode === "text") {
@@ -795,7 +798,7 @@ function focusPrimaryComposerField(mode, els) {
 
     if (targetField && typeof targetField.focus === "function") {
         targetField.focus();
-        if (typeof targetField.select === "function" && targetField.tagName === "INPUT") {
+        if (typeof targetField.select === "function" && (targetField.tagName === "INPUT" || targetField.tagName === "TEXTAREA")) {
             targetField.select();
         }
     }
