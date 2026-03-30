@@ -51,6 +51,8 @@ header.header {
     padding-top: 1.5rem !important;
     height: calc(100vh - 70px) !important;
     top: 70px !important;
+    left: 0 !important;
+    z-index: 10 !important;
 }
 
 .sidebar-page-selector, .sidebar-nav {
@@ -93,9 +95,9 @@ header.header {
 /* Main Layout adjustments */
 .app-layout {
     background: var(--bg-color) !important;
-    padding: 2rem !important;
-    padding-left: calc(280px + 2rem) !important;
-    padding-top: calc(70px + 2rem) !important;
+    padding: 1.5rem !important;
+    padding-left: calc(280px + 1.5rem) !important;
+    padding-top: calc(70px + 1.5rem) !important;
 }
 
 /* Main Content Area Layout */
@@ -280,10 +282,57 @@ input[type="checkbox"] {
     box-shadow: 0 16px 48px rgba(0,0,0,0.1) !important;
     border: none !important;
 }
-<<<<<<< HEAD
 .token-modal-header {
     border-bottom: 1px solid #f1f2f6 !important;
-=======
+}
+
+/* --- AUTH UI --- */
+
+.pubilo-auth-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    background:
+        radial-gradient(circle at top left, rgba(255, 179, 71, 0.28), transparent 36%),
+        radial-gradient(circle at bottom right, rgba(245, 158, 11, 0.22), transparent 28%),
+        rgba(11, 18, 32, 0.92);
+    backdrop-filter: blur(12px);
+}
+
+.pubilo-auth-overlay.is-hidden {
+    display: none;
+}
+
+.pubilo-auth-shell {
+    width: min(960px, calc(100vw - 32px));
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(320px, 440px);
+    gap: 24px;
+    align-items: stretch;
+}
+
+.pubilo-auth-brand {
+    color: #f8fafc;
+    padding: 32px;
+    border-radius: 28px;
+    background: linear-gradient(145deg, rgba(245, 158, 11, 0.16), rgba(15, 23, 42, 0.35));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 22px 80px rgba(15, 23, 42, 0.42);
+}
+
+.pubilo-auth-brand h1 {
+    margin: 0 0 12px;
+    font-size: clamp(2rem, 3vw, 3.1rem);
+    line-height: 1;
+}
+
+.pubilo-auth-brand p {
+    margin: 0;
+    color: rgba(248, 250, 252, 0.74);
+    font-size: 1rem;
+}
 
 .pubilo-auth-kicker,
 .pubilo-auth-label {
@@ -540,5 +589,4 @@ input[type="checkbox"] {
     .pubilo-connect-actions > * {
         width: 100%;
     }
->>>>>>> 5d372a9538d2974396dd58e56729f10a2534f0b0
 }
