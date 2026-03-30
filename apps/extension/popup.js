@@ -99,43 +99,56 @@ chrome.storage.local.get(["fewfeed_accessToken", "fewfeed_cookie", "fewfeed_user
 // Check Facebook login status on popup open
 async function checkStatus() {
   try {
+    const pick = (...values) => {
+      for (const value of values) {
+        if (typeof value === "string" && value.trim()) return value.trim();
+      }
+      return "";
+    };
+
     // Get cached data first - show immediately
     let tokenResponse = await chrome.runtime.sendMessage({ action: "getStoredData" });
     const { fewfeed_lastFetch, fewfeed_avatarUrl } = await chrome.storage.local.get(["fewfeed_lastFetch", "fewfeed_avatarUrl"]);
     const now = Date.now();
+    let cachedAccessToken = pick(tokenResponse?.fewfeed_accessToken, tokenResponse?.accessToken);
+    let cachedCookie = pick(tokenResponse?.fewfeed_cookie, tokenResponse?.cookie);
+    let cachedUserId = pick(tokenResponse?.fewfeed_userId, tokenResponse?.userId);
 
     // Show cached data immediately
-    if (tokenResponse?.fewfeed_accessToken) {
+    if (cachedAccessToken || cachedCookie) {
       updateBadge(tokenBadge, "", "Token");
-      updateBadge(cookieBadge, tokenResponse.fewfeed_cookie ? "" : "error", "Cookie");
+      updateBadge(cookieBadge, cachedCookie ? "" : "error", "Cookie");
 
       // Show user info from cache
       const data = await chrome.storage.local.get(["fewfeed_userName"]);
       userNameEl.textContent = data.fewfeed_userName || "Facebook User";
-      userIdEl.textContent = "ID: " + (tokenResponse.fewfeed_userId || tokenResponse.userId || "");
+      userIdEl.textContent = "ID: " + (cachedUserId || "");
       if (fewfeed_avatarUrl) userAvatarEl.src = fewfeed_avatarUrl;
       showUserInfo();
       loginBtn.classList.add("hidden");
     }
 
     // Check if need to refresh in background (1 hour for token/cookie)
-    const needRefresh = !tokenResponse?.fewfeed_accessToken || !fewfeed_lastFetch || (now - fewfeed_lastFetch) > CACHE_COOKIE_TOKEN;
+    const needRefresh = !(cachedAccessToken || cachedCookie) || !fewfeed_lastFetch || (now - fewfeed_lastFetch) > CACHE_COOKIE_TOKEN;
 
     if (needRefresh) {
       tokenResponse = await chrome.runtime.sendMessage({ action: "fetchToken" });
       await chrome.storage.local.set({ fewfeed_lastFetch: now });
+      cachedAccessToken = pick(tokenResponse?.fewfeed_accessToken, tokenResponse?.accessToken);
+      cachedCookie = pick(tokenResponse?.fewfeed_cookie, tokenResponse?.cookie);
+      cachedUserId = pick(tokenResponse?.fewfeed_userId, tokenResponse?.userId);
     }
     console.log("[Popup] Token data:", tokenResponse);
 
     // Update token badge
-    if (tokenResponse && tokenResponse.fewfeed_accessToken) {
+    if (cachedAccessToken || cachedCookie) {
       updateBadge(tokenBadge, "", "Token");
     } else {
       updateBadge(tokenBadge, "error", "Token");
     }
 
     // Update cookie badge
-    if (tokenResponse && tokenResponse.fewfeed_cookie) {
+    if (cachedCookie) {
       updateBadge(cookieBadge, "", "Cookie");
     } else {
       updateBadge(cookieBadge, "error", "Cookie");

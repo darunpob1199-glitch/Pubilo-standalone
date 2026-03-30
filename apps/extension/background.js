@@ -117,6 +117,49 @@ const APP_URLS = [
 ];
 const PRODUCTION_URL = "https://pubilo-web-prod.pages.dev/";
 
+function isMissingHostPermissionError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    message.includes("host permission") ||
+    message.includes("no host permissions") ||
+    message.includes("missing host permission") ||
+    message.includes("cannot access contents of url") ||
+    message.includes("permission denied")
+  );
+}
+
+async function getFacebookCookieSnapshot() {
+  try {
+    let cookies = await chrome.cookies.getAll({ domain: ".facebook.com" });
+    if (!Array.isArray(cookies) || cookies.length === 0) {
+      const fallbackCookies = await chrome.cookies.getAll({ url: "https://www.facebook.com/" });
+      cookies = Array.isArray(fallbackCookies) ? fallbackCookies : [];
+    }
+
+    const cookieString = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    const cUser = cookies.find((c) => c.name === "c_user");
+
+    return {
+      success: !!cookieString,
+      cookieString,
+      userId: cUser?.value || "",
+      cookieCount: cookies.length,
+      reason: cookieString ? null : "no_cookies",
+    };
+  } catch (error) {
+    return {
+      success: false,
+      cookieString: "",
+      userId: "",
+      cookieCount: 0,
+      reason: isMissingHostPermissionError(error)
+        ? "missing_host_permission"
+        : "cookie_query_failed",
+      error: error?.message || String(error),
+    };
+  }
+}
+
 // When extension icon is clicked
 chrome.action.onClicked.addListener(async () => {
   console.log("[Pubilo] Extension clicked!");
@@ -219,19 +262,48 @@ async function extractTokenFromExistingTabs() {
 // Main function to fetch ads token from Facebook using cookies
 async function fetchAndStoreToken() {
   try {
-    // Get all Facebook cookies
-    const cookies = await chrome.cookies.getAll({ domain: ".facebook.com" });
-    const cUser = cookies.find(c => c.name === "c_user");
-    const userId = cUser?.value || "";
+    const previousData = await chrome.storage.local.get([
+      "fewfeed_accessToken",
+      "fewfeed_fbDtsg",
+      "fewfeed_userId",
+      "fewfeed_userName",
+      "fewfeed_cookie",
+      "fewfeed_avatarUrl",
+    ]);
+    const cookieSnapshot = await getFacebookCookieSnapshot();
+    const cookieString = cookieSnapshot.cookieString || "";
+    const userId = cookieSnapshot.userId || "";
 
-    if (!userId) {
-      console.log("[FEWFEED] No Facebook login found (no c_user cookie)");
-      return;
+    if (!cookieString) {
+      console.log("[FEWFEED] No Facebook cookies found");
+      await chrome.storage.local.set({
+        fewfeed_ready: !!(
+          previousData.fewfeed_accessToken ||
+          previousData.fewfeed_cookie
+        ),
+        fewfeed_lastFetch: Date.now()
+      });
+      return {
+        success: false,
+        reason: cookieSnapshot.reason || "no_cookies",
+        error: cookieSnapshot.error || null,
+      };
     }
 
-    // Build cookie string
-    const cookieString = cookies.map(c => `${c.name}=${c.value}`).join("; ");
-    console.log("[FEWFEED] Found Facebook cookies for user:", userId);
+    if (!userId) {
+      console.log("[FEWFEED] Found Facebook cookies but no c_user cookie (session may be restricted)");
+    } else {
+      console.log("[FEWFEED] Found Facebook cookies for user:", userId);
+    }
+
+    // Persist cookie early so content script/web can use it immediately even if token fetch is slow.
+    await chrome.storage.local.set({
+      fewfeed_cookie: cookieString,
+      fewfeed_userId: userId || previousData.fewfeed_userId || "",
+      fewfeed_userName: previousData.fewfeed_userName || "Facebook User",
+      fewfeed_ready: true,
+      fewfeed_lastFetch: Date.now(),
+    });
 
     // Try to fetch token from Facebook endpoints
     let accessToken = null;
@@ -319,23 +391,46 @@ async function fetchAndStoreToken() {
 
     // Store for content script
     const storageData = {
-      fewfeed_accessToken: accessToken || "",
-      fewfeed_fbDtsg: fbDtsg || "",
-      fewfeed_userId: userId,
-      fewfeed_userName: userName,
-      fewfeed_cookie: cookieString,
-      fewfeed_ready: true,
+      fewfeed_accessToken: accessToken || previousData.fewfeed_accessToken || "",
+      fewfeed_fbDtsg: fbDtsg || previousData.fewfeed_fbDtsg || "",
+      fewfeed_userId: userId || previousData.fewfeed_userId || "",
+      fewfeed_userName:
+        (userName && userName !== "Facebook User")
+          ? userName
+          : (previousData.fewfeed_userName || "Facebook User"),
+      fewfeed_cookie: cookieString || previousData.fewfeed_cookie || "",
+      fewfeed_ready: !!(
+        cookieString ||
+        accessToken ||
+        previousData.fewfeed_accessToken ||
+        previousData.fewfeed_cookie
+      ),
       fewfeed_lastFetch: Date.now()
     };
     if (avatarUrl) {
       storageData.fewfeed_avatarUrl = avatarUrl;
+    } else if (previousData.fewfeed_avatarUrl) {
+      storageData.fewfeed_avatarUrl = previousData.fewfeed_avatarUrl;
     }
     await chrome.storage.local.set(storageData);
 
     console.log("[FEWFEED] Ads token, fb_dtsg and cookies stored!");
+    return {
+      success: !!(storageData.fewfeed_accessToken || storageData.fewfeed_cookie),
+      hasAdsToken: !!storageData.fewfeed_accessToken,
+      hasCookie: !!storageData.fewfeed_cookie,
+      userId: userId || "",
+    };
 
   } catch (error) {
     console.error("[FEWFEED] Error:", error);
+    return {
+      success: false,
+      reason: isMissingHostPermissionError(error)
+        ? "missing_host_permission"
+        : "exception",
+      error: error?.message || String(error),
+    };
   }
 }
 
@@ -478,10 +573,24 @@ function extractTokenFromHTML(html) {
     /"accessToken":\s*"(EAAG[A-Za-z0-9]+)"/
   ];
 
+  const escapedPatterns = [
+    /\\"__accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
+    /\\"accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
+    /\\"access_token\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
+  ];
+
   for (const pattern of patterns) {
     const match = html.match(pattern);
     if (match) {
       console.log("[FEWFEED] Token found with pattern:", pattern.toString().substring(0, 30));
+      return match[1];
+    }
+  }
+
+  for (const pattern of escapedPatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      console.log("[FEWFEED] Token found with escaped pattern:", pattern.toString().substring(0, 30));
       return match[1];
     }
   }
@@ -514,6 +623,11 @@ function extractDtsgFromHTML(html) {
 
 // Listen for messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  const replyError = (error, extra = {}) => {
+    const message = error?.message || String(error || "Unknown error");
+    sendResponse({ success: false, error: message, ...extra });
+  };
+
   // Token extracted from Facebook page by fb-content.js
   if (request.action === "tokenExtracted") {
     console.log("[FEWFEED] Token received from fb-content.js:", {
@@ -554,35 +668,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       }
     }
-    return;
+    sendResponse({ success: true });
+    return false;
   }
 
   // Get Facebook cookies for popup (checks if logged in)
   if (request.action === "getFacebookCookies") {
     (async () => {
       try {
-        // Get Facebook cookies
-        const cookies = await chrome.cookies.getAll({ domain: ".facebook.com" });
-        const cookieString = cookies.map(c => `${c.name}=${c.value}`).join("; ");
-
-        // Get c_user cookie for userId
-        const cUser = cookies.find(c => c.name === "c_user");
-
-        if (cUser && cookieString) {
+        const snapshot = await getFacebookCookieSnapshot();
+        if (snapshot.success && snapshot.cookieString) {
           sendResponse({
             success: true,
-            cookie: cookieString,
-            userId: cUser.value
+            cookie: snapshot.cookieString,
+            userId: snapshot.userId || ""
           });
         } else {
           sendResponse({
             success: false,
-            error: "Not logged into Facebook"
+            reason: snapshot.reason || "no_cookies",
+            error: snapshot.error || "Not logged into Facebook"
           });
         }
       } catch (err) {
         sendResponse({
           success: false,
+          reason: isMissingHostPermissionError(err)
+            ? "missing_host_permission"
+            : "exception",
           error: err.message
         });
       }
@@ -591,63 +704,106 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === "getStoredData") {
-    chrome.storage.local.get([
-      "fewfeed_accessToken",
-      "fewfeed_fbDtsg",
-      "fewfeed_userId",
-      "fewfeed_userName",
-      "fewfeed_cookie",
-      "fewfeed_ready"
-    ]).then(data => {
-      sendResponse({
-        accessToken: data.fewfeed_accessToken,
-        fbDtsg: data.fewfeed_fbDtsg,
-        userId: data.fewfeed_userId,
-        userName: data.fewfeed_userName,
-        cookie: data.fewfeed_cookie,
-        ready: data.fewfeed_ready
-      });
-    });
+    (async () => {
+      try {
+        const data = await chrome.storage.local.get([
+          "fewfeed_accessToken",
+          "fewfeed_fbDtsg",
+          "fewfeed_userId",
+          "fewfeed_userName",
+          "fewfeed_cookie",
+          "fewfeed_ready"
+        ]);
+        sendResponse({
+          success: true,
+          accessToken: data.fewfeed_accessToken,
+          fbDtsg: data.fewfeed_fbDtsg,
+          userId: data.fewfeed_userId,
+          userName: data.fewfeed_userName,
+          cookie: data.fewfeed_cookie,
+          ready: data.fewfeed_ready
+        });
+      } catch (error) {
+        replyError(error);
+      }
+    })();
     return true;
   }
 
   // Manually trigger token fetch - waits for completion
   if (request.action === "fetchToken") {
     (async () => {
-      await fetchAndStoreToken();
-      const data = await chrome.storage.local.get([
-        "fewfeed_accessToken",
-        "fewfeed_fbDtsg",
-        "fewfeed_userId",
-        "fewfeed_userName",
-        "fewfeed_cookie"
-      ]);
-      sendResponse(data);
+      try {
+        // Prevent message channel timeout if Facebook fetch hangs.
+        const fetchResult = await Promise.race([
+          fetchAndStoreToken(),
+          new Promise((resolve) => setTimeout(resolve, 9000)),
+        ]);
+
+        const data = await chrome.storage.local.get([
+          "fewfeed_accessToken",
+          "fewfeed_fbDtsg",
+          "fewfeed_userId",
+          "fewfeed_userName",
+          "fewfeed_cookie"
+        ]);
+        sendResponse({
+          success: !!(data.fewfeed_accessToken || data.fewfeed_cookie),
+          ...data,
+          debug: fetchResult || { success: false, reason: "timeout" },
+        });
+      } catch (error) {
+        try {
+          const fallback = await chrome.storage.local.get([
+            "fewfeed_accessToken",
+            "fewfeed_fbDtsg",
+            "fewfeed_userId",
+            "fewfeed_userName",
+            "fewfeed_cookie"
+          ]);
+          sendResponse({
+            success: !!(fallback.fewfeed_accessToken || fallback.fewfeed_cookie),
+            ...fallback,
+            warning: error?.message || String(error),
+            debug: { success: false, reason: "exception" },
+          });
+        } catch (readError) {
+          replyError(readError, { warning: error?.message || String(error) });
+        }
+      }
     })();
     return true;
   }
 
   // Fetch Pages from Facebook API
   if (request.action === "fetchPages") {
-    fetchFacebookPages(request.accessToken, request.cookie).then(sendResponse);
+    fetchFacebookPages(request.accessToken, request.cookie)
+      .then(sendResponse)
+      .catch((error) => replyError(error));
     return true;
   }
 
   // Fetch Ad Accounts from Facebook API
   if (request.action === "fetchAdAccounts") {
-    fetchFacebookAdAccounts(request.accessToken, request.cookie).then(sendResponse);
+    fetchFacebookAdAccounts(request.accessToken, request.cookie)
+      .then(sendResponse)
+      .catch((error) => replyError(error));
     return true;
   }
 
   // Convert Lazada URL to affiliate link
   if (request.action === "convertLazadaLink") {
-    convertToLazadaAffiliateLink(request.productUrl).then(sendResponse);
+    convertToLazadaAffiliateLink(request.productUrl)
+      .then(sendResponse)
+      .catch((error) => replyError(error));
     return true;
   }
 
   // Check Lazada login status
   if (request.action === "checkLazadaLogin") {
-    getLazadaCookies().then(sendResponse);
+    getLazadaCookies()
+      .then(sendResponse)
+      .catch((error) => replyError(error));
     return true;
   }
 
@@ -658,7 +814,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       request.pageId,
       request.fbDtsg,
       request.scheduledTime
-    ).then(sendResponse);
+    )
+      .then(sendResponse)
+      .catch((error) => replyError(error));
     return true;
   }
 

@@ -12,8 +12,20 @@ async function initializeTokens() {
   showLoadingIndicator();
 
   try {
-    // Ask background to fetch token (this will wait for fetch to complete)
-    const data = await chrome.runtime.sendMessage({ action: "fetchToken" });
+    // 1) Read stored data first (fast path, avoids waiting on network fetch every reload).
+    let data = await chrome.runtime.sendMessage({ action: "getStoredData" });
+
+    const hasStoredSession = !!(
+      data?.accessToken ||
+      data?.fewfeed_accessToken ||
+      data?.cookie ||
+      data?.fewfeed_cookie
+    );
+
+    // 2) If nothing stored yet, trigger fresh token fetch from background.
+    if (!hasStoredSession) {
+      data = await chrome.runtime.sendMessage({ action: "fetchToken" });
+    }
 
     // Get existing localStorage values as fallback
     const existingToken = localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
@@ -23,18 +35,31 @@ async function initializeTokens() {
     const existingUserName = localStorage.getItem("fewfeed_userName");
 
     // Use new data if available, otherwise keep existing
-    const finalToken = data?.fewfeed_accessToken || existingToken || "";
-    const finalFbDtsg = data?.fewfeed_fbDtsg || existingFbDtsg || "";
-    const finalCookie = data?.fewfeed_cookie || existingCookie || "";
-    const finalUserId = data?.fewfeed_userId || existingUserId || "";
-    const finalUserName = data?.fewfeed_userName || existingUserName || "Facebook User";
+    let finalToken = data?.fewfeed_accessToken || data?.accessToken || existingToken || "";
+    let finalFbDtsg = data?.fewfeed_fbDtsg || data?.fbDtsg || existingFbDtsg || "";
+    let finalCookie = data?.fewfeed_cookie || data?.cookie || existingCookie || "";
+    let finalUserId = data?.fewfeed_userId || data?.userId || existingUserId || "";
+    let finalUserName = data?.fewfeed_userName || data?.userName || existingUserName || "Facebook User";
+
+    // Fallback: if token fetch timed out, at least try reading cookie snapshot directly.
+    if (!finalCookie && !finalToken) {
+      try {
+        const cookieFallback = await chrome.runtime.sendMessage({ action: "getFacebookCookies" });
+        if (cookieFallback?.success && cookieFallback.cookie) {
+          finalCookie = cookieFallback.cookie;
+          finalUserId = cookieFallback.userId || finalUserId || "";
+        }
+      } catch (_) {
+        // Ignore fallback failure and keep the original diagnostic flow.
+      }
+    }
 
     console.log("[Pubilo Content] Data:", {
       hasAdsToken: !!finalToken,
       hasFbDtsg: !!finalFbDtsg,
       hasUserId: !!finalUserId,
       hasCookie: !!finalCookie,
-      fromFetch: !!data?.fewfeed_accessToken,
+      fromFetch: !!(data?.fewfeed_accessToken || data?.accessToken),
       fromStorage: !!existingToken
     });
 
@@ -68,6 +93,22 @@ async function initializeTokens() {
       userName: finalUserName
     }, "*");
 
+    if (!finalCookie && !finalToken) {
+      window.postMessage({
+        type: "FEWFEED_EXTENSION_DIAGNOSTIC",
+        reason: data?.debug?.reason || "no_cookie_no_token",
+        detail: data?.warning || null
+      }, "*");
+      if (initializeRetryCount < 3) {
+        initializeRetryCount += 1;
+        setTimeout(() => {
+          initializeTokens();
+        }, 2000);
+      }
+    } else {
+      initializeRetryCount = 0;
+    }
+
     // Hide loading indicator
     hideLoadingIndicator();
 
@@ -85,6 +126,11 @@ async function initializeTokens() {
   } catch (error) {
     console.error("[FEWFEED Content] Error:", error);
     hideLoadingIndicator();
+    window.postMessage({
+      type: "FEWFEED_EXTENSION_DIAGNOSTIC",
+      reason: "content_exception",
+      detail: error?.message || String(error)
+    }, "*");
   }
 }
 
@@ -100,6 +146,7 @@ function hideLoadingIndicator() {
 let lastAutoFilledPageId = null;
 let lastAutoTokenAttemptKey = null;
 let lastAutoTokenAttemptAt = 0;
+let initializeRetryCount = 0;
 
 function getAutoTokenStatusElement() {
   return document.getElementById("pageTokenAutoStatus") || document.getElementById("pubiloAutoFetchPageTokenStatus");
@@ -263,7 +310,16 @@ window.addEventListener("message", async (event) => {
 
   // Page requesting stored data
   if (event.data.type === "FEWFEED_GET_DATA") {
-    const response = await chrome.runtime.sendMessage({ action: "getStoredData" });
+    let response;
+    try {
+      response = await chrome.runtime.sendMessage({ action: "getStoredData" });
+    } catch (error) {
+      response = {
+        success: false,
+        reason: "content_exception",
+        error: error?.message || String(error)
+      };
+    }
     window.postMessage({
       type: "FEWFEED_DATA_RESPONSE",
       data: response

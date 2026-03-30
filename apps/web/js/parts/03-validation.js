@@ -161,6 +161,7 @@ if (textPrimaryText) {
 
 // Initial validation
 setTimeout(validateLinkMode, 500);
+setTimeout(validateNewsMode, 500);
 setTimeout(validateReelsMode, 500);
 setTimeout(validateTextMode, 500);
 

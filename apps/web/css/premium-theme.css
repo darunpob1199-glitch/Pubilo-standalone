@@ -118,6 +118,16 @@ header.header {
     box-shadow: 0 6px 16px rgba(99, 102, 241, 0.25) !important;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
+.btn-publish:disabled,
+.btn-publish.disabled {
+    background: #cbd5e1 !important;
+    color: #94a3b8 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: not-allowed !important;
+    opacity: 0.55 !important;
+    pointer-events: none !important;
+}
 .btn-publish:hover:not(:disabled) {
     transform: translateY(-2px) !important;
     box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35) !important;

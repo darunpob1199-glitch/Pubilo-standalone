@@ -2658,6 +2658,25 @@ window.addEventListener("message", (event) => {
             fetchAdAccounts(fbToken || fbPostToken);
         }
     }
+
+    if (event.data.type === "FEWFEED_EXTENSION_DIAGNOSTIC") {
+        console.warn("[FEWFEED] Extension diagnostic:", event.data);
+        const reason = String(event.data.reason || "unknown");
+        const detail = String(event.data.detail || event.data.error || "").toLowerCase();
+        const isHostPermissionIssue = reason === "missing_host_permission" ||
+            detail.includes("host permission") ||
+            detail.includes("no host permissions") ||
+            detail.includes("cannot access contents of url");
+        if (reason === "missing_host_permission") {
+            showPublishToast("Extension ยังไม่มีสิทธิ์เข้า facebook.com (ไปที่ Extension Details > Site access > On all sites)", "warning");
+        } else if (reason === "no_cookies" || reason === "no_cookie_no_token") {
+            showPublishToast("ไม่พบ Facebook cookie/token ใน browser profile นี้", "warning");
+        } else if (isHostPermissionIssue) {
+            showPublishToast("Extension ยังไม่มีสิทธิ์เข้า facebook.com (ไปที่ Extension Details > Site access > On all sites)", "warning");
+        } else if (reason === "content_exception" || reason === "exception" || reason === "timeout") {
+            showPublishToast("ดึงข้อมูลจาก Extension ไม่สำเร็จ ลองกด Reload extension แล้วรีเฟรชหน้า", "warning");
+        }
+    }
 });
 
 // Auto-sync with Extension cached data every 30 seconds
