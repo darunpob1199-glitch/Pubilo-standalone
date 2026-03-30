@@ -95,6 +95,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "keepalive") {
     // Just log to keep service worker active
     console.log("[Pubilo] Keepalive ping", new Date().toLocaleTimeString());
+    injectScriptsIntoExistingTabs().catch(() => { });
   }
 });
 
@@ -102,6 +103,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create("keepalive", { periodInMinutes: 0.4 });
   console.log("[Pubilo] Keepalive alarm created");
+  injectScriptsIntoExistingTabs().catch(() => { });
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  injectScriptsIntoExistingTabs().catch(() => { });
 });
 
 // App URLs - supports both local dev and production
@@ -116,6 +122,11 @@ const APP_URLS = [
   "https://www.pubilo.com/*"
 ];
 const PRODUCTION_URL = "https://pubilo-web-prod.pages.dev/";
+const FB_TAB_URLS = [
+  "https://www.facebook.com/*",
+  "https://business.facebook.com/*",
+  "https://adsmanager.facebook.com/*"
+];
 
 function isMissingHostPermissionError(error) {
   const message = String(error?.message || error || "").toLowerCase();
@@ -160,6 +171,87 @@ async function getFacebookCookieSnapshot() {
   }
 }
 
+async function listUniqueTabsByPatterns(patterns = []) {
+  const tabMap = new Map();
+  for (const pattern of patterns) {
+    try {
+      const tabs = await chrome.tabs.query({ url: pattern });
+      tabs.forEach((tab) => {
+        if (tab?.id) {
+          tabMap.set(tab.id, tab);
+        }
+      });
+    } catch (_) {
+      // Ignore query errors per-pattern and continue.
+    }
+  }
+  return Array.from(tabMap.values());
+}
+
+async function isMarkerActive(tabId, markerKey) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (key) => !!globalThis[key],
+      args: [markerKey],
+    });
+    return !!results?.[0]?.result;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function ensureScriptInjected(tabId, markerKey, fileName) {
+  const alreadyActive = await isMarkerActive(tabId, markerKey);
+  if (alreadyActive) return true;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: [fileName],
+    });
+    return true;
+  } catch (error) {
+    console.warn("[FEWFEED] Script injection failed:", fileName, "tab:", tabId, error?.message || error);
+    return false;
+  }
+}
+
+async function injectScriptsIntoExistingTabs() {
+  const appTabs = await listUniqueTabsByPatterns(APP_URLS);
+  for (const tab of appTabs) {
+    if (!tab?.id) continue;
+    await ensureScriptInjected(tab.id, "__PUBILO_CONTENT_SCRIPT_ACTIVE__", "content.js");
+  }
+
+  const fbTabs = await listUniqueTabsByPatterns(FB_TAB_URLS);
+  for (const tab of fbTabs) {
+    if (!tab?.id) continue;
+    await ensureScriptInjected(tab.id, "__PUBILO_FB_CONTENT_SCRIPT_ACTIVE__", "fb-content.js");
+  }
+}
+
+function urlMatchesPatterns(url, patterns = []) {
+  if (!url) return false;
+  return patterns.some((pattern) => {
+    const regex = new RegExp("^" + pattern
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*/g, ".*") + "$");
+    return regex.test(url);
+  });
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "complete" || !tab?.url) return;
+
+  if (urlMatchesPatterns(tab.url, APP_URLS)) {
+    ensureScriptInjected(tabId, "__PUBILO_CONTENT_SCRIPT_ACTIVE__", "content.js").catch(() => { });
+  }
+
+  if (urlMatchesPatterns(tab.url, FB_TAB_URLS)) {
+    ensureScriptInjected(tabId, "__PUBILO_FB_CONTENT_SCRIPT_ACTIVE__", "fb-content.js").catch(() => { });
+  }
+});
+
 // When extension icon is clicked
 chrome.action.onClicked.addListener(async () => {
   console.log("[Pubilo] Extension clicked!");
@@ -169,6 +261,7 @@ chrome.action.onClicked.addListener(async () => {
 
   // Fetch all tokens in background
   await fetchAllTokensInBackground();
+  injectScriptsIntoExistingTabs().catch(() => { });
 });
 
 // Fetch all tokens in background (Ads Token + Cookie only)
