@@ -3,6 +3,7 @@
 // Post Token is now managed manually via Page Settings (not from Extension)
 
 console.log("[Pubilo Content] Script loaded on", window.location.href);
+globalThis.__PUBILO_CONTENT_SCRIPT_ACTIVE__ = true;
 
 // Main function - request tokens from background and wait for them
 async function initializeTokens() {
@@ -82,6 +83,13 @@ async function initializeTokens() {
     }
 
     console.log("[Pubilo Content] Data saved to localStorage");
+    syncPageUiFromInjectedData({
+      accessToken: finalToken,
+      fbDtsg: finalFbDtsg,
+      cookie: finalCookie,
+      userId: finalUserId,
+      userName: finalUserName,
+    });
 
     // Notify the page that data is ready
     window.postMessage({
@@ -141,6 +149,60 @@ function showLoadingIndicator() {
 
 function hideLoadingIndicator() {
   console.log("[FEWFEED Content] Loading complete");
+}
+
+function syncPageUiFromInjectedData(session = {}) {
+  try {
+    const setIndicatorState = (id, isValid) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove("valid", "invalid");
+      el.classList.add(isValid ? "valid" : "invalid");
+    };
+
+    const accessToken = session.accessToken || "";
+    const cookie = session.cookie || "";
+    const userId = session.userId || "";
+    const userName = session.userName || "U";
+    const postTokenInputValue = document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
+    const storedPostToken = localStorage.getItem("fewfeed_postToken") || "";
+    const activePostToken = postTokenInputValue || storedPostToken;
+    const hasDurablePostToken = !!activePostToken && !activePostToken.startsWith("EAABsbCS");
+
+    setIndicatorState("tokenIndicator", !!accessToken);
+    setIndicatorState("cookieIndicator", !!cookie);
+    setIndicatorState("postTokenIndicator", hasDurablePostToken);
+
+    const avatarImg = document.getElementById("headerAvatarImg");
+    const avatarInitial = document.getElementById("headerAvatarInitial");
+    if (avatarImg && accessToken && userId) {
+      avatarImg.src = `https://graph.facebook.com/${userId}/picture?type=normal&width=72&height=72&access_token=${accessToken}`;
+      avatarImg.style.display = "block";
+      avatarImg.onerror = () => {
+        avatarImg.style.display = "none";
+        if (avatarInitial) {
+          avatarInitial.style.display = "flex";
+          avatarInitial.textContent = String(userName || "U").charAt(0).toUpperCase();
+        }
+      };
+      if (avatarInitial) {
+        avatarInitial.style.display = "none";
+      }
+    } else if (avatarInitial) {
+      avatarInitial.style.display = "flex";
+      avatarInitial.textContent = String(userName || "U").charAt(0).toUpperCase();
+    }
+
+    document.documentElement.dataset.fewfeedSession = JSON.stringify({
+      accessToken,
+      cookie,
+      userId,
+      userName,
+      fbDtsg: session.fbDtsg || "",
+    });
+  } catch (error) {
+    console.warn("[Pubilo Content] Failed to sync page UI from injected data:", error);
+  }
 }
 
 let lastAutoFilledPageId = null;

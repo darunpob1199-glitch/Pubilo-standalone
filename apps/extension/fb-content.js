@@ -3,6 +3,7 @@
 // Also extracts access tokens from page HTML
 
 console.log("[FEWFEED FB] Content script loaded on", window.location.href);
+globalThis.__PUBILO_FB_CONTENT_SCRIPT_ACTIVE__ = true;
 
 // Auto-extract token when page loads and send to background
 (function autoExtractToken() {
@@ -16,6 +17,11 @@ console.log("[FEWFEED FB] Content script loaded on", window.location.href);
     /"accessToken":"(EA[A-Za-z0-9]+)"/,
     /"access_token":"(EA[A-Za-z0-9]+)"/
   ];
+  const escapedTokenPatterns = [
+    /\\"__accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
+    /\\"accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
+    /\\"access_token\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/
+  ];
 
   let token = null;
   for (const pattern of tokenPatterns) {
@@ -24,6 +30,17 @@ console.log("[FEWFEED FB] Content script loaded on", window.location.href);
       token = match[1];
       console.log("[FEWFEED FB] Found token with pattern:", pattern.toString().substring(0, 30));
       break;
+    }
+  }
+
+  if (!token) {
+    for (const pattern of escapedTokenPatterns) {
+      const match = html.match(pattern);
+      if (match) {
+        token = match[1];
+        console.log("[FEWFEED FB] Found token with escaped pattern:", pattern.toString().substring(0, 30));
+        break;
+      }
     }
   }
 
@@ -82,6 +99,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       /"accessToken":"(EA[A-Za-z0-9]+)"/,
       /"access_token":"(EA[A-Za-z0-9]+)"/
     ];
+    const escapedTokenPatterns = [
+      /\\"__accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
+      /\\"accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
+      /\\"access_token\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/
+    ];
 
     let token = null;
     for (const pattern of tokenPatterns) {
@@ -89,6 +111,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (match) {
         token = match[1];
         break;
+      }
+    }
+
+    if (!token) {
+      for (const pattern of escapedTokenPatterns) {
+        const match = html.match(pattern);
+        if (match) {
+          token = match[1];
+          break;
+        }
       }
     }
 
