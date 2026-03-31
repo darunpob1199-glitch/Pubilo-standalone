@@ -43,4 +43,5 @@ export type WorkspaceMembership = {
     slug: string;
     subscription_status: string | null;
     plan_code: string | null;
+    subscription_period_end: string | null;
 };

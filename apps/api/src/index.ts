@@ -42,6 +42,7 @@ import { ensureAppSchema } from './lib/schema';
 import { requireAuth } from './middleware/require-auth';
 import { requireWorkspace } from './middleware/require-workspace';
 import { requireInternal } from './middleware/require-internal';
+import { requireActiveSubscription } from './middleware/require-subscription';
 
 const app = new Hono<{ Bindings: Env }>();
 export type { Env } from './types';
@@ -219,7 +220,24 @@ app.get('/health', async (c) => {
     }
 });
 
-const workspaceProtectedPaths = [
+// Billing routes: auth + workspace only (ให้จ่ายเงินได้แม้ subscription หมดอายุ)
+const billingOnlyPaths = [
+    '/api/billing/current',
+    '/api/billing/checkout-intent',
+    '/api/billing/create-payment',
+    '/api/billing/payment-status',
+    '/api/billing/cancel-payment',
+    '/api/billing/cancel',
+    '/api/billing/check-status',
+];
+
+for (const path of billingOnlyPaths) {
+    app.use(path, requireAuth, requireWorkspace);
+    app.use(`${path}/*`, requireAuth, requireWorkspace);
+}
+
+// All other routes: auth + workspace + active subscription
+const subscriptionProtectedPaths = [
     '/api/pages',
     '/api/page-settings',
     '/api/tokens',
@@ -247,18 +265,11 @@ const workspaceProtectedPaths = [
     '/api/check-pending-shares',
     '/api/check-risky-quotes',
     '/api/token-health',
-    '/api/billing/current',
-    '/api/billing/checkout-intent',
-    '/api/billing/create-payment',
-    '/api/billing/payment-status',
-    '/api/billing/cancel-payment',
-    '/api/billing/cancel',
-    '/api/billing/check-status',
 ];
 
-for (const path of workspaceProtectedPaths) {
-    app.use(path, requireAuth, requireWorkspace);
-    app.use(`${path}/*`, requireAuth, requireWorkspace);
+for (const path of subscriptionProtectedPaths) {
+    app.use(path, requireAuth, requireWorkspace, requireActiveSubscription);
+    app.use(`${path}/*`, requireAuth, requireWorkspace, requireActiveSubscription);
 }
 
 app.use('/api/line-webhook', requireInternal);

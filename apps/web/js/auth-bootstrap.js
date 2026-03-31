@@ -117,8 +117,14 @@
                 <div class="pubilo-plan-grid">${plansHtml}</div>
                 <button class="pubilo-primary-btn" type="submit">สร้าง Workspace</button>
                 <p class="pubilo-auth-note" id="pubiloOnboardingNote"></p>
+                <button type="button" class="pubilo-logout-link" id="pubiloOnboardingLogout">Logout</button>
             </form>
         `;
+
+        card.querySelector('#pubiloOnboardingLogout').addEventListener('click', async () => {
+            await nativeFetch('/api/auth/logout', { method: 'POST' });
+            window.location.reload();
+        });
 
         card.querySelectorAll('[data-plan-card]').forEach((node) => {
             node.addEventListener('click', () => {
@@ -186,8 +192,14 @@
                 </div>
                 <div class="pubilo-payment-status" id="pubiloPaymentStatus"></div>
                 <p class="pubilo-auth-note" id="pubiloPaymentNote"></p>
+                <button type="button" class="pubilo-logout-link" id="pubiloPaymentLogout">Logout</button>
             </div>
         `;
+
+        card.querySelector('#pubiloPaymentLogout').addEventListener('click', async () => {
+            await nativeFetch('/api/auth/logout', { method: 'POST' });
+            window.location.reload();
+        });
 
         generateQr(orderId);
     }
@@ -267,6 +279,88 @@
                 }
             } catch {}
         }, 5000);
+    }
+
+    // ===== Subscription Expired / Renewal View =====
+    function renderSubscriptionExpiredView(profile) {
+        const overlay = ensureOverlay();
+        overlay.classList.remove('is-hidden');
+        const card = overlay.querySelector('#pubiloAuthCard');
+        const subtitle = overlay.querySelector('#pubiloAuthSubtitle');
+        if (subtitle) subtitle.textContent = 'กรุณาต่ออายุเพื่อใช้งานต่อ';
+
+        const wsName = profile.workspace?.name || 'Workspace';
+        const plansHtml = (state.plans || []).map((plan, index) => `
+            <label class="pubilo-plan-card ${index === 0 ? 'selected' : ''}" data-plan-card="${plan.code}">
+                <input type="radio" name="renewPlanCode" value="${plan.code}" ${index === 0 ? 'checked' : ''} />
+                <div class="pubilo-plan-top">
+                    <span class="pubilo-plan-name">${plan.label}</span>
+                    <strong>&#3647;${plan.amountThb.toLocaleString('th-TH')}</strong>
+                </div>
+                <p>${plan.description}</p>
+            </label>
+        `).join('');
+
+        card.innerHTML = `
+            <form class="pubilo-auth-panel" id="pubiloRenewForm">
+                <p class="pubilo-auth-label">${wsName}</p>
+                <h2>แพ็กเกจหมดอายุแล้ว</h2>
+                <p class="pubilo-auth-copy">เลือกแพ็กเกจเพื่อต่ออายุการใช้งาน</p>
+                <div class="pubilo-plan-grid">${plansHtml}</div>
+                <button class="pubilo-primary-btn" type="submit">ต่ออายุแพ็กเกจ</button>
+                <p class="pubilo-auth-note" id="pubiloRenewNote"></p>
+                <button type="button" class="pubilo-logout-link" id="pubiloRenewLogout">Logout</button>
+            </form>
+        `;
+
+        card.querySelectorAll('[data-plan-card]').forEach((node) => {
+            node.addEventListener('click', () => {
+                card.querySelectorAll('[data-plan-card]').forEach((item) => item.classList.remove('selected'));
+                node.classList.add('selected');
+                const input = node.querySelector('input');
+                if (input) input.checked = true;
+            });
+        });
+
+        card.querySelector('#pubiloRenewLogout').addEventListener('click', async () => {
+            await nativeFetch('/api/auth/logout', { method: 'POST' });
+            window.location.reload();
+        });
+
+        const form = card.querySelector('#pubiloRenewForm');
+        const note = card.querySelector('#pubiloRenewNote');
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const planCode = form.querySelector('input[name="renewPlanCode"]:checked')?.value;
+            if (!planCode) {
+                note.textContent = 'เลือกแพ็กเกจก่อน';
+                return;
+            }
+            note.textContent = 'กำลังสร้าง Order...';
+
+            const response = await nativeFetch('/api/billing/checkout-intent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ planCode }),
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload.success) {
+                note.textContent = payload.error || 'สร้าง order ไม่สำเร็จ';
+                return;
+            }
+
+            const freshState = await fetchAuthState();
+            applyAuthState(freshState);
+            if (payload.paymentOrder?.id) {
+                state.latestPaymentOrder = {
+                    id: payload.paymentOrder.id,
+                    status: 'pending',
+                    amount_thb: payload.paymentOrder.amountThb,
+                    plan_code: planCode,
+                };
+                renderPaymentView(payload.paymentOrder.id);
+            }
+        });
     }
 
     function ensureHeaderControls() {
@@ -390,6 +484,20 @@
             return new Promise(() => {});
         }
 
+        // เช็ค subscription หมดอายุ / cancelled / ไม่มี
+        const subStatus = payload.workspace?.subscriptionStatus;
+        const periodEnd = payload.workspace?.subscriptionPeriodEnd;
+        const isPeriodExpired = periodEnd ? new Date(periodEnd) < new Date() : false;
+        const needsRenewal =
+            (!subStatus && payload.workspace) ||
+            (subStatus === 'cancelled' && isPeriodExpired) ||
+            (subStatus === 'active' && isPeriodExpired);
+
+        if (needsRenewal) {
+            renderSubscriptionExpiredView(payload);
+            return new Promise(() => {});
+        }
+
         document.body.classList.add('pubilo-authenticated');
         ensureOverlay().classList.add('is-hidden');
         ensureHeaderControls();
@@ -409,6 +517,9 @@
         state,
         handleUnauthenticated() {
             renderLoginView('Session หมดอายุ กรุณา login ใหม่');
+        },
+        handleSubscriptionRequired() {
+            hydrateAndResolve();
         },
     };
 

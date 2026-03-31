@@ -156,12 +156,18 @@ export async function getSessionFromRequest(c: Context<any>): Promise<{
             w.name as workspace_name,
             w.slug,
             os.status as subscription_status,
-            os.plan_code
+            os.plan_code,
+            os.current_period_end as subscription_period_end
         FROM workspace_members wm
         JOIN workspaces w ON w.id = wm.workspace_id
         LEFT JOIN organization_subscriptions os
             ON os.workspace_id = wm.workspace_id
-           AND os.status IN ('active', 'trialing', 'pending_payment')
+           AND os.id = (
+               SELECT id FROM organization_subscriptions
+               WHERE workspace_id = wm.workspace_id
+               ORDER BY created_at DESC
+               LIMIT 1
+           )
         WHERE wm.user_id = ?
         ORDER BY w.created_at ASC
     `).bind(sessionRow.user_id).all<WorkspaceMembership>();

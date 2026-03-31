@@ -258,6 +258,7 @@ app.get('/me', async (c) => {
             subscriptionStatus: activeWorkspace.subscription_status,
             planCode: activeWorkspace.plan_code,
             plan: getBillingPlan(activeWorkspace.plan_code),
+            subscriptionPeriodEnd: activeWorkspace.subscription_period_end,
         } : null,
         memberships: memberships.map((membership) => ({
             id: membership.workspace_id,
@@ -267,6 +268,7 @@ app.get('/me', async (c) => {
             subscriptionStatus: membership.subscription_status,
             planCode: membership.plan_code,
             plan: getBillingPlan(membership.plan_code),
+            subscriptionPeriodEnd: membership.subscription_period_end,
         })),
         latestPaymentOrder: paymentOrder,
     });

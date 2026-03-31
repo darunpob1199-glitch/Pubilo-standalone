@@ -1,6 +1,6 @@
 // Pubilo v5.0 - Cloudflare API Configuration
 const PUBILO_API_STORAGE_KEY = 'pubilo_api_base';
-const PUBILO_WEB_ONLY_MODE = true;
+const PUBILO_WEB_ONLY_MODE = false;
 
 window.PUBILO_WEB_ONLY_MODE = PUBILO_WEB_ONLY_MODE;
 window.PUBILO_HIDDEN_HASHES = ['quotes', 'earnings', 'hide-posts', 'delete-posts'];
@@ -127,6 +127,10 @@ window.fetch = function (url, options) {
 
         if (isApiRequest && response.status === 401 && window.PubiloAuth?.handleUnauthenticated) {
             window.PubiloAuth.handleUnauthenticated();
+        }
+
+        if (isApiRequest && response.status === 402 && window.PubiloAuth?.handleSubscriptionRequired) {
+            window.PubiloAuth.handleSubscriptionRequired();
         }
 
         return response;

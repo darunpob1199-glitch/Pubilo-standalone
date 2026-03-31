@@ -781,6 +781,22 @@ input[type="checkbox"] {
     50% { opacity: 0.6; }
 }
 
+.pubilo-logout-link {
+    border: none;
+    background: none;
+    color: #9ca3af;
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    padding: 0;
+    justify-self: center;
+}
+
+.pubilo-logout-link:hover {
+    color: #ef4444;
+}
+
 .pubilo-billing-banner {
     position: fixed;
     left: 16px;
