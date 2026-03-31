@@ -233,6 +233,7 @@ const workspaceProtectedPaths = [
     '/api/delete-post',
     '/api/earnings',
     '/api/auto-post-config',
+    '/api/auto-hide',
     '/api/auto-hide-config',
     '/api/upload-image',
     '/api/auto-post-logs',
@@ -277,6 +278,7 @@ app.route('/api/scheduled-posts', scheduledPostsRouter);
 app.route('/api/delete-post', deletePostRouter);
 app.route('/api/earnings', earningsRouter);
 app.route('/api/auto-post-config', autoPostConfigRouter);
+app.route('/api/auto-hide', autoHideRouter);
 app.route('/api/auto-hide-config', autoHideConfigRouter);
 app.route('/api/upload-image', uploadImageRouter);
 app.route('/api/auto-post-logs', logsRouter);

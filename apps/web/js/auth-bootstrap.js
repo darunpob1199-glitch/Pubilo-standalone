@@ -55,7 +55,8 @@
 
         overlay = document.createElement('div');
         overlay.id = 'pubiloAuthOverlay';
-        overlay.className = 'pubilo-auth-overlay';
+        // Keep overlay hidden by default to avoid flash on refresh for authenticated users.
+        overlay.className = 'pubilo-auth-overlay is-hidden';
         overlay.innerHTML = `
             <div class="pubilo-auth-shell">
                 <div class="pubilo-auth-brand">
@@ -72,6 +73,7 @@
 
     function renderLoginView(message) {
         const overlay = ensureOverlay();
+        overlay.classList.remove('is-hidden');
         const card = overlay.querySelector('#pubiloAuthCard');
         const loginUrl = `${window.API_BASE}/api/auth/login/line?returnTo=${encodeURIComponent(window.location.href)}`;
         card.innerHTML = `
@@ -89,6 +91,7 @@
 
     function renderOnboardingView(profile) {
         const overlay = ensureOverlay();
+        overlay.classList.remove('is-hidden');
         const card = overlay.querySelector('#pubiloAuthCard');
         const defaultName = `${(profile?.user?.name || 'My').split(' ')[0]} Workspace`;
         const plansHtml = (state.plans || []).map((plan, index) => `

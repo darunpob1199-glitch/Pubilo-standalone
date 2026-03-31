@@ -334,6 +334,7 @@ async function publishLinkCardViaFeed(params: {
     description?: string;
     pictureUrl?: string;
     scheduledTime?: number | null;
+    allowMetadataDropRetry?: boolean;
 }): Promise<{ postId: string }> {
     const hasRichMetadata = Boolean(
         params.title ||
@@ -393,6 +394,7 @@ async function publishLinkCardViaFeed(params: {
         const message = error instanceof Error ? error.message : String(error);
         const shouldRetryWithoutMetadata =
             hasRichMetadata &&
+            params.allowMetadataDropRetry !== false &&
             message.includes('Only owners of the URL') &&
             message.includes('picture, name, thumbnail or description');
 
@@ -860,6 +862,13 @@ app.post('/', async (c) => {
         const finalLink = link || linkUrl || '';
         const finalImageUrl = imageUrl || '';
         const isLinkAttachmentPost = !!finalLink && (postMode === 'news' || postMode === 'link');
+        const requiresRichLinkCard = isLinkAttachmentPost && (
+            !!finalImageUrl ||
+            !!linkName ||
+            !!description ||
+            !!callToAction ||
+            !!callToActionLabel
+        );
 
         const captionParts = [];
         if (finalMessage) captionParts.push(finalMessage);
@@ -886,6 +895,14 @@ app.post('/', async (c) => {
                 console.log('[publish] Uploaded link attachment image for feed attachment:', !!hostedImageUrl);
             }
         }
+
+        if (requiresRichLinkCard && finalImageUrl && !hostedImageUrl) {
+            return c.json({
+                success: false,
+                error: 'ไม่สามารถเตรียมรูปสำหรับ Rich Link Card ได้ (ระบบจะไม่ fallback เป็นลิงก์ธรรมดา)',
+                errorType: 'RichLinkImageUnavailable',
+            }, 400);
+        }
         const attachmentTitle = (linkName || (description ? `พิกัด : ${description}` : '') || '').trim();
         const attachmentCaption = (caption || '').trim();
         const attachmentDescription = (description || '').trim();
@@ -900,6 +917,7 @@ app.post('/', async (c) => {
                 version: `${Date.now()}`,
             })
             : '';
+        const publishLinkUrl = isLinkAttachmentPost ? previewUrl : finalLink;
 
         const shouldQueueInSystem = !!scheduleTimestamp && !!scheduleInSystem && !internalRun;
         const currentBatchId = typeof batchId === 'string' && batchId.trim()
@@ -1113,161 +1131,269 @@ app.post('/', async (c) => {
             });
         }
 
+        if (isLinkAttachmentPost) {
+            const feedTokenCandidates = buildAuthCandidates([
+                freshPageToken,
+                storedPageToken,
+                ...authCandidates,
+            ]);
+
+            if (!feedTokenCandidates.length) {
+                return c.json({
+                    success: false,
+                    error: 'ไม่พบ token สำหรับโพสต์แบบ Rich Link Card',
+                    errorType: 'MissingTokenForRichLink',
+                }, 400);
+            }
+
+            let lastFeedError = '';
+            for (const tokenCandidate of feedTokenCandidates) {
+                try {
+                    const feedPost = await publishLinkCardViaFeed({
+                        pageId,
+                        pageToken: tokenCandidate,
+                        headers: facebookHeaders,
+                        message: finalMessage,
+                        linkUrl: publishLinkUrl,
+                        title: attachmentTitle || undefined,
+                        caption: previewSiteName || undefined,
+                        description: attachmentDescription || finalMessage || undefined,
+                        pictureUrl: hostedImageUrl || undefined,
+                        scheduledTime: scheduleTimestamp,
+                        allowMetadataDropRetry: true,
+                    });
+
+                    const publishedUrl = buildFacebookPostUrl(feedPost.postId, pageId);
+                    await recordPublishedSuccess(feedPost.postId, publishedUrl, {
+                        flow: 'feed-rich-direct',
+                    });
+
+                    return c.json({
+                        success: true,
+                        postId: feedPost.postId,
+                        url: publishedUrl,
+                        needsScheduling: !!scheduleTimestamp,
+                        ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                        _debug: {
+                            flow: 'feed-rich-direct',
+                            candidateCount: feedTokenCandidates.length,
+                        },
+                    });
+                } catch (error) {
+                    lastFeedError = error instanceof Error ? error.message : String(error);
+                    console.warn('[publish] feed-rich-direct failed for token candidate:', {
+                        tokenLength: tokenCandidate.length,
+                        error: lastFeedError,
+                    });
+                }
+            }
+
+            return c.json({
+                success: false,
+                error: 'โพสต์ไม่สำเร็จในโหมดลิงก์การ์ด กรุณาลองใหม่อีกครั้ง',
+                errorType: 'RichLinkDirectFailed',
+                _debug: {
+                    flow: 'feed-rich-direct',
+                    candidateCount: feedTokenCandidates.length,
+                    reason: lastFeedError || 'unknown_error',
+                },
+            }, 400);
+        }
+
         let lastFacebookError: any = null;
         let sawSessionExpired = false;
         const normalizedAdAccountId = normalizeAdAccountId(adAccountId);
         const normalizedCallToAction = normalizeCallToActionType(callToAction);
 
-        if (isLinkAttachmentPost && !normalizedAdAccountId) {
-            return c.json({
-                success: false,
-                error: 'Missing Ad Account - กรุณากด extension เพื่อดึง Ads Token/Ad Account ใหม่แล้วลองอีกครั้ง',
-                errorType: 'MissingAdAccount',
-            }, 400);
-        }
-
-        if (isLinkAttachmentPost && accessToken && normalizedAdAccountId) {
-            const pageTokenForPublish = freshPageToken || storedPageToken;
-            if (!pageTokenForPublish) {
+        const canUseAdCreativeFlow = isLinkAttachmentPost && !!accessToken && !!normalizedAdAccountId;
+        if (isLinkAttachmentPost && !canUseAdCreativeFlow) {
+            console.warn('[publish] Skip ad-creative flow, fallback to standard feed flow', {
+                hasAccessToken: !!accessToken,
+                hasAdAccountId: !!normalizedAdAccountId,
+            });
+            const pageTokenForFeed = freshPageToken || storedPageToken || '';
+            if (!pageTokenForFeed) {
                 return c.json({
                     success: false,
-                    error: 'ไม่พบ Page Token สำหรับ publish post',
+                    error: 'ไม่พบ Page Token สำหรับโพสต์แบบ Rich Link Card',
                     errorType: 'MissingPageToken',
                 }, 400);
             }
 
             try {
-                const seedContext = await resolveAdSeedContext({
-                    preferredAdAccountId: normalizedAdAccountId,
-                    accessToken,
+                const feedPost = await publishLinkCardViaFeed({
                     pageId,
+                    pageToken: pageTokenForFeed,
                     headers: facebookHeaders,
-                });
-
-                const resolvedAdAccountId = seedContext.seed?.adsetId
-                    ? seedContext.adAccountId
-                    : normalizedAdAccountId;
-
-                const creativeResult = await createStandaloneAdCreative({
-                    pageId,
-                    accessToken,
-                    cookieHeaders: facebookHeaders,
-                    adAccountId: resolvedAdAccountId,
-                    linkUrl: finalLink,
-                    hostedImageUrl: hostedImageUrl || undefined,
                     message: finalMessage,
+                        linkUrl: publishLinkUrl,
                     title: attachmentTitle || undefined,
                     caption: previewSiteName || undefined,
-                    description: attachmentDescription || undefined,
-                    callToAction: normalizedCallToAction,
-                    seed: seedContext.seed,
+                    description: attachmentDescription || finalMessage || undefined,
+                    pictureUrl: hostedImageUrl || undefined,
+                    scheduledTime: scheduleTimestamp,
+                    allowMetadataDropRetry: false,
                 });
 
-                console.log('[publish] Ad creative created:', {
-                    creativeId: creativeResult.creativeId,
-                    postId: creativeResult.postId,
-                    creativeData: creativeResult.creativeData,
-                    requestedAdAccountId: normalizedAdAccountId,
-                    resolvedAdAccountId,
-                    adId: creativeResult.adId,
-                    adsetId: creativeResult.adsetId,
-                    campaignId: creativeResult.campaignId,
-                    seedAdId: creativeResult.seedAdId,
-                    materializedBy: creativeResult.materializedBy,
-                    scannedAccounts: seedContext.scannedAccounts,
-                });
-
-                if (!scheduleTimestamp) {
-                    await publishExistingUnpublishedPost(creativeResult.postId, pageTokenForPublish, facebookHeaders);
-                }
-
-                const publishedUrl = buildFacebookPostUrl(creativeResult.postId, pageId);
-                await recordPublishedSuccess(creativeResult.postId, publishedUrl, {
-                    flow: 'adcreative',
-                    creativeId: creativeResult.creativeId,
-                    materializedBy: creativeResult.materializedBy,
+                const publishedUrl = buildFacebookPostUrl(feedPost.postId, pageId);
+                await recordPublishedSuccess(feedPost.postId, publishedUrl, {
+                    flow: 'feed-direct-rich',
+                    adCreativeError: 'skip-adcreative-no-access',
                 });
 
                 return c.json({
                     success: true,
-                    postId: creativeResult.postId,
+                    postId: feedPost.postId,
                     url: publishedUrl,
                     needsScheduling: !!scheduleTimestamp,
                     ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
                     _debug: {
-                        flow: 'adcreative',
-                        creativeId: creativeResult.creativeId,
-                        adAccountId: resolvedAdAccountId,
-                        requestedAdAccountId: normalizedAdAccountId,
-                        adId: creativeResult.adId || '',
-                        adsetId: creativeResult.adsetId || '',
-                        campaignId: creativeResult.campaignId || '',
-                        seedAdId: creativeResult.seedAdId || '',
-                        materializedBy: creativeResult.materializedBy || '',
-                        scannedAccounts: seedContext.scannedAccounts,
+                        flow: 'feed-direct-rich',
+                        hasAdCreative: false,
                     },
                 });
             } catch (error) {
-                const rawMessage = error instanceof Error ? error.message : String(error);
-                const friendlyMessage =
-                    rawMessage === 'No reusable adset found for this page in the selected ad account'
-                        ? 'ไม่พบ adset เดิมของเพจนี้ใน ad accounts ที่ token นี้เข้าถึงได้ กรุณาเปิด Ads Manager/เคยสร้างโฆษณาของเพจนี้ก่อน แล้วลองอีกครั้ง'
-                        : rawMessage;
-                const canFallbackToFeed =
-                    rawMessage === 'No reusable adset found for this page in the selected ad account' ||
-                    rawMessage.includes('object_story_id');
-
-                if (canFallbackToFeed) {
-                    try {
-                        const fallbackPost = await publishLinkCardViaFeed({
-                            pageId,
-                            pageToken: pageTokenForPublish,
-                            headers: facebookHeaders,
-                            message: finalMessage,
-                            linkUrl: finalLink,
-                            title: attachmentTitle || undefined,
-                            caption: previewSiteName || undefined,
-                            description: attachmentDescription || finalMessage || undefined,
-                            pictureUrl: hostedImageUrl || undefined,
-                            scheduledTime: scheduleTimestamp,
-                        });
-
-                        const publishedUrl = buildFacebookPostUrl(fallbackPost.postId, pageId);
-                        await recordPublishedSuccess(fallbackPost.postId, publishedUrl, {
-                            flow: 'feed-fallback',
-                            adCreativeError: rawMessage,
-                        });
-
-                        return c.json({
-                            success: true,
-                            postId: fallbackPost.postId,
-                            url: publishedUrl,
-                            needsScheduling: false,
-                            ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
-                            _debug: {
-                                flow: 'feed-fallback',
-                                adCreativeError: rawMessage,
-                                adAccountId: normalizedAdAccountId,
-                            },
-                        });
-                    } catch (fallbackError) {
-                        console.warn('[publish] Feed fallback failed:', fallbackError);
-                    }
-                }
-
-                lastFacebookError = { message: friendlyMessage, type: 'AdCreativeFlowError' };
-                console.warn('[publish] Ad creative flow failed:', lastFacebookError);
+                const message = error instanceof Error ? error.message : String(error);
                 return c.json({
                     success: false,
-                    error: lastFacebookError.message,
-                    errorType: lastFacebookError.type,
-                    _debug: {
-                        flow: 'adcreative',
-                        hasImage: !!hostedImageUrl,
-                        adAccountId: normalizedAdAccountId,
-                        previewUrl: previewUrl.substring(0, 120),
-                    },
+                    error: `โพสต์ถูกยกเลิกเพื่อป้องกันลิงก์เพียว: ${message}`,
+                    errorType: 'StrictRichLinkCardFailure',
                 }, 400);
+            }
+        }
+
+        if (canUseAdCreativeFlow) {
+            const pageTokenForPublish = freshPageToken || storedPageToken;
+            if (!pageTokenForPublish) {
+                console.warn('[publish] Missing page token for ad-creative flow, fallback to standard feed flow');
+            } else {
+                try {
+                    const seedContext = await resolveAdSeedContext({
+                        preferredAdAccountId: normalizedAdAccountId,
+                        accessToken,
+                        pageId,
+                        headers: facebookHeaders,
+                    });
+
+                    const resolvedAdAccountId = seedContext.seed?.adsetId
+                        ? seedContext.adAccountId
+                        : normalizedAdAccountId;
+
+                    const creativeResult = await createStandaloneAdCreative({
+                        pageId,
+                        accessToken,
+                        cookieHeaders: facebookHeaders,
+                        adAccountId: resolvedAdAccountId,
+                        linkUrl: publishLinkUrl,
+                        hostedImageUrl: hostedImageUrl || undefined,
+                        message: finalMessage,
+                        title: attachmentTitle || undefined,
+                        caption: previewSiteName || undefined,
+                        description: attachmentDescription || undefined,
+                        callToAction: normalizedCallToAction,
+                        seed: seedContext.seed,
+                    });
+
+                    console.log('[publish] Ad creative created:', {
+                        creativeId: creativeResult.creativeId,
+                        postId: creativeResult.postId,
+                        creativeData: creativeResult.creativeData,
+                        requestedAdAccountId: normalizedAdAccountId,
+                        resolvedAdAccountId,
+                        adId: creativeResult.adId,
+                        adsetId: creativeResult.adsetId,
+                        campaignId: creativeResult.campaignId,
+                        seedAdId: creativeResult.seedAdId,
+                        materializedBy: creativeResult.materializedBy,
+                        scannedAccounts: seedContext.scannedAccounts,
+                    });
+
+                    if (!scheduleTimestamp) {
+                        await publishExistingUnpublishedPost(creativeResult.postId, pageTokenForPublish, facebookHeaders);
+                    }
+
+                    const publishedUrl = buildFacebookPostUrl(creativeResult.postId, pageId);
+                    await recordPublishedSuccess(creativeResult.postId, publishedUrl, {
+                        flow: 'adcreative',
+                        creativeId: creativeResult.creativeId,
+                        materializedBy: creativeResult.materializedBy,
+                    });
+
+                    return c.json({
+                        success: true,
+                        postId: creativeResult.postId,
+                        url: publishedUrl,
+                        needsScheduling: !!scheduleTimestamp,
+                        ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                        _debug: {
+                            flow: 'adcreative',
+                            creativeId: creativeResult.creativeId,
+                            adAccountId: resolvedAdAccountId,
+                            requestedAdAccountId: normalizedAdAccountId,
+                            adId: creativeResult.adId || '',
+                            adsetId: creativeResult.adsetId || '',
+                            campaignId: creativeResult.campaignId || '',
+                            seedAdId: creativeResult.seedAdId || '',
+                            materializedBy: creativeResult.materializedBy || '',
+                            scannedAccounts: seedContext.scannedAccounts,
+                        },
+                    });
+                } catch (error) {
+                    const rawMessage = error instanceof Error ? error.message : String(error);
+                    const friendlyMessage = rawMessage;
+                    const canFallbackToFeed =
+                        rawMessage === 'No reusable adset found for this page in the selected ad account' ||
+                        rawMessage.includes('object_story_id');
+
+                    if (canFallbackToFeed) {
+                        try {
+                            const fallbackPost = await publishLinkCardViaFeed({
+                                pageId,
+                                pageToken: pageTokenForPublish,
+                                headers: facebookHeaders,
+                                message: finalMessage,
+                                linkUrl: publishLinkUrl,
+                                title: attachmentTitle || undefined,
+                                caption: previewSiteName || undefined,
+                                description: attachmentDescription || finalMessage || undefined,
+                                pictureUrl: hostedImageUrl || undefined,
+                                scheduledTime: scheduleTimestamp,
+                                allowMetadataDropRetry: false,
+                            });
+
+                            const publishedUrl = buildFacebookPostUrl(fallbackPost.postId, pageId);
+                            await recordPublishedSuccess(fallbackPost.postId, publishedUrl, {
+                                flow: 'feed-fallback',
+                                adCreativeError: rawMessage,
+                            });
+
+                            return c.json({
+                                success: true,
+                                postId: fallbackPost.postId,
+                                url: publishedUrl,
+                                needsScheduling: false,
+                                ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                                _debug: {
+                                    flow: 'feed-fallback',
+                                    adCreativeError: rawMessage,
+                                    adAccountId: normalizedAdAccountId,
+                                },
+                            });
+                        } catch (fallbackError) {
+                            console.warn('[publish] Feed fallback failed:', fallbackError);
+                        }
+                    }
+
+                    return c.json({
+                        success: false,
+                        error: 'โพสต์ไม่สำเร็จในโหมด Rich Link Card กรุณาลองใหม่อีกครั้ง',
+                        errorType: 'StrictRichLinkCardFailure',
+                        _debug: {
+                            flow: 'adcreative',
+                            reason: friendlyMessage,
+                        },
+                    }, 400);
+                }
             }
         }
 
@@ -1279,7 +1405,7 @@ app.post('/', async (c) => {
 
             if (isLinkAttachmentPost) {
                 endpoint += '/feed';
-                params.append('link', finalLink);
+                params.append('link', publishLinkUrl);
                 if (finalMessage) params.append('message', finalMessage);
                 params.append('published', 'false');
                 params.append('unpublished_content_type', 'ADS_POST');
@@ -1297,7 +1423,7 @@ app.post('/', async (c) => {
                 if (finalCaption) params.append('caption', finalCaption);
             } else if (finalLink) {
                 endpoint += '/feed';
-                params.append('link', finalLink);
+                params.append('link', publishLinkUrl);
                 if (finalMessage) params.append('message', finalMessage);
             } else {
                 endpoint += '/feed';

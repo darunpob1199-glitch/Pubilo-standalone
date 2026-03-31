@@ -870,6 +870,10 @@ if (newsDescriptionInput && newsPreviewDesc) {
 const newsPublishBtn = document.getElementById("newsPublishBtn");
 if (newsPublishBtn) {
     newsPublishBtn.addEventListener("click", async () => {
+        if (typeof window.isAnyPublishInFlight === "function" && window.isAnyPublishInFlight()) {
+            window.showPublishToast?.("มีงานโพสต์กำลังทำงานอยู่ รอให้เสร็จก่อนโพสต์ถัดไป", "error");
+            return;
+        }
         if (newsPublishBtn.disabled) return;
         
         const pageId = getCurrentPageId();
@@ -916,9 +920,13 @@ if (newsPublishBtn) {
             return;
         }
         
-        newsPublishBtn.disabled = true;
-        newsPublishBtn.innerHTML =
-            '<span class="loading"></span><span>กำลังโพสต์...</span>';
+        if (typeof window.setPublishInFlightState === "function") {
+            window.setPublishInFlightState("news", true);
+        } else {
+            newsPublishBtn.disabled = true;
+            newsPublishBtn.innerHTML =
+                '<span class="loading"></span><span>กำลังโพสต์...</span>';
+        }
         
         try {
             // Compress image and keep data URL for direct Facebook multipart upload.
@@ -1080,6 +1088,10 @@ if (newsPublishBtn) {
             newsPublishBtn.disabled = false;
             newsPublishBtn.classList.remove("published");
             validateNewsMode();
+        } finally {
+            if (typeof window.setPublishInFlightState === "function") {
+                window.setPublishInFlightState("news", false);
+            }
         }
     });
 }

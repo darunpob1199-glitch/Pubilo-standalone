@@ -5,6 +5,20 @@ let newsModeImageReady = false;
 let reelsModeVideoReady = false;
 let textModeReady = false;
 
+function applyPublishingStateIfNeeded(mode, buttonEl) {
+    if (!buttonEl) return false;
+    const inFlight = typeof window.isAnyPublishInFlight === "function"
+        && window.isAnyPublishInFlight();
+    if (!inFlight) return false;
+
+    buttonEl.disabled = true;
+    buttonEl.style.opacity = "1";
+    buttonEl.style.cursor = "wait";
+    buttonEl.classList.remove("published");
+    buttonEl.innerHTML = '<span class="loading"></span><span>กำลังโพสต์...</span>';
+    return true;
+}
+
 function validateLinkMode() {
     // Determine current mode - default to 'link'
     const currentMode = postMode || 'link';
@@ -33,6 +47,9 @@ function validateLinkMode() {
         });
         
         if (publishBtn) {
+            if (applyPublishingStateIfNeeded("link", publishBtn)) {
+                return;
+            }
             publishBtn.disabled = !isValid;
             publishBtn.style.opacity = isValid ? '1' : '0.5';
             publishBtn.style.cursor = isValid ? 'pointer' : 'not-allowed';
@@ -52,6 +69,9 @@ function validateLinkMode() {
         const isValid = hasImage;
 
         if (imagePublishBtn) {
+            if (applyPublishingStateIfNeeded("image", imagePublishBtn)) {
+                return;
+            }
             imagePublishBtn.disabled = !isValid;
             imagePublishBtn.classList.toggle("disabled", !isValid);
             imagePublishBtn.style.opacity = isValid ? "1" : "0.5";
@@ -67,6 +87,9 @@ function validateLinkMode() {
         // Other modes don't require link URL/Description validation here
         // (They have their own validation or are always enabled for now)
         if (publishBtn) {
+            if (applyPublishingStateIfNeeded("link", publishBtn)) {
+                return;
+            }
             publishBtn.disabled = false;
             publishBtn.style.opacity = '1';
             publishBtn.style.cursor = 'pointer';
@@ -88,6 +111,9 @@ function validateNewsMode() {
     const isValid = hasUrl && hasDescription && hasImage;
     
     if (newsPublishBtn) {
+        if (applyPublishingStateIfNeeded("news", newsPublishBtn)) {
+            return;
+        }
         newsPublishBtn.disabled = !isValid;
         newsPublishBtn.classList.toggle('disabled', !isValid);
         newsPublishBtn.style.opacity = isValid ? '1' : '0.5';
@@ -111,6 +137,9 @@ function validateReelsMode() {
     const isValid = hasVideo && hasUploadedVideo && !isUploading && !hasUploadError;
 
     if (reelsPublishBtn) {
+        if (applyPublishingStateIfNeeded("reels", reelsPublishBtn)) {
+            return;
+        }
         reelsPublishBtn.disabled = !isValid;
         reelsPublishBtn.classList.toggle("disabled", !isValid);
         reelsPublishBtn.style.opacity = isValid ? "1" : "0.5";
@@ -130,6 +159,9 @@ function validateTextMode() {
     textModeReady = isValid;
 
     if (textPublishBtn) {
+        if (applyPublishingStateIfNeeded("text", textPublishBtn)) {
+            return;
+        }
         textPublishBtn.disabled = !isValid;
         textPublishBtn.classList.toggle("disabled", !isValid);
         textPublishBtn.style.opacity = isValid ? "1" : "0.5";

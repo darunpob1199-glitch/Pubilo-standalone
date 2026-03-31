@@ -40,7 +40,7 @@ app.get('/', (c) => {
     const siteName = normalizeSiteName(c.req.query('site') || '', target);
 
     const requestUrl = new URL(c.req.url);
-    const ogUrl = requestUrl.toString();
+    const previewUrl = requestUrl.toString();
 
     return c.html(html`<!doctype html>
         <html lang="th">
@@ -50,12 +50,12 @@ app.get('/', (c) => {
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
                 <meta name="robots" content="noindex, nofollow" />
                 <meta property="og:type" content="website" />
-                <meta property="og:url" content=${ogUrl} />
+                <meta property="og:url" content=${target} />
                 <meta property="og:title" content=${title} />
                 <meta property="og:description" content=${description} />
                 <meta property="og:site_name" content=${siteName} />
-                <link rel="canonical" href=${ogUrl} />
-                <meta http-equiv="refresh" content=${`0;url=${target}`} />
+                <meta property="og:see_also" content=${previewUrl} />
+                <link rel="canonical" href=${target} />
                 ${image
                     ? html`
                         <meta property="og:image" content=${image} />

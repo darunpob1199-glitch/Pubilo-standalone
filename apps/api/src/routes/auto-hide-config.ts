@@ -43,11 +43,16 @@ app.get('/', async (c) => {
 // POST /api/auto-hide-config
 app.post('/', async (c) => {
     try {
-        const { pageId, enabled, hideTypes, hideToken } = await c.req.json();
+        const payload = await c.req.json();
+        const { pageId, enabled, hideTypes, hideToken } = payload;
         if (!pageId) return c.json({ success: false, error: 'Missing pageId' }, 400);
 
         const workspaceId = getWorkspaceId(c);
         const now = new Date().toISOString();
+        const hasHideToken = Object.prototype.hasOwnProperty.call(payload, 'hideToken');
+        const encryptedHideToken = hasHideToken
+            ? await encryptSecret(c.env, hideToken || null)
+            : null;
 
         await c.env.DB.prepare(`
             INSERT INTO page_settings (organization_id, page_id, auto_hide, hide_types, hide_token_encrypted, updated_at)
@@ -55,15 +60,20 @@ app.post('/', async (c) => {
             ON CONFLICT(organization_id, page_id) DO UPDATE SET
                 auto_hide = excluded.auto_hide,
                 hide_types = excluded.hide_types,
-                hide_token_encrypted = excluded.hide_token_encrypted,
+                hide_token_encrypted = CASE
+                    WHEN ? = 1 THEN ?
+                    ELSE page_settings.hide_token_encrypted
+                END,
                 updated_at = excluded.updated_at
         `).bind(
             workspaceId,
             pageId,
             enabled ? 1 : 0,
             enabled ? hideTypes : null,
-            await encryptSecret(c.env, hideToken || null),
+            encryptedHideToken,
             now,
+            hasHideToken ? 1 : 0,
+            encryptedHideToken,
         ).run();
 
         return c.json({
