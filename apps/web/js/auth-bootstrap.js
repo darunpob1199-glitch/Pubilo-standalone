@@ -293,7 +293,7 @@
         if (brand) brand.style.display = 'none';
         if (shell) {
             shell.style.gridTemplateColumns = '1fr';
-            shell.style.maxWidth = '720px';
+            shell.style.maxWidth = '860px';
         }
 
         const isExpired = profile.workspace?.subscriptionStatus !== 'pending_payment';
@@ -302,45 +302,78 @@
         const subText = isExpired ? 'เลือกแพ็กเกจเพื่อต่ออายุการใช้งาน' : 'เลือกแพ็กเกจแล้วชำระผ่าน QR PromptPay ได้เลย';
         const btnText = isExpired ? 'ต่ออายุแพ็กเกจ' : 'ชำระเงิน';
 
+        const features = {
+            test_1: ['✓ ทดสอบระบบ', '✓ 30 วัน'],
+            monthly_500: ['✓ โพสต์ไม่จำกัด', '✓ ตั้งเวลาอัตโนมัติ', '✓ Auto Hide Posts', '✓ รองรับหลายเพจ'],
+            yearly_4499: ['✓ ทุกอย่างใน Monthly', '✓ ประหยัด ฿1,501 ต่อปี', '✓ Priority Support', '✓ Early Access ฟีเจอร์ใหม่'],
+        };
+
         const plansHtml = (state.plans || []).map((plan, index) => {
             const isYearly = plan.interval === 'yearly';
-            const badge = isYearly ? '<span class="pubilo-plan-badge">ประหยัด 25%</span>' : '';
             const perUnit = isYearly ? '/ ปี' : '/ เดือน';
+            const intervalTag = plan.code === 'test_1' ? 'TEST' : (isYearly ? 'YEARLY' : 'MONTHLY');
+            const badgeHtml = isYearly ? '<div style="position:absolute;top:-12px;right:16px;background:#7c3aed;color:white;padding:0.2rem 0.8rem;border-radius:999px;font-size:0.75rem;font-weight:700;">ประหยัด 25%</div>' : '';
+            const isHighlight = isYearly;
+            const borderColor = isHighlight ? '#7c3aed' : '#e5e7eb';
+            const tagBg = isHighlight ? '#f9f5ff' : '#f2f4f7';
+            const tagColor = isHighlight ? '#7c3aed' : '#6b7280';
+            const btnStyle = isHighlight ? 'background:#7c3aed;color:#fff;' : 'background:#1f2937;color:#fff;';
+            const featureList = (features[plan.code] || []).map(f => `<li style="padding:0.3rem 0;">${f}</li>`).join('');
+
             return `
-                <label class="pubilo-plan-card ${index === 0 ? 'selected' : ''}" data-plan-card="${plan.code}">
-                    <input type="radio" name="selectPlanCode" value="${plan.code}" ${index === 0 ? 'checked' : ''} />
-                    ${badge}
-                    <span class="pubilo-plan-name">${plan.label}</span>
-                    <div class="pubilo-plan-price">
-                        <strong>&#3647;${plan.amountThb.toLocaleString('th-TH')}</strong>
-                        <span>${perUnit}</span>
+                <div class="pubilo-big-plan-card ${index === 0 ? 'selected' : ''}" data-plan-card="${plan.code}" style="border:2px solid ${borderColor};border-radius:16px;padding:1.5rem;cursor:pointer;transition:all 0.2s ease;background:#fff;position:relative;">
+                    ${badgeHtml}
+                    <input type="radio" name="selectPlanCode" value="${plan.code}" ${index === 0 ? 'checked' : ''} style="display:none;" />
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                        <span style="font-weight:700;font-size:1.1rem;color:#1f2937;">${plan.label}</span>
+                        <span style="background:${tagBg};padding:0.2rem 0.6rem;border-radius:999px;font-size:0.75rem;font-weight:600;color:${tagColor};">${intervalTag}</span>
                     </div>
-                    <p>${plan.description}</p>
-                    <span class="pubilo-plan-duration">${plan.durationDays} วัน</span>
-                </label>
+                    <div style="margin-bottom:1rem;">
+                        <span style="font-size:2.2rem;font-weight:800;color:#1f2937;">&#3647;${plan.amountThb.toLocaleString('th-TH')}</span>
+                        <span style="color:#9ca3af;font-size:0.9rem;"> ${perUnit}</span>
+                    </div>
+                    <ul style="list-style:none;padding:0;margin:0;color:#6b7280;font-size:0.9rem;min-height:120px;">${featureList}</ul>
+                </div>
             `;
         }).join('');
 
         card.innerHTML = `
-            <form class="pubilo-auth-panel" id="pubiloSelectPlanForm" style="text-align:center;">
-                <p class="pubilo-auth-label">${wsName}</p>
-                <h2>${heading}</h2>
-                <p class="pubilo-auth-copy">${subText}</p>
-                <div class="pubilo-plan-grid is-horizontal">${plansHtml}</div>
-                <button class="pubilo-primary-btn" type="submit">${btnText}</button>
-                <p class="pubilo-auth-note" id="pubiloSelectPlanNote"></p>
+            <form id="pubiloSelectPlanForm" style="text-align:center;display:grid;gap:20px;">
+                <div style="margin-bottom:4px;">
+                    <span class="pubilo-auth-label">${wsName}</span>
+                </div>
+                <h2 style="margin:0;font-size:1.8rem;font-weight:800;color:#1f2937;">${heading}</h2>
+                <p style="margin:0;color:#6b7280;">${subText}</p>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;text-align:left;">${plansHtml}</div>
+                <button class="pubilo-primary-btn" type="submit" style="width:100%;min-height:56px;">${btnText}</button>
+                <p class="pubilo-auth-note" id="pubiloSelectPlanNote" style="margin:0;"></p>
                 <button type="button" class="pubilo-logout-link" id="pubiloSelectPlanLogout">Logout</button>
             </form>
         `;
 
         card.querySelectorAll('[data-plan-card]').forEach((node) => {
             node.addEventListener('click', () => {
-                card.querySelectorAll('[data-plan-card]').forEach((item) => item.classList.remove('selected'));
+                card.querySelectorAll('[data-plan-card]').forEach((item) => {
+                    item.classList.remove('selected');
+                    item.style.borderColor = item.dataset.planCard === 'yearly_4499' ? '#7c3aed' : '#e5e7eb';
+                    item.style.boxShadow = 'none';
+                });
                 node.classList.add('selected');
+                node.style.borderColor = '#7c3aed';
+                node.style.boxShadow = '0 0 0 3px rgba(124,58,237,0.15)';
+                node.style.background = '#faf5ff';
                 const input = node.querySelector('input');
                 if (input) input.checked = true;
             });
         });
+
+        // Auto-select first card visual
+        const firstCard = card.querySelector('[data-plan-card]');
+        if (firstCard) {
+            firstCard.style.borderColor = '#7c3aed';
+            firstCard.style.boxShadow = '0 0 0 3px rgba(124,58,237,0.15)';
+            firstCard.style.background = '#faf5ff';
+        }
 
         card.querySelector('#pubiloSelectPlanLogout').addEventListener('click', async () => {
             await nativeFetch('/api/auth/logout', { method: 'POST' });
