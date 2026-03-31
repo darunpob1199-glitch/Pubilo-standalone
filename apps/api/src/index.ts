@@ -252,6 +252,8 @@ const workspaceProtectedPaths = [
     '/api/billing/create-payment',
     '/api/billing/payment-status',
     '/api/billing/cancel-payment',
+    '/api/billing/cancel',
+    '/api/billing/check-status',
 ];
 
 for (const path of workspaceProtectedPaths) {
