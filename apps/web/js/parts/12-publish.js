@@ -718,6 +718,142 @@ async function uploadTextPostSquareImage(dataUrl) {
 window.renderTextComposerUi = renderTextComposerUi;
 let publishToastTimer = null;
 const PUBLISH_AFTER_ACTION_STORAGE_PREFIX = "fewfeed_afterPublishAction";
+const PUBLISH_IN_FLIGHT_STORAGE_KEY = "fewfeed_publishInFlightState";
+const PUBLISH_IN_FLIGHT_MAX_AGE_MS = 2 * 60 * 1000;
+const publishInFlightByMode = {
+    link: false,
+    image: false,
+    reels: false,
+    text: false,
+    news: false,
+};
+
+function normalizePublishMode(mode) {
+    return String(mode || "link").trim().toLowerCase();
+}
+
+function resolvePublishButtonForMode(mode) {
+    const normalizedMode = normalizePublishMode(mode);
+    if (typeof getModeElements === "function") {
+        const elements = getModeElements(normalizedMode);
+        if (elements?.publishBtn) return elements.publishBtn;
+    }
+
+    if (normalizedMode === "link") return document.getElementById("publishBtn");
+    return document.getElementById(`${normalizedMode}PublishBtn`);
+}
+
+function persistPublishInFlightState() {
+    try {
+        const payload = {
+            updatedAt: Date.now(),
+            modes: publishInFlightByMode,
+        };
+        sessionStorage.setItem(PUBLISH_IN_FLIGHT_STORAGE_KEY, JSON.stringify(payload));
+    } catch (_) {
+        // Ignore storage errors in private mode/quota issues.
+    }
+}
+
+function applyPublishInFlightButtonUi(mode) {
+    const publishBtn = resolvePublishButtonForMode(mode);
+    if (!publishBtn) return;
+    publishBtn.disabled = true;
+    publishBtn.style.opacity = "1";
+    publishBtn.style.cursor = "wait";
+    publishBtn.classList.remove("published");
+    publishBtn.innerHTML = '<span class="loading"></span><span>กำลังโพสต์...</span>';
+}
+
+function isAnyPublishInFlight() {
+    return Object.values(publishInFlightByMode).some(Boolean);
+}
+
+function syncPublishInFlightUi() {
+    const modes = ["news", "link", "image", "reels", "text"];
+    const hasAnyInFlight = isAnyPublishInFlight();
+    if (!hasAnyInFlight) return;
+    modes.forEach((mode) => applyPublishInFlightButtonUi(mode));
+}
+
+function hydratePublishInFlightState() {
+    try {
+        const raw = sessionStorage.getItem(PUBLISH_IN_FLIGHT_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        const updatedAt = Number(parsed?.updatedAt || 0);
+        if (!updatedAt || Date.now() - updatedAt > PUBLISH_IN_FLIGHT_MAX_AGE_MS) {
+            sessionStorage.removeItem(PUBLISH_IN_FLIGHT_STORAGE_KEY);
+            return;
+        }
+
+        const modes = parsed?.modes || {};
+        Object.keys(publishInFlightByMode).forEach((mode) => {
+            publishInFlightByMode[mode] = !!modes[mode];
+        });
+    } catch (_) {
+        try {
+            sessionStorage.removeItem(PUBLISH_IN_FLIGHT_STORAGE_KEY);
+        } catch (_) {}
+        Object.keys(publishInFlightByMode).forEach((mode) => {
+            publishInFlightByMode[mode] = false;
+        });
+    }
+}
+
+function clearPublishInFlightIfExpired() {
+    try {
+        const raw = sessionStorage.getItem(PUBLISH_IN_FLIGHT_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        const updatedAt = Number(parsed?.updatedAt || 0);
+        const hasAnyInFlight = Object.keys(publishInFlightByMode).some((mode) => !!publishInFlightByMode[mode]);
+        if (!hasAnyInFlight) return;
+        if (updatedAt && Date.now() - updatedAt <= PUBLISH_IN_FLIGHT_MAX_AGE_MS) return;
+
+        Object.keys(publishInFlightByMode).forEach((mode) => {
+            publishInFlightByMode[mode] = false;
+        });
+        sessionStorage.removeItem(PUBLISH_IN_FLIGHT_STORAGE_KEY);
+        if (typeof updatePublishButton === "function") {
+            updatePublishButton();
+        }
+        if (typeof validateCurrentMode === "function") {
+            validateCurrentMode();
+        }
+    } catch (_) {
+        // Ignore storage/runtime errors.
+    }
+}
+
+function setPublishInFlight(mode, inFlight) {
+    const normalizedMode = normalizePublishMode(mode);
+    publishInFlightByMode[normalizedMode] = !!inFlight;
+    persistPublishInFlightState();
+    requestAnimationFrame(() => {
+        if (publishInFlightByMode[normalizedMode]) {
+            applyPublishInFlightButtonUi(normalizedMode);
+        }
+    });
+}
+
+function isPublishInFlight(mode) {
+    const normalizedMode = normalizePublishMode(mode);
+    return !!publishInFlightByMode[normalizedMode];
+}
+
+window.isPublishInFlight = isPublishInFlight;
+window.isAnyPublishInFlight = isAnyPublishInFlight;
+window.syncPublishInFlightUi = syncPublishInFlightUi;
+window.setPublishInFlightState = (mode, inFlight) => setPublishInFlight(mode, inFlight);
+hydratePublishInFlightState();
+setTimeout(syncPublishInFlightUi, 0);
+setTimeout(clearPublishInFlightIfExpired, 100);
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+        clearPublishInFlightIfExpired();
+    }
+});
 
 function showPublishToast(message, type = "success") {
     if (!message) return;
@@ -835,6 +971,42 @@ function setupPublishHandler(mode) {
     els.publishBtn.addEventListener("click", async () => {
         console.log('[PUBLISH] Button clicked! Mode:', mode);
         const state = modeState[mode];
+        if (isAnyPublishInFlight()) {
+            showPublishToast("มีงานโพสต์กำลังทำงานอยู่ รอให้เสร็จก่อนโพสต์ถัดไป", "error");
+            return;
+        }
+        const pageIdAtClick = document.getElementById("pageSelect")?.value || "";
+        const targetPageIdsAtClick =
+            typeof getSelectedTargetPageIds === "function"
+                ? getSelectedTargetPageIds()
+                : [];
+        const primaryTextAtClick = els.primaryText?.value?.trim() || "";
+        const previewDescElAtClick = document.getElementById("previewDescription");
+        const previewCaptionElAtClick = document.getElementById("previewCaption");
+        const linkDescriptionInputElAtClick = document.getElementById("linkDescriptionInput");
+        const ctaConfigAtClick = typeof getCurrentCtaConfig === "function"
+            ? getCurrentCtaConfig(mode)
+            : {
+                label: "Shop Now",
+                type: document.getElementById("cardButton")?.value || "SHOP_NOW",
+            };
+        const publishSnapshot = {
+            pageId: pageIdAtClick,
+            targetPageIds: targetPageIdsAtClick,
+            primaryText: primaryTextAtClick,
+            selectedImage: state.selectedImage || null,
+            selectedVideoFile: state.selectedVideoFile || null,
+            selectedVideoKey: state.selectedVideoKey || "",
+            selectedVideoName: state.selectedVideoName || "",
+            selectedVideoMimeType: state.selectedVideoMimeType || "",
+            linkUrl: linkUrl?.value?.trim() || "",
+            caption: caption?.value?.trim() || previewCaptionElAtClick?.textContent?.trim() || "",
+            description: linkDescriptionInputElAtClick?.value?.trim()
+                || description?.value?.trim()
+                || previewDescElAtClick?.textContent?.trim()
+                || "",
+            callToAction: ctaConfigAtClick,
+        };
 
         // If already published, open the URL in background
         if (
@@ -864,19 +1036,18 @@ function setupPublishHandler(mode) {
             return;
         }
 
-        els.publishBtn.disabled = true;
-        els.publishBtn.innerHTML =
-            '<span class="loading"></span><span>กำลังโพสต์...</span>';
-        els.publishBtn.classList.remove("published");
+        setPublishInFlight(mode, true);
+        const publishBtn = resolvePublishButtonForMode(mode);
+        if (publishBtn) {
+            publishBtn.disabled = true;
+            publishBtn.innerHTML = '<span class="loading"></span><span>กำลังโพสต์...</span>';
+            publishBtn.classList.remove("published");
+        }
         lastPublishedUrl = null;
 
         try {
-            const pageId =
-                document.getElementById("pageSelect").value;
-            const targetPageIds =
-                typeof getSelectedTargetPageIds === "function"
-                    ? getSelectedTargetPageIds()
-                    : [];
+            const pageId = publishSnapshot.pageId;
+            const targetPageIds = publishSnapshot.targetPageIds;
 
             if (!pageId) {
                 throw new Error("กรุณาเลือก Page");
@@ -900,7 +1071,7 @@ function setupPublishHandler(mode) {
                     fbCookie || localStorage.getItem("fewfeed_cookie") || "";
                 const fbDtsg =
                     localStorage.getItem("fewfeed_fbDtsg") || "";
-                const primaryText = els.primaryText?.value?.trim() || "";
+                const primaryText = publishSnapshot.primaryText;
                 const textFormatPresetId = getActiveTextBackgroundPresetId();
                 const { scheduledTime, scheduleSource } =
                     await resolveScheduledTimeForMode(mode, pageId);
@@ -1001,13 +1172,13 @@ function setupPublishHandler(mode) {
                     fbCookie || localStorage.getItem("fewfeed_cookie") || "";
                 const fbDtsg =
                     localStorage.getItem("fewfeed_fbDtsg") || "";
-                const caption = els.primaryText?.value?.trim() || "";
+                const caption = publishSnapshot.primaryText;
                 const affiliateComment =
                     document.getElementById("reelsAffiliateComment")?.value?.trim() || "";
                 const affiliateLink =
                     document.getElementById("reelsAffiliateLink")?.value?.trim() || "";
-                const videoFile = state.selectedVideoFile;
-                const videoKey = state.selectedVideoKey || "";
+                const videoFile = publishSnapshot.selectedVideoFile;
+                const videoKey = publishSnapshot.selectedVideoKey || "";
 
                 if (!videoFile) {
                     throw new Error("กรุณาเลือกวิดีโอก่อนโพสต์");
@@ -1033,9 +1204,9 @@ function setupPublishHandler(mode) {
                 if (cookie) formData.append("cookieData", cookie);
                 if (fbDtsg) formData.append("fbDtsg", fbDtsg);
                 formData.append("videoKey", videoKey);
-                formData.append("videoFileName", state.selectedVideoName || videoFile.name || "pubilo-reel.mp4");
-                if (state.selectedVideoMimeType) {
-                    formData.append("videoMimeType", state.selectedVideoMimeType);
+                formData.append("videoFileName", publishSnapshot.selectedVideoName || videoFile.name || "pubilo-reel.mp4");
+                if (publishSnapshot.selectedVideoMimeType) {
+                    formData.append("videoMimeType", publishSnapshot.selectedVideoMimeType);
                 }
 
                 const response = await fetch("/api/publish-reel", {
@@ -1087,8 +1258,8 @@ function setupPublishHandler(mode) {
                     fbCookie || localStorage.getItem("fewfeed_cookie") || "";
                 const fbDtsg =
                     localStorage.getItem("fewfeed_fbDtsg") || "";
-                const primaryText = els.primaryText?.value?.trim() || "";
-                let imageUrl = state.selectedImage;
+                const primaryText = publishSnapshot.primaryText;
+                let imageUrl = publishSnapshot.selectedImage;
 
                 if (!imageUrl) {
                     throw new Error("กรุณาเลือกภาพก่อนโพสต์");
@@ -1248,37 +1419,30 @@ function setupPublishHandler(mode) {
             const isLinkMode = mode === "link";
 
             // Compress image before upload to avoid 413 error
-            let imageToUpload = state.selectedImage;
+            let imageToUpload = publishSnapshot.selectedImage;
             if (imageToUpload && imageToUpload.startsWith("data:")) {
                 imageToUpload = await compressImage(imageToUpload, 1200, 0.8);
             }
 
-            const previewDescEl = document.getElementById("previewDescription");
-            const previewCaptionEl = document.getElementById("previewCaption");
-            const linkDescriptionInputEl = document.getElementById("linkDescriptionInput");
             const descriptionText = isLinkMode
-                ? (linkDescriptionInputEl?.value?.trim() || description?.value?.trim() || previewDescEl?.textContent?.trim() || "")
+                ? publishSnapshot.description
                 : "";
             const captionText = isLinkMode
-                ? (caption?.value?.trim() || previewCaptionEl?.textContent?.trim() || "")
+                ? publishSnapshot.caption
                 : "";
             if (isLinkMode) {
                 description.value = descriptionText;
+                const linkDescriptionInputEl = document.getElementById("linkDescriptionInput");
                 if (linkDescriptionInputEl) {
                     linkDescriptionInputEl.value = descriptionText;
                 }
                 caption.value = captionText;
             }
-            const linkUrlValue = isLinkMode ? linkUrl.value.trim() : "";
+            const linkUrlValue = isLinkMode ? publishSnapshot.linkUrl : "";
             const linkNameValue = isLinkMode
                 ? (descriptionText ? `พิกัด : ${descriptionText}` : (linkName?.value?.trim() || ""))
                 : "";
-            const ctaConfig = typeof getCurrentCtaConfig === "function"
-                ? getCurrentCtaConfig(mode)
-                : {
-                    label: "Shop Now",
-                    type: document.getElementById("cardButton")?.value || "SHOP_NOW",
-                };
+            const ctaConfig = publishSnapshot.callToAction;
 
             if (isLinkMode) {
                 console.log("[PUBLISH] === LINK PAYLOAD DEBUG ===");
@@ -1301,9 +1465,7 @@ function setupPublishHandler(mode) {
                     linkName: linkNameValue,
                     caption: captionText,
                     description: descriptionText,
-                    primaryText: primaryTextEl
-                        ? primaryTextEl.value
-                        : "",
+                    primaryText: publishSnapshot.primaryText || "",
                     targetPageIds,
                     postMode: mode,
                     accessToken: adsToken, // Ads Token (server fetches Page Token from this)
@@ -1522,6 +1684,8 @@ function setupPublishHandler(mode) {
                     ? getPrimaryPublishLabel(mode)
                     : "POST NOW";
             els.publishBtn.disabled = false;
+        } finally {
+            setPublishInFlight(mode, false);
         }
     });
 }

@@ -519,21 +519,39 @@ async function loadSettings() {
 
 // Update publish button text
 function updatePublishButton() {
+    const hasInFlight = typeof window.isAnyPublishInFlight === "function" && window.isAnyPublishInFlight();
     const linkLabel = getPrimaryPublishLabel("link");
-    if (!publishBtn.classList.contains("published")) {
+    if (hasInFlight) {
+        publishBtn.disabled = true;
+        publishBtn.innerHTML = '<span class="loading"></span><span>กำลังโพสต์...</span>';
+    } else if (!publishBtn.classList.contains("published")) {
         publishBtn.textContent = linkLabel;
     }
     const textPublishBtn = document.getElementById("textPublishBtn");
-    if (textPublishBtn && !textPublishBtn.classList.contains("published")) {
+    if (textPublishBtn && hasInFlight) {
+        textPublishBtn.disabled = true;
+        textPublishBtn.innerHTML = '<span class="loading"></span><span>กำลังโพสต์...</span>';
+    } else if (textPublishBtn && !textPublishBtn.classList.contains("published")) {
         textPublishBtn.textContent = getPrimaryPublishLabel("text");
     }
     const newsPublishBtn = document.getElementById("newsPublishBtn");
-    if (newsPublishBtn && !newsPublishBtn.classList.contains("published")) {
+    if (newsPublishBtn && hasInFlight) {
+        newsPublishBtn.disabled = true;
+        newsPublishBtn.innerHTML = '<span class="loading"></span><span>กำลังโพสต์...</span>';
+    } else if (newsPublishBtn && !newsPublishBtn.classList.contains("published")) {
         newsPublishBtn.textContent = getPrimaryPublishLabel("news");
     }
     const imagePublishBtn = document.getElementById("imagePublishBtn");
-    if (imagePublishBtn && !imagePublishBtn.classList.contains("published")) {
+    if (imagePublishBtn && hasInFlight) {
+        imagePublishBtn.disabled = true;
+        imagePublishBtn.innerHTML = '<span class="loading"></span><span>กำลังโพสต์...</span>';
+    } else if (imagePublishBtn && !imagePublishBtn.classList.contains("published")) {
         imagePublishBtn.textContent = getPrimaryPublishLabel("image");
+    }
+    const reelsPublishBtn = document.getElementById("reelsPublishBtn");
+    if (reelsPublishBtn && hasInFlight) {
+        reelsPublishBtn.disabled = true;
+        reelsPublishBtn.innerHTML = '<span class="loading"></span><span>กำลังโพสต์...</span>';
     }
 }
 

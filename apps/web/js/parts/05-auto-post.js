@@ -28,6 +28,8 @@ const hideTokenInputPanel = document.getElementById("hideTokenInputPanel");
 const hideSharedStory = document.getElementById("hideSharedStory");
 const hideMobileStatus = document.getElementById("hideMobileStatus");
 const hideAddedPhotos = document.getElementById("hideAddedPhotos");
+const autoHideNowBtn = document.getElementById("autoHideNowBtn");
+const autoHideNowStatus = document.getElementById("autoHideNowStatus");
 
 // Auto-resize textarea function
 function autoResizeTextarea(textarea) {
@@ -540,18 +542,33 @@ function getHideTypes() {
     return types.join(',');
 }
 
+function setAutoHideNowStatus(message, tone = "muted") {
+    if (!autoHideNowStatus) return;
+
+    const toneColors = {
+        muted: "#6b7280",
+        loading: "#2563eb",
+        success: "#047857",
+        error: "#dc2626",
+    };
+
+    autoHideNowStatus.textContent = message || "";
+    autoHideNowStatus.style.color = toneColors[tone] || toneColors.muted;
+}
+
 async function saveAutoHideConfig() {
     const pageId = getCurrentPageId();
     if (!pageId) return;
 
     const enabled = autoHideEnabled.checked;
     const hideTypes = getHideTypes();
+    const hideToken = hideTokenInputPanel ? hideTokenInputPanel.value.trim() : "";
 
     try {
         const response = await fetch('/api/auto-hide-config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pageId, enabled, hideTypes })
+            body: JSON.stringify({ pageId, enabled, hideTypes, hideToken })
         });
         const data = await response.json();
         if (data.success) {
@@ -562,11 +579,68 @@ async function saveAutoHideConfig() {
     }
 }
 
+async function triggerAutoHideNow() {
+    const pageId = getCurrentPageId();
+    if (!pageId) {
+        alert("กรุณาเลือกเพจก่อน");
+        return;
+    }
+
+    const originalText = autoHideNowBtn?.textContent || "ซ่อนทันที";
+    if (autoHideNowBtn) {
+        autoHideNowBtn.disabled = true;
+        autoHideNowBtn.textContent = "กำลังซ่อน...";
+    }
+    setAutoHideNowStatus("กำลังซ่อนโพสต์ที่เข้าเงื่อนไข...", "loading");
+
+    try {
+        // Persist the latest toggle/type selection before manual run.
+        await saveAutoHideConfig();
+
+        const response = await fetch('/api/auto-hide', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pageId, maxHidePerRun: 20 }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        const hidden = Number(data.totalHidden || 0);
+        const pending = Number(data.results?.[0]?.pending || 0);
+        const failed = Number(data.results?.[0]?.failed || 0);
+        const failedSample = data.results?.[0]?.failed_samples?.[0]?.reason || "";
+        if (hidden > 0) {
+            const suffix = failed > 0 ? `, ไม่สำเร็จ ${failed}` : "";
+            setAutoHideNowStatus(`ซ่อนแล้ว ${hidden} โพสต์ (ค้าง ${pending}${suffix})`, "success");
+        } else if (failed > 0) {
+            setAutoHideNowStatus(`ซ่อนไม่สำเร็จ ${failed} โพสต์`, "error");
+            if (failedSample) {
+                alert(`ซ่อนไม่สำเร็จ: ${failedSample}`);
+            }
+        } else {
+            setAutoHideNowStatus("ไม่พบโพสต์ใหม่ที่เข้าเงื่อนไขซ่อน", "muted");
+        }
+    } catch (error) {
+        console.error("[Auto-Hide] Manual run failed:", error);
+        const message = error instanceof Error ? error.message : "ซ่อนทันทีไม่สำเร็จ";
+        setAutoHideNowStatus(message, "error");
+        alert(`ซ่อนทันทีไม่สำเร็จ: ${message}`);
+    } finally {
+        if (autoHideNowBtn) {
+            autoHideNowBtn.disabled = false;
+            autoHideNowBtn.textContent = originalText;
+        }
+    }
+}
+
 // Auto-hide checkbox change handlers
 autoHideEnabled.addEventListener("change", saveAutoHideConfig);
 if (hideSharedStory) hideSharedStory.addEventListener("change", saveAutoHideConfig);
 if (hideMobileStatus) hideMobileStatus.addEventListener("change", saveAutoHideConfig);
 if (hideAddedPhotos) hideAddedPhotos.addEventListener("change", saveAutoHideConfig);
+if (autoHideNowBtn) autoHideNowBtn.addEventListener("click", triggerAutoHideNow);
 
 // Post mode button handlers - toggle on/off
 postModeImage.addEventListener("click", () => {

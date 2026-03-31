@@ -85,6 +85,9 @@ function handleNavigation() {
     }
     // Re-validate after mode change
     validateLinkMode();
+    if (typeof window.syncPublishInFlightUi === "function") {
+        window.syncPublishInFlightUi();
+    }
 }
 
 // Listen for hash changes (back/forward navigation)
