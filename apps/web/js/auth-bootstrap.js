@@ -487,27 +487,18 @@
             return new Promise(() => {});
         }
 
-        // ถ้า subscription ยัง pending_payment → แสดงหน้าจ่ายเงิน
-        if (
-            payload.workspace?.subscriptionStatus === 'pending_payment'
-            && payload.latestPaymentOrder?.id
-            && payload.latestPaymentOrder?.status !== 'paid'
-        ) {
-            renderPaymentView(payload.latestPaymentOrder.id);
-            return new Promise(() => {});
-        }
-
-        // เช็ค subscription หมดอายุ / cancelled / ไม่มี
+        // เช็ค subscription ที่ต้องจ่ายเงิน / หมดอายุ / ไม่มี
         const subStatus = payload.workspace?.subscriptionStatus;
         const periodEnd = payload.workspace?.subscriptionPeriodEnd;
         const isPeriodExpired = periodEnd ? new Date(periodEnd) < new Date() : false;
-        const needsRenewal =
+        const needsPayment =
+            subStatus === 'pending_payment' ||
             (!subStatus && payload.workspace) ||
             (subStatus === 'cancelled' && isPeriodExpired) ||
             (subStatus === 'active' && isPeriodExpired);
 
-        if (needsRenewal) {
-            renderSubscriptionExpiredView(payload);
+        if (needsPayment) {
+            renderPlanSelectionView(payload);
             return new Promise(() => {});
         }
 
