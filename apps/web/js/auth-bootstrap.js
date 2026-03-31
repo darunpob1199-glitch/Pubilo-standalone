@@ -281,35 +281,46 @@
         }, 5000);
     }
 
-    // ===== Subscription Expired / Renewal View =====
-    function renderSubscriptionExpiredView(profile) {
+    // ===== Plan Selection View (pending_payment / expired / renewal) =====
+    function renderPlanSelectionView(profile) {
         const overlay = ensureOverlay();
         overlay.classList.remove('is-hidden');
         const card = overlay.querySelector('#pubiloAuthCard');
         const subtitle = overlay.querySelector('#pubiloAuthSubtitle');
-        if (subtitle) subtitle.textContent = 'กรุณาต่ออายุเพื่อใช้งานต่อ';
 
-        const wsName = profile.workspace?.name || 'Workspace';
-        const plansHtml = (state.plans || []).map((plan, index) => `
-            <label class="pubilo-plan-card ${index === 0 ? 'selected' : ''}" data-plan-card="${plan.code}">
-                <input type="radio" name="renewPlanCode" value="${plan.code}" ${index === 0 ? 'checked' : ''} />
-                <div class="pubilo-plan-top">
-                    <span class="pubilo-plan-name">${plan.label}</span>
-                    <strong>&#3647;${plan.amountThb.toLocaleString('th-TH')}</strong>
-                </div>
-                <p>${plan.description}</p>
-            </label>
-        `).join('');
+        const isExpired = profile.workspace?.subscriptionStatus !== 'pending_payment';
+        if (subtitle) subtitle.textContent = isExpired ? 'กรุณาต่ออายุเพื่อใช้งานต่อ' : 'เลือกแพ็กเกจเพื่อเริ่มใช้งาน';
+
+        const wsName = profile.workspace?.name || profile.user?.name || 'Pubilo';
+        const heading = isExpired ? 'แพ็กเกจหมดอายุแล้ว' : 'เลือกแพ็กเกจ';
+        const btnText = isExpired ? 'ต่ออายุแพ็กเกจ' : 'ชำระเงิน';
+
+        const plansHtml = (state.plans || []).map((plan, index) => {
+            const isYearly = plan.interval === 'yearly';
+            const badge = isYearly ? '<span class="pubilo-plan-badge">ประหยัด 25%</span>' : '';
+            return `
+                <label class="pubilo-plan-card ${index === 0 ? 'selected' : ''}" data-plan-card="${plan.code}">
+                    <input type="radio" name="selectPlanCode" value="${plan.code}" ${index === 0 ? 'checked' : ''} />
+                    ${badge}
+                    <div class="pubilo-plan-top">
+                        <span class="pubilo-plan-name">${plan.label}</span>
+                        <strong>&#3647;${plan.amountThb.toLocaleString('th-TH')}</strong>
+                    </div>
+                    <p>${plan.description}</p>
+                    <span class="pubilo-plan-duration">${plan.durationDays} วัน</span>
+                </label>
+            `;
+        }).join('');
 
         card.innerHTML = `
-            <form class="pubilo-auth-panel" id="pubiloRenewForm">
+            <form class="pubilo-auth-panel" id="pubiloSelectPlanForm">
                 <p class="pubilo-auth-label">${wsName}</p>
-                <h2>แพ็กเกจหมดอายุแล้ว</h2>
-                <p class="pubilo-auth-copy">เลือกแพ็กเกจเพื่อต่ออายุการใช้งาน</p>
+                <h2>${heading}</h2>
+                <p class="pubilo-auth-copy">เลือกแพ็กเกจแล้วชำระผ่าน QR PromptPay ได้เลย</p>
                 <div class="pubilo-plan-grid">${plansHtml}</div>
-                <button class="pubilo-primary-btn" type="submit">ต่ออายุแพ็กเกจ</button>
-                <p class="pubilo-auth-note" id="pubiloRenewNote"></p>
-                <button type="button" class="pubilo-logout-link" id="pubiloRenewLogout">Logout</button>
+                <button class="pubilo-primary-btn" type="submit">${btnText}</button>
+                <p class="pubilo-auth-note" id="pubiloSelectPlanNote"></p>
+                <button type="button" class="pubilo-logout-link" id="pubiloSelectPlanLogout">Logout</button>
             </form>
         `;
 
@@ -322,16 +333,16 @@
             });
         });
 
-        card.querySelector('#pubiloRenewLogout').addEventListener('click', async () => {
+        card.querySelector('#pubiloSelectPlanLogout').addEventListener('click', async () => {
             await nativeFetch('/api/auth/logout', { method: 'POST' });
             window.location.reload();
         });
 
-        const form = card.querySelector('#pubiloRenewForm');
-        const note = card.querySelector('#pubiloRenewNote');
+        const form = card.querySelector('#pubiloSelectPlanForm');
+        const note = card.querySelector('#pubiloSelectPlanNote');
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const planCode = form.querySelector('input[name="renewPlanCode"]:checked')?.value;
+            const planCode = form.querySelector('input[name="selectPlanCode"]:checked')?.value;
             if (!planCode) {
                 note.textContent = 'เลือกแพ็กเกจก่อน';
                 return;
@@ -343,22 +354,22 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ planCode }),
             });
-            const payload = await response.json();
-            if (!response.ok || !payload.success) {
-                note.textContent = payload.error || 'สร้าง order ไม่สำเร็จ';
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                note.textContent = data.error || 'สร้าง order ไม่สำเร็จ';
                 return;
             }
 
             const freshState = await fetchAuthState();
             applyAuthState(freshState);
-            if (payload.paymentOrder?.id) {
+            if (data.paymentOrder?.id) {
                 state.latestPaymentOrder = {
-                    id: payload.paymentOrder.id,
+                    id: data.paymentOrder.id,
                     status: 'pending',
-                    amount_thb: payload.paymentOrder.amountThb,
+                    amount_thb: data.paymentOrder.amountThb,
                     plan_code: planCode,
                 };
-                renderPaymentView(payload.paymentOrder.id);
+                renderPaymentView(data.paymentOrder.id);
             }
         });
     }
