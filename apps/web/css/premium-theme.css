@@ -362,14 +362,168 @@ input[type="checkbox"] {
     cursor: pointer !important;
 }
 
-/* Modals */
-.token-modal {
-    border-radius: var(--border-radius) !important;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.1) !important;
-    border: none !important;
+/* Token & App Modals Premium UI */
+.token-modal-overlay {
+    background: rgba(15, 23, 42, 0.45) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
 }
+
+.token-modal {
+    border-radius: 24px !important;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.6) inset !important;
+    border: none !important;
+    background: #ffffff !important;
+    padding: 2.25rem !important;
+    overflow: hidden !important;
+}
+
 .token-modal-header {
-    border-bottom: 1px solid #f1f2f6 !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    padding-bottom: 1.25rem !important;
+    margin-bottom: 1.25rem !important;
+}
+
+.token-modal-title {
+    font-size: 1.35rem !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    letter-spacing: -0.02em !important;
+}
+
+.token-modal-close {
+    background: #f8fafc !important;
+    border-radius: 50% !important;
+    width: 36px !important;
+    height: 36px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.2s ease !important;
+    color: #64748b !important;
+}
+
+.token-modal-close:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    transform: rotate(90deg) !important;
+}
+
+.token-item {
+    background: #fafafb !important;
+    border: 1px solid #f1f5f9 !important;
+    border-radius: 16px !important;
+    padding: 1.25rem !important;
+    margin-bottom: 1rem !important;
+}
+
+.token-label {
+    color: #334155 !important;
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+    margin-bottom: 0.75rem !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.6rem !important;
+}
+
+.token-status.valid {
+    background: #dcfce7 !important;
+    color: #15803d !important;
+    border: 1px solid rgba(22, 163, 74, 0.15) !important;
+    font-weight: 600 !important;
+    padding: 0.2rem 0.6rem !important;
+}
+
+.token-status.invalid {
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+    border: 1px solid rgba(220, 38, 38, 0.15) !important;
+    font-weight: 600 !important;
+    padding: 0.2rem 0.6rem !important;
+}
+
+.token-value {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 10px !important;
+    color: #475569 !important;
+    padding: 0.85rem 1rem !important;
+    font-size: 0.8rem !important;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.02) !important;
+    margin-bottom: 1rem !important;
+}
+
+.manual-token-input {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 12px !important;
+    padding: 1rem !important;
+    font-size: 0.85rem !important;
+    color: #1e293b !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important;
+    transition: all 0.2s ease !important;
+}
+
+.manual-token-input:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 4px rgba(108, 92, 231, 0.1) !important;
+    background: #ffffff !important;
+    outline: none !important;
+}
+
+.token-btn-group {
+    display: flex !important;
+    gap: 0.6rem !important;
+    margin-top: 1rem !important;
+}
+
+.token-copy-btn {
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    padding: 0.5rem 1rem !important;
+    font-size: 0.825rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.4rem !important;
+    transition: all 0.2s ease !important;
+    border: 1px solid #e2e8f0 !important;
+    background: #ffffff !important;
+    color: #475569 !important;
+}
+
+.token-copy-btn:hover {
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
+    transform: translateY(-1px) !important;
+}
+
+.token-save-btn {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    color: white !important;
+    border: none !important;
+    box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2) !important;
+}
+
+.token-save-btn:hover {
+    box-shadow: 0 6px 14px rgba(16, 185, 129, 0.3) !important;
+    background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+    transform: translateY(-1px) !important;
+    color: white !important;
+}
+
+.token-clear-btn {
+    background: #fff1f2 !important;
+    color: #e11d48 !important;
+    border-color: #fce7f3 !important;
+}
+
+.token-clear-btn:hover {
+    background: #ffe4e6 !important;
+    color: #be123c !important;
+    border-color: #fbcfe8 !important;
 }
 
 /* --- AUTH UI --- */
