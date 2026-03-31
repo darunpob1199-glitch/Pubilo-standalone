@@ -239,6 +239,22 @@
     }
 
     async function hydrateAndResolve() {
+        if (window.PUBILO_WEB_ONLY_MODE) {
+            const mockPayload = {
+                authenticated: true,
+                user: { name: 'Developer', avatar_url: '' },
+                workspace: { name: 'Local Workspace', subscriptionStatus: 'active' },
+                memberships: [],
+                onboardingRequired: false
+            };
+            applyAuthState(mockPayload);
+            document.body.classList.add('pubilo-authenticated');
+            ensureOverlay().classList.add('is-hidden');
+            ensureHeaderControls();
+            resolveAuthReadyPromise?.(mockPayload);
+            return mockPayload;
+        }
+
         const payload = await fetchAuthState();
         applyAuthState(payload);
 
