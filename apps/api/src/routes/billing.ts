@@ -114,4 +114,134 @@ app.post('/checkout-intent', async (c) => {
     });
 });
 
+// Cancel subscription
+app.post('/cancel', async (c) => {
+    const workspaceId = getWorkspaceId(c);
+
+    const subscription = await c.env.DB.prepare(`
+        SELECT id, status
+        FROM organization_subscriptions
+        WHERE workspace_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+    `).bind(workspaceId).first<{ id: string; status: string }>();
+
+    if (!subscription) {
+        return c.json({ success: false, error: 'No subscription found' }, 404);
+    }
+
+    if (subscription.status === 'cancelled') {
+        return c.json({ success: false, error: 'Subscription already cancelled' }, 400);
+    }
+
+    await c.env.DB.prepare(`
+        UPDATE organization_subscriptions
+        SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    `).bind(subscription.id).run();
+
+    return c.json({
+        success: true,
+        message: 'Subscription cancelled. You can still use the service until the current period ends.',
+    });
+});
+
+// Admin: confirm payment manually
+app.post('/confirm-payment', async (c) => {
+    const body = await c.req.json();
+    const orderId = String(body.orderId || '').trim();
+    const adminKey = String(body.adminKey || '').trim();
+
+    if (!orderId) {
+        return c.json({ success: false, error: 'Missing orderId' }, 400);
+    }
+
+    // Simple admin key check (should be set in environment)
+    const expectedAdminKey = c.env.BILLING_ADMIN_KEY || '';
+    if (!expectedAdminKey || adminKey !== expectedAdminKey) {
+        return c.json({ success: false, error: 'Unauthorized' }, 403);
+    }
+
+    const order = await c.env.DB.prepare(`
+        SELECT id, workspace_id, subscription_id, status, amount_thb
+        FROM payment_orders
+        WHERE id = ?
+        LIMIT 1
+    `).bind(orderId).first<{
+        id: string;
+        workspace_id: string;
+        subscription_id: string;
+        status: string;
+        amount_thb: number;
+    }>();
+
+    if (!order) {
+        return c.json({ success: false, error: 'Order not found' }, 404);
+    }
+
+    if (order.status === 'paid') {
+        return c.json({ success: false, error: 'Order already paid' }, 400);
+    }
+
+    const now = new Date().toISOString();
+
+    await c.env.DB.batch([
+        c.env.DB.prepare(`
+            UPDATE payment_orders
+            SET status = 'paid', paid_at = ?, gateway = 'manual', updated_at = ?
+            WHERE id = ?
+        `).bind(now, now, orderId),
+        c.env.DB.prepare(`
+            UPDATE organization_subscriptions
+            SET status = 'active', updated_at = ?
+            WHERE id = ?
+        `).bind(now, order.subscription_id),
+    ]);
+
+    return c.json({
+        success: true,
+        message: 'Payment confirmed and subscription activated.',
+        orderId,
+        workspaceId: order.workspace_id,
+        amountThb: order.amount_thb,
+    });
+});
+
+// Check subscription status (for enforcement middleware)
+app.get('/check-status', async (c) => {
+    const workspaceId = getWorkspaceId(c);
+
+    const subscription = await c.env.DB.prepare(`
+        SELECT id, status, plan_code, current_period_end
+        FROM organization_subscriptions
+        WHERE workspace_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+    `).bind(workspaceId).first<{
+        id: string;
+        status: string;
+        plan_code: string;
+        current_period_end: string;
+    }>();
+
+    if (!subscription) {
+        return c.json({ success: true, active: false, reason: 'no_subscription' });
+    }
+
+    const isExpired = subscription.current_period_end
+        ? new Date(subscription.current_period_end) < new Date()
+        : false;
+
+    const isActive = subscription.status === 'active' && !isExpired;
+
+    return c.json({
+        success: true,
+        active: isActive,
+        status: subscription.status,
+        planCode: subscription.plan_code,
+        periodEnd: subscription.current_period_end,
+        expired: isExpired,
+    });
+});
+
 export { app as billingRouter };
