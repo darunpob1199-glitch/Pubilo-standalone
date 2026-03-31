@@ -886,7 +886,11 @@ window.showPublishToast = showPublishToast;
 
 function normalizeAfterPublishAction(value) {
     const normalized = String(value || "").trim().toLowerCase();
-    if (normalized === "published" || normalized === "pending") {
+    if (
+        normalized === "published" ||
+        normalized === "pending" ||
+        normalized === "hide_timeline"
+    ) {
         return normalized;
     }
     return "stay";
@@ -903,6 +907,7 @@ function getAfterPublishActionForCurrentPage() {
     const fallback = localStorage.getItem(PUBLISH_AFTER_ACTION_STORAGE_PREFIX);
     return normalizeAfterPublishAction(pageScoped || fallback || "stay");
 }
+window.getAfterPublishActionForCurrentPage = getAfterPublishActionForCurrentPage;
 
 function restorePublishButtonState(mode, publishBtn) {
     if (!publishBtn) return;
@@ -976,6 +981,8 @@ function setupPublishHandler(mode) {
             return;
         }
         const pageIdAtClick = document.getElementById("pageSelect")?.value || "";
+        const afterPublishActionAtClick = getAfterPublishActionForCurrentPage();
+        const hideFromTimelineAfterPublish = afterPublishActionAtClick === "hide_timeline";
         const targetPageIdsAtClick =
             typeof getSelectedTargetPageIds === "function"
                 ? getSelectedTargetPageIds()
@@ -1104,6 +1111,7 @@ function setupPublishHandler(mode) {
                         cookieData: cookie,
                         fbDtsg,
                         scheduleInSystem: scheduleSource === "manual",
+                        hideFromTimeline: hideFromTimelineAfterPublish,
                         scheduledTime: scheduledTime
                             ? Math.floor(scheduledTime.getTime() / 1000)
                             : null,
@@ -1115,6 +1123,9 @@ function setupPublishHandler(mode) {
 
                 if (!response.ok || !data.success) {
                     throw new Error(data.error || "Failed to publish text post");
+                }
+                if (data.warning) {
+                    showPublishToast(data.warning, "error");
                 }
 
                 lastPublishedUrl =
@@ -1307,6 +1318,7 @@ function setupPublishHandler(mode) {
                         cookieData: cookie,
                         fbDtsg,
                         scheduleInSystem: scheduleSource === "manual",
+                        hideFromTimeline: hideFromTimelineAfterPublish,
                         scheduledTime: scheduledTime
                             ? Math.floor(scheduledTime.getTime() / 1000)
                             : null,
@@ -1318,6 +1330,9 @@ function setupPublishHandler(mode) {
 
                 if (!response.ok || !data.success) {
                     throw new Error(data.error || "Failed to publish image post");
+                }
+                if (data.warning) {
+                    showPublishToast(data.warning, "error");
                 }
 
                 lastPublishedUrl =
@@ -1477,6 +1492,7 @@ function setupPublishHandler(mode) {
                     callToActionLabel: ctaConfig.label,
                     fbDtsg: fbDtsg, // Required for GraphQL scheduling
                     scheduleInSystem: scheduleSource === "manual",
+                    hideFromTimeline: hideFromTimelineAfterPublish,
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
                         : null, // Unix timestamp
@@ -1505,9 +1521,14 @@ function setupPublishHandler(mode) {
             const scheduledTimeMatch = fullLog.match(
                 /"scheduledTime":(\d+)/,
             );
+            const warningMatch = fullLog.match(/"warning":"([^"]+)"/);
+            const warningText = warningMatch ? warningMatch[1].replace(/\\"/g, '"') : "";
 
             if (urlMatch) {
                 lastPublishedUrl = urlMatch[1];
+                if (warningText) {
+                    showPublishToast(warningText, "error");
+                }
                 const postId = postIdMatch ? postIdMatch[1] : null;
 
                 if (

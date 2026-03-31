@@ -13,7 +13,11 @@ const AFTER_PUBLISH_ACTION_STORAGE_PREFIX = "fewfeed_afterPublishAction";
 
 function normalizeAfterPublishActionSetting(value) {
     const normalized = String(value || "").trim().toLowerCase();
-    if (normalized === "published" || normalized === "pending") return normalized;
+    if (
+        normalized === "published" ||
+        normalized === "pending" ||
+        normalized === "hide_timeline"
+    ) return normalized;
     return "stay";
 }
 

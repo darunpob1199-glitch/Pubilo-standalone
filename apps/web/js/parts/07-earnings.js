@@ -170,7 +170,8 @@ function parsePublishedDate(value) {
     const raw = String(value).trim();
     if (!raw) return null;
     const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
-        ? raw.replace(" ", "T")
+        // D1/SQLite timestamps are UTC; append Z so browser converts to local time correctly.
+        ? `${raw.replace(" ", "T")}Z`
         : raw;
     const parsed = new Date(normalized);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
@@ -406,6 +407,13 @@ function buildPublishedTable(logs) {
         msgDiv.textContent = message.length > 80 ? `${message.slice(0, 80)}...` : message;
         msgDiv.title = message;
         msgWrap.appendChild(msgDiv);
+        if (log.is_hidden === true) {
+            const hiddenBadge = document.createElement("div");
+            hiddenBadge.className = "published-message-warning";
+            hiddenBadge.style.color = "#2563eb";
+            hiddenBadge.textContent = "ซ่อนจากหน้าเพจแล้ว (ยังเช็กจากลิงก์โพสต์ได้)";
+            msgWrap.appendChild(hiddenBadge);
+        }
         if (log.warning_message) {
             const warningDiv = document.createElement("div");
             warningDiv.className = "published-message-warning";

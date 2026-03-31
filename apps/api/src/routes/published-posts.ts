@@ -191,6 +191,8 @@ function mapFacebookPosts(data: any): Array<Record<string, any>> {
 
     return posts.map((post: Record<string, any>) => {
         const postType = inferFacebookPostType(post);
+        const timelineVisibility = String(post.timeline_visibility || '').trim().toLowerCase();
+        const isHidden = post.is_hidden === true || timelineVisibility === 'hidden';
         return {
             id: `fb:${post.id}`,
             page_id: String(post.from?.id || ''),
@@ -214,6 +216,9 @@ function mapFacebookPosts(data: any): Array<Record<string, any>> {
             published_at: String(post.created_time || '').trim() || null,
             warning_message: null,
             created_at: String(post.created_time || '').trim() || null,
+            is_hidden: isHidden,
+            timeline_visibility: timelineVisibility || null,
+            hidden_at: null,
             sourceLabel: mapSourceLabel('facebook'),
             deleteAllowed: false,
         };
@@ -306,7 +311,7 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
 
     for (const authToken of authCandidates) {
         const params = new URLSearchParams({
-            fields: 'id,message,story,created_time,full_picture,permalink_url,status_type,from,attachments{media_type,type,url,target,media,subattachments}',
+            fields: 'id,message,story,created_time,full_picture,permalink_url,status_type,from,is_hidden,timeline_visibility,attachments{media_type,type,url,target,media,subattachments}',
             limit: String(Math.min(limit, 100)),
             access_token: authToken,
         });
@@ -387,8 +392,15 @@ async function fetchHistoryPublishedPosts(env: Env, input: PublishedQueryInput) 
             ph.scheduled_time,
             ph.published_at,
             ph.warning_message,
+            ph.extra_json,
+            hp.post_id AS hidden_post_id,
+            hp.hidden_at AS hidden_at,
             ph.created_at
         FROM publish_history ph
+        LEFT JOIN hidden_posts hp
+               ON hp.organization_id = ph.organization_id
+              AND hp.page_id = ph.page_id
+              AND hp.post_id = ph.facebook_post_id
         WHERE ph.organization_id = ?
           AND (? = '' OR ph.page_id = ?)
         ORDER BY datetime(COALESCE(ph.published_at, ph.created_at)) DESC, ph.id DESC
@@ -396,17 +408,38 @@ async function fetchHistoryPublishedPosts(env: Env, input: PublishedQueryInput) 
     `;
 
     const results = await env.DB.prepare(query).bind(workspaceId, pageId, pageId, limit).all<Record<string, any>>();
-    const logs = (results.results || []).map((row) => ({
-        ...row,
-        facebook_url: buildFacebookPostUrl({
-            pageId: row.page_id,
-            postId: row.facebook_post_id,
-            permalink: row.facebook_url,
-            postType: row.post_type,
-        }),
-        sourceLabel: mapSourceLabel(row.source),
-        deleteAllowed: true,
-    }));
+    const logs = (results.results || []).map((row) => {
+        let isHiddenFromExtra = false;
+        let hiddenAtFromExtra = '';
+        try {
+            const extra = row.extra_json ? JSON.parse(String(row.extra_json)) : null;
+            const hide = extra?.hide || {};
+            isHiddenFromExtra = hide?.hidden === true || extra?.timelineHidden === true;
+            hiddenAtFromExtra = String(hide?.hiddenAt || '').trim();
+        } catch (_) {
+            // Ignore malformed extra_json rows.
+        }
+
+        const hiddenAt = String(row.hidden_at || hiddenAtFromExtra || '').trim() || null;
+        const isHidden = !!(row.hidden_post_id || isHiddenFromExtra);
+        const warningMessage = String(row.warning_message || '').trim();
+
+        return {
+            ...row,
+            facebook_url: buildFacebookPostUrl({
+                pageId: row.page_id,
+                postId: row.facebook_post_id,
+                permalink: row.facebook_url,
+                postType: row.post_type,
+            }),
+            warning_message: warningMessage || (isHidden ? 'ซ่อนจากหน้าเพจแล้ว' : null),
+            is_hidden: isHidden,
+            timeline_visibility: isHidden ? 'hidden' : null,
+            hidden_at: hiddenAt,
+            sourceLabel: mapSourceLabel(row.source),
+            deleteAllowed: true,
+        };
+    });
 
     return {
         success: true,
@@ -423,7 +456,7 @@ function getPublishedSortTime(row: Record<string, any>): number {
     const raw = String(row.published_at || row.created_at || '').trim();
     if (!raw) return 0;
     const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
-        ? raw.replace(' ', 'T')
+        ? `${raw.replace(' ', 'T')}Z`
         : raw;
     const timestamp = Date.parse(normalized);
     return Number.isNaN(timestamp) ? 0 : timestamp;
@@ -465,6 +498,9 @@ function mergePublishedLogs(facebookLogs: Array<Record<string, any>>, historyLog
             media_url: existing.media_url || row.media_url,
             media_thumb_url: existing.media_thumb_url || row.media_thumb_url,
             facebook_url: existing.facebook_url || row.facebook_url,
+            is_hidden: existing.is_hidden === true || row.is_hidden === true,
+            timeline_visibility: existing.timeline_visibility || row.timeline_visibility,
+            hidden_at: existing.hidden_at || row.hidden_at,
         });
     });
 

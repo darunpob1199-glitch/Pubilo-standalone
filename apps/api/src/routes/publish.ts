@@ -323,6 +323,54 @@ async function publishExistingUnpublishedPost(postId: string, pageToken: string,
     }
 }
 
+async function hidePagePostFromTimeline(
+    postId: string,
+    token: string,
+    headers?: Record<string, string>,
+): Promise<{ success: boolean; method?: string; error?: string }> {
+    const attempts = [
+        {
+            method: 'is_hidden',
+            body: new URLSearchParams({
+                access_token: token,
+                is_hidden: 'true',
+            }),
+        },
+        {
+            method: 'timeline_visibility',
+            body: new URLSearchParams({
+                access_token: token,
+                timeline_visibility: 'hidden',
+            }),
+        },
+    ];
+
+    let lastError = '';
+    for (const attempt of attempts) {
+        const response = await fetch(`${FB_API}/${postId}`, {
+            method: 'POST',
+            headers: {
+                ...(headers || {}),
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: attempt.body.toString(),
+        });
+        const data = await response.json() as any;
+        if (!data?.error) {
+            return {
+                success: true,
+                method: attempt.method,
+            };
+        }
+        lastError = data?.error?.message || `hide_failed_${attempt.method}`;
+    }
+
+    return {
+        success: false,
+        error: lastError || 'Failed to hide post from timeline',
+    };
+}
+
 async function publishLinkCardViaFeed(params: {
     pageId: string;
     pageToken: string;
@@ -755,26 +803,7 @@ async function createStandaloneAdCreative(params: {
             materializedBy: 'creative',
         };
     }
-
-    const adMaterialization = await materializeCreativeWithAd({
-        adAccountId: params.adAccountId,
-        accessToken: params.accessToken,
-        pageId: params.pageId,
-        creativeId,
-        headers: params.cookieHeaders,
-        seed: params.seed,
-    });
-
-    return {
-        creativeId,
-        postId: adMaterialization.postId,
-        creativeData: adMaterialization.adData,
-        adId: adMaterialization.adId,
-        adsetId: adMaterialization.adsetId,
-        campaignId: adMaterialization.campaignId,
-        seedAdId: adMaterialization.seedAdId,
-        materializedBy: 'ad',
-    };
+    throw new Error('Facebook did not return object_story_id for ad creative');
 }
 
 // POST /api/publish - Publish to Facebook
@@ -800,6 +829,8 @@ app.post('/', async (c) => {
             fbDtsg,
             callToAction,
             callToActionLabel,
+            hideFromTimeline,
+            hideToken,
             textFormatPresetId,
             scheduleInSystem,
             internalRun,
@@ -825,17 +856,21 @@ app.post('/', async (c) => {
         }
 
         let storedPageToken = pageToken;
+        let storedHideToken = '';
 
         if (!storedPageToken) {
             console.log('[publish] No direct pageToken provided, checking D1 page_settings...');
             try {
                 const dbResult = await c.env.DB.prepare(
-                    'SELECT post_token_encrypted FROM page_settings WHERE organization_id = ? AND page_id = ? LIMIT 1'
-                ).bind(organizationId, pageId).first<{ post_token_encrypted: string | null }>();
+                    'SELECT post_token_encrypted, hide_token_encrypted FROM page_settings WHERE organization_id = ? AND page_id = ? LIMIT 1'
+                ).bind(organizationId, pageId).first<{ post_token_encrypted: string | null; hide_token_encrypted: string | null }>();
 
                 if (dbResult?.post_token_encrypted) {
                     storedPageToken = await decryptSecret(c.env, dbResult.post_token_encrypted) || '';
                     console.log('[publish] Got stored Page Token from D1 page_settings');
+                }
+                if (dbResult?.hide_token_encrypted) {
+                    storedHideToken = await decryptSecret(c.env, dbResult.hide_token_encrypted) || '';
                 }
             } catch (dbErr) {
                 console.error('[publish] D1 error:', dbErr);
@@ -967,6 +1002,65 @@ app.post('/', async (c) => {
                 scheduledTime: historyScheduledValue,
                 extraJson: Object.keys(extra).length ? JSON.stringify(extra) : null,
             });
+        };
+
+        const shouldHideFromTimeline = !!hideFromTimeline && !scheduleTimestamp;
+        const requestHideToken = typeof hideToken === 'string' ? hideToken.trim() : '';
+        const maybeHideAfterPublish = async (postId: string) => {
+            if (!shouldHideFromTimeline || !postId) {
+                return {
+                    attempted: false,
+                    hidden: false,
+                    method: '',
+                    error: '',
+                };
+            }
+
+            const tokenCandidates = buildAuthCandidates([
+                requestHideToken,
+                storedHideToken,
+                freshPageToken,
+                storedPageToken,
+                accessToken,
+            ]);
+            let lastError = '';
+
+            for (const tokenCandidate of tokenCandidates) {
+                const result = await hidePagePostFromTimeline(
+                    postId,
+                    tokenCandidate,
+                    facebookHeaders,
+                );
+                if (result.success) {
+                    try {
+                        await c.env.DB.prepare(`
+                            INSERT OR IGNORE INTO hidden_posts (organization_id, page_id, post_id, hidden_at)
+                            VALUES (?, ?, ?, ?)
+                        `).bind(
+                            organizationId,
+                            pageId,
+                            postId,
+                            new Date().toISOString(),
+                        ).run();
+                    } catch (dbErr) {
+                        console.warn('[publish] Failed to persist hidden_posts row:', dbErr);
+                    }
+                    return {
+                        attempted: true,
+                        hidden: true,
+                        method: result.method || '',
+                        error: '',
+                    };
+                }
+                lastError = result.error || lastError;
+            }
+
+            return {
+                attempted: true,
+                hidden: false,
+                method: '',
+                error: lastError || 'hide_failed',
+            };
         };
 
         if (!internalRun && publishTargetPageIds.length > 1) {
@@ -1131,271 +1225,88 @@ app.post('/', async (c) => {
             });
         }
 
-        if (isLinkAttachmentPost) {
-            const feedTokenCandidates = buildAuthCandidates([
-                freshPageToken,
-                storedPageToken,
-                ...authCandidates,
-            ]);
+        const normalizedAdAccountId = normalizeAdAccountId(adAccountId);
+        const normalizedCallToAction = normalizeCallToActionType(callToAction);
+        const canUseAdCreativeFlow = isLinkAttachmentPost && !!accessToken && !!normalizedAdAccountId;
 
-            if (!feedTokenCandidates.length) {
+        if (isLinkAttachmentPost) {
+            if (!canUseAdCreativeFlow) {
                 return c.json({
                     success: false,
-                    error: 'ไม่พบ token สำหรับโพสต์แบบ Rich Link Card',
-                    errorType: 'MissingTokenForRichLink',
+                    error: 'ไม่พบ Ads Token หรือ Ad Account สำหรับโพสต์แบบการ์ด กรุณากด extension เพื่อเชื่อมต่อใหม่',
+                    errorType: 'MissingAdCreativeAuth',
                 }, 400);
             }
 
-            let lastFeedError = '';
-            for (const tokenCandidate of feedTokenCandidates) {
-                try {
-                    const feedPost = await publishLinkCardViaFeed({
-                        pageId,
-                        pageToken: tokenCandidate,
-                        headers: facebookHeaders,
-                        message: finalMessage,
-                        linkUrl: publishLinkUrl,
-                        title: attachmentTitle || undefined,
-                        caption: previewSiteName || undefined,
-                        description: attachmentDescription || finalMessage || undefined,
-                        pictureUrl: hostedImageUrl || undefined,
-                        scheduledTime: scheduleTimestamp,
-                        allowMetadataDropRetry: true,
-                    });
-
-                    const publishedUrl = buildFacebookPostUrl(feedPost.postId, pageId);
-                    await recordPublishedSuccess(feedPost.postId, publishedUrl, {
-                        flow: 'feed-rich-direct',
-                    });
-
-                    return c.json({
-                        success: true,
-                        postId: feedPost.postId,
-                        url: publishedUrl,
-                        needsScheduling: !!scheduleTimestamp,
-                        ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
-                        _debug: {
-                            flow: 'feed-rich-direct',
-                            candidateCount: feedTokenCandidates.length,
-                        },
-                    });
-                } catch (error) {
-                    lastFeedError = error instanceof Error ? error.message : String(error);
-                    console.warn('[publish] feed-rich-direct failed for token candidate:', {
-                        tokenLength: tokenCandidate.length,
-                        error: lastFeedError,
-                    });
-                }
-            }
-
-            return c.json({
-                success: false,
-                error: 'โพสต์ไม่สำเร็จในโหมดลิงก์การ์ด กรุณาลองใหม่อีกครั้ง',
-                errorType: 'RichLinkDirectFailed',
-                _debug: {
-                    flow: 'feed-rich-direct',
-                    candidateCount: feedTokenCandidates.length,
-                    reason: lastFeedError || 'unknown_error',
-                },
-            }, 400);
-        }
-
-        let lastFacebookError: any = null;
-        let sawSessionExpired = false;
-        const normalizedAdAccountId = normalizeAdAccountId(adAccountId);
-        const normalizedCallToAction = normalizeCallToActionType(callToAction);
-
-        const canUseAdCreativeFlow = isLinkAttachmentPost && !!accessToken && !!normalizedAdAccountId;
-        if (isLinkAttachmentPost && !canUseAdCreativeFlow) {
-            console.warn('[publish] Skip ad-creative flow, fallback to standard feed flow', {
-                hasAccessToken: !!accessToken,
-                hasAdAccountId: !!normalizedAdAccountId,
-            });
-            const pageTokenForFeed = freshPageToken || storedPageToken || '';
-            if (!pageTokenForFeed) {
+            const pageTokenForPublish = freshPageToken || storedPageToken;
+            if (!pageTokenForPublish) {
                 return c.json({
                     success: false,
-                    error: 'ไม่พบ Page Token สำหรับโพสต์แบบ Rich Link Card',
+                    error: 'ไม่พบ Page Token สำหรับเผยแพร่โพสต์ กรุณาเชื่อมต่อ extension ใหม่แล้วลองอีกครั้ง',
                     errorType: 'MissingPageToken',
                 }, 400);
             }
 
             try {
-                const feedPost = await publishLinkCardViaFeed({
+                const creativeResult = await createStandaloneAdCreative({
                     pageId,
-                    pageToken: pageTokenForFeed,
-                    headers: facebookHeaders,
+                    accessToken,
+                    cookieHeaders: facebookHeaders,
+                    adAccountId: normalizedAdAccountId,
+                    linkUrl: finalLink || publishLinkUrl,
+                    hostedImageUrl: hostedImageUrl || undefined,
                     message: finalMessage,
-                        linkUrl: publishLinkUrl,
                     title: attachmentTitle || undefined,
                     caption: previewSiteName || undefined,
-                    description: attachmentDescription || finalMessage || undefined,
-                    pictureUrl: hostedImageUrl || undefined,
-                    scheduledTime: scheduleTimestamp,
-                    allowMetadataDropRetry: false,
+                    description: attachmentDescription || undefined,
+                    callToAction: normalizedCallToAction,
                 });
 
-                const publishedUrl = buildFacebookPostUrl(feedPost.postId, pageId);
-                await recordPublishedSuccess(feedPost.postId, publishedUrl, {
-                    flow: 'feed-direct-rich',
-                    adCreativeError: 'skip-adcreative-no-access',
+                if (!scheduleTimestamp) {
+                    await publishExistingUnpublishedPost(creativeResult.postId, pageTokenForPublish, facebookHeaders);
+                }
+
+                const publishedUrl = buildFacebookPostUrl(creativeResult.postId, pageId);
+                await recordPublishedSuccess(creativeResult.postId, publishedUrl, {
+                    flow: 'adcreative',
+                    creativeId: creativeResult.creativeId,
+                    materializedBy: creativeResult.materializedBy,
                 });
+                const hideResult = await maybeHideAfterPublish(creativeResult.postId);
 
                 return c.json({
                     success: true,
-                    postId: feedPost.postId,
+                    postId: creativeResult.postId,
                     url: publishedUrl,
+                    timelineHidden: hideResult.hidden,
+                    ...(hideResult.attempted && !hideResult.hidden ? { warning: `ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}` } : {}),
                     needsScheduling: !!scheduleTimestamp,
                     ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
                     _debug: {
-                        flow: 'feed-direct-rich',
-                        hasAdCreative: false,
+                        flow: 'adcreative',
+                        creativeId: creativeResult.creativeId,
+                        adAccountId: normalizedAdAccountId,
+                        requestedAdAccountId: normalizedAdAccountId,
+                        materializedBy: creativeResult.materializedBy || '',
+                        hide: hideResult,
                     },
                 });
             } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
+                const rawMessage = error instanceof Error ? error.message : String(error);
                 return c.json({
                     success: false,
-                    error: `โพสต์ถูกยกเลิกเพื่อป้องกันลิงก์เพียว: ${message}`,
+                    error: `โพสต์ถูกยกเลิกเพื่อป้องกันลิงก์เพียว: ${rawMessage}`,
                     errorType: 'StrictRichLinkCardFailure',
+                    _debug: {
+                        flow: 'adcreative',
+                        reason: rawMessage,
+                    },
                 }, 400);
             }
         }
 
-        if (canUseAdCreativeFlow) {
-            const pageTokenForPublish = freshPageToken || storedPageToken;
-            if (!pageTokenForPublish) {
-                console.warn('[publish] Missing page token for ad-creative flow, fallback to standard feed flow');
-            } else {
-                try {
-                    const seedContext = await resolveAdSeedContext({
-                        preferredAdAccountId: normalizedAdAccountId,
-                        accessToken,
-                        pageId,
-                        headers: facebookHeaders,
-                    });
-
-                    const resolvedAdAccountId = seedContext.seed?.adsetId
-                        ? seedContext.adAccountId
-                        : normalizedAdAccountId;
-
-                    const creativeResult = await createStandaloneAdCreative({
-                        pageId,
-                        accessToken,
-                        cookieHeaders: facebookHeaders,
-                        adAccountId: resolvedAdAccountId,
-                        linkUrl: publishLinkUrl,
-                        hostedImageUrl: hostedImageUrl || undefined,
-                        message: finalMessage,
-                        title: attachmentTitle || undefined,
-                        caption: previewSiteName || undefined,
-                        description: attachmentDescription || undefined,
-                        callToAction: normalizedCallToAction,
-                        seed: seedContext.seed,
-                    });
-
-                    console.log('[publish] Ad creative created:', {
-                        creativeId: creativeResult.creativeId,
-                        postId: creativeResult.postId,
-                        creativeData: creativeResult.creativeData,
-                        requestedAdAccountId: normalizedAdAccountId,
-                        resolvedAdAccountId,
-                        adId: creativeResult.adId,
-                        adsetId: creativeResult.adsetId,
-                        campaignId: creativeResult.campaignId,
-                        seedAdId: creativeResult.seedAdId,
-                        materializedBy: creativeResult.materializedBy,
-                        scannedAccounts: seedContext.scannedAccounts,
-                    });
-
-                    if (!scheduleTimestamp) {
-                        await publishExistingUnpublishedPost(creativeResult.postId, pageTokenForPublish, facebookHeaders);
-                    }
-
-                    const publishedUrl = buildFacebookPostUrl(creativeResult.postId, pageId);
-                    await recordPublishedSuccess(creativeResult.postId, publishedUrl, {
-                        flow: 'adcreative',
-                        creativeId: creativeResult.creativeId,
-                        materializedBy: creativeResult.materializedBy,
-                    });
-
-                    return c.json({
-                        success: true,
-                        postId: creativeResult.postId,
-                        url: publishedUrl,
-                        needsScheduling: !!scheduleTimestamp,
-                        ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
-                        _debug: {
-                            flow: 'adcreative',
-                            creativeId: creativeResult.creativeId,
-                            adAccountId: resolvedAdAccountId,
-                            requestedAdAccountId: normalizedAdAccountId,
-                            adId: creativeResult.adId || '',
-                            adsetId: creativeResult.adsetId || '',
-                            campaignId: creativeResult.campaignId || '',
-                            seedAdId: creativeResult.seedAdId || '',
-                            materializedBy: creativeResult.materializedBy || '',
-                            scannedAccounts: seedContext.scannedAccounts,
-                        },
-                    });
-                } catch (error) {
-                    const rawMessage = error instanceof Error ? error.message : String(error);
-                    const friendlyMessage = rawMessage;
-                    const canFallbackToFeed =
-                        rawMessage === 'No reusable adset found for this page in the selected ad account' ||
-                        rawMessage.includes('object_story_id');
-
-                    if (canFallbackToFeed) {
-                        try {
-                            const fallbackPost = await publishLinkCardViaFeed({
-                                pageId,
-                                pageToken: pageTokenForPublish,
-                                headers: facebookHeaders,
-                                message: finalMessage,
-                                linkUrl: publishLinkUrl,
-                                title: attachmentTitle || undefined,
-                                caption: previewSiteName || undefined,
-                                description: attachmentDescription || finalMessage || undefined,
-                                pictureUrl: hostedImageUrl || undefined,
-                                scheduledTime: scheduleTimestamp,
-                                allowMetadataDropRetry: false,
-                            });
-
-                            const publishedUrl = buildFacebookPostUrl(fallbackPost.postId, pageId);
-                            await recordPublishedSuccess(fallbackPost.postId, publishedUrl, {
-                                flow: 'feed-fallback',
-                                adCreativeError: rawMessage,
-                            });
-
-                            return c.json({
-                                success: true,
-                                postId: fallbackPost.postId,
-                                url: publishedUrl,
-                                needsScheduling: false,
-                                ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
-                                _debug: {
-                                    flow: 'feed-fallback',
-                                    adCreativeError: rawMessage,
-                                    adAccountId: normalizedAdAccountId,
-                                },
-                            });
-                        } catch (fallbackError) {
-                            console.warn('[publish] Feed fallback failed:', fallbackError);
-                        }
-                    }
-
-                    return c.json({
-                        success: false,
-                        error: 'โพสต์ไม่สำเร็จในโหมด Rich Link Card กรุณาลองใหม่อีกครั้ง',
-                        errorType: 'StrictRichLinkCardFailure',
-                        _debug: {
-                            flow: 'adcreative',
-                            reason: friendlyMessage,
-                        },
-                    }, 400);
-                }
-            }
-        }
+        let lastFacebookError: any = null;
+        let sawSessionExpired = false;
 
         for (const authToken of authCandidates) {
             let endpoint = `${FB_API}/${pageId}`;
@@ -1530,12 +1441,18 @@ app.post('/', async (c) => {
                 flow: isLinkAttachmentPost ? 'facebook-link-post' : 'facebook-direct-post',
                 postMode: postMode || null,
             });
+            const hideResult = await maybeHideAfterPublish(postId);
             return c.json({
                 success: true,
                 postId,
                 url: publishedUrl,
+                timelineHidden: hideResult.hidden,
+                ...(hideResult.attempted && !hideResult.hidden ? { warning: `ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}` } : {}),
                 needsScheduling: !!scheduleTimestamp,
                 ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                _debug: {
+                    hide: hideResult,
+                },
             });
         }
 

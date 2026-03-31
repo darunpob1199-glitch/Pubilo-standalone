@@ -889,6 +889,10 @@ if (newsPublishBtn) {
         const newsPreviewDescEl = document.getElementById("newsPreviewDescription");
         const newsPreviewCaptionEl = document.getElementById("newsPreviewCaption");
         const ctaConfig = getCurrentCtaConfig("news");
+        const hideFromTimelineAfterPublish =
+            typeof window.getAfterPublishActionForCurrentPage === "function"
+                ? window.getAfterPublishActionForCurrentPage() === "hide_timeline"
+                : false;
         
         if (!pageId) {
             alert("กรุณาเลือกเพจก่อน");
@@ -964,6 +968,7 @@ if (newsPublishBtn) {
                     callToAction: ctaConfig.type,
                     callToActionLabel: ctaConfig.label,
                     scheduleInSystem: scheduleSource === "manual",
+                    hideFromTimeline: hideFromTimelineAfterPublish,
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
                         : null,
@@ -1001,8 +1006,15 @@ if (newsPublishBtn) {
                 if (data.errorCode) meta.push(`code ${data.errorCode}`);
                 if (data.errorSubcode) meta.push(`subcode ${data.errorSubcode}`);
                 if (data._debug) {
-                    meta.push(`candidates:${data._debug.candidateCount}`);
-                    meta.push(`endpoint:${data._debug.isNewsLinkPost ? 'news' : data._debug.postMode}`);
+                    if (typeof data._debug.candidateCount === "number") {
+                        meta.push(`candidates:${data._debug.candidateCount}`);
+                    }
+                    const endpointTag = data._debug.isNewsLinkPost
+                        ? "news"
+                        : (data._debug.postMode || data._debug.flow || "");
+                    if (endpointTag) {
+                        meta.push(`endpoint:${endpointTag}`);
+                    }
                     if (data._debug.hostedImageUrl) meta.push('hasHostedImg');
                     if (data._debug.fbError?.fbtrace_id) meta.push(`trace:${data._debug.fbError.fbtrace_id}`);
                 }
@@ -1012,6 +1024,9 @@ if (newsPublishBtn) {
                     message = "Facebook session หมดอายุ กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง" + detail;
                 }
                 throw new Error(message);
+            }
+            if (data.warning) {
+                window.showPublishToast?.(data.warning, "error");
             }
 
             const postId = data.postId || data.post_id || data.id;

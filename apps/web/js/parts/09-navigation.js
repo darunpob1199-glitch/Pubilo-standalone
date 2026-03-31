@@ -239,6 +239,8 @@ function useUploadedNewsImages(images) {
     validateNewsMode();
 
     if (!newsGeneratedImages.length) return;
+    const uploadPrompt = document.getElementById("newsUploadPrompt");
+    if (uploadPrompt) uploadPrompt.style.display = "none";
     window.selectNewsImage(0);
 }
 
@@ -354,16 +356,18 @@ window.selectNewsImage = function(index) {
     
     // Show selected image full size
     const container = document.getElementById("newsFullImageView");
+    const uploadPrompt = document.getElementById("newsUploadPrompt");
+    if (uploadPrompt) uploadPrompt.style.display = "none";
     container.style.display = "flex";
     container.style.flexDirection = "column";
     container.style.alignItems = "center";
     container.style.justifyContent = "center";
     container.style.padding = "0";
+    container.style.position = "relative";
     container.innerHTML = `
         <img src="${newsGeneratedImages[index]}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px;">
-        <button onclick="showNewsImageGrid()" style="position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-            เลือกรูปอื่น
+        <button onclick="removeNewsImage(${index})" style="position: absolute; top: 12px; right: 12px; background: rgba(127,29,29,0.85); color: white; border: none; border-radius: 999px; width: 34px; height: 34px; cursor: pointer; font-size: 18px; font-weight: 700; line-height: 1;">
+            ×
         </button>
     `;
 };
