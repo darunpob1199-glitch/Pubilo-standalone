@@ -1,17 +1,17 @@
 /* Premium Theme Overrides - "Shodai" Style */
 
 :root {
-    --primary: #6c5ce7; /* Shodai Purple */
-    --primary-hover: #5a4bcf;
-    --bg-color: #f5f6fa;
+    --primary: #6941c6; /* Untitled UI Purple */
+    --primary-hover: #53389e;
+    --bg-color: #fcfcfd;
     --card-bg: #ffffff;
     --sidebar-bg: #ffffff;
-    --text-main: #2d3436;
-    --text-muted: #636e72;
-    --border-color: #f1f2f6;
-    --border-radius: 16px;
-    --shadow-sm: 0 2px 8px rgba(0,0,0,0.02);
-    --shadow-md: 0 8px 24px rgba(0,0,0,0.04);
+    --text-main: #101828;
+    --text-muted: #475467;
+    --border-color: #eaecf0;
+    --border-radius: 10px;
+    --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+    --shadow-md: 0 1px 3px rgba(16, 24, 40, 0.1), 0 1px 2px rgba(16, 24, 40, 0.06);
 }
 
 /* Global Settings */
@@ -24,27 +24,25 @@ body {
 /* Header styling */
 header.header {
     background: var(--card-bg) !important;
-    border-bottom: none !important;
-    box-shadow: var(--shadow-sm) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    box-shadow: none !important;
     height: 70px !important;
     padding: 0 2rem !important;
 }
 .logo {
     display: flex !important;
     align-items: center !important;
-    font-size: 1.6rem !important;
-    font-weight: 800 !important;
-    letter-spacing: -1px !important;
+    font-size: 1.4rem !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.5px !important;
     text-decoration: none !important;
 }
 .logo-text {
-    background: linear-gradient(135deg, var(--primary) 0%, #a29bfe 100%) !important;
-    -webkit-background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
+    color: #101828 !important;
 }
 .logo svg {
-    /* SVG styled directly via inline markup */
-    filter: drop-shadow(0 4px 6px rgba(108, 92, 231, 0.15)) !important;
+    filter: none !important;
+    color: var(--primary) !important;
 }
 .logo span.badge {
     display: none !important; /* Hide the v3 text for cleaner look */
@@ -54,7 +52,7 @@ header.header {
 .sidebar {
     background: var(--sidebar-bg) !important;
     border-radius: 0 !important;
-    box-shadow: 2px 0 10px rgba(0,0,0,0.02) !important;
+    box-shadow: none !important;
     border: none !important;
     border-right: 1px solid var(--border-color) !important;
     padding-top: 1.5rem !important;
@@ -69,36 +67,37 @@ header.header {
 }
 
 .nav-section-title {
-    color: #b2bec3 !important;
+    color: #475467 !important;
     font-weight: 600 !important;
-    letter-spacing: 0.1em !important;
-    font-size: 0.7rem !important;
+    letter-spacing: 0.05em !important;
+    font-size: 0.75rem !important;
     margin-bottom: 0.8rem !important;
     padding-left: 1rem !important;
 }
 
 .nav-item {
-    border-radius: 10px !important;
-    padding: 0.8rem 1rem !important;
-    margin: 0 1rem 8px 1rem !important;
+    border-radius: 6px !important;
+    padding: 0.6rem 1rem !important;
+    margin: 0 0.75rem 4px 0.75rem !important;
     color: var(--text-muted) !important;
-    font-weight: 500 !important;
+    font-weight: 600 !important;
     font-size: 0.9rem !important;
     transition: all 0.2s ease !important;
+    background: transparent !important;
 }
 
 .nav-item:hover {
-    background: #f8f9fa !important;
-    color: var(--primary) !important;
+    background: #f9fafb !important;
+    color: #344054 !important;
     transform: none !important;
 }
 .nav-item.active {
-    background: var(--primary) !important;
-    color: #ffffff !important;
-    box-shadow: 0 4px 12px rgba(108, 92, 231, 0.25) !important;
+    background: #f9f5ff !important;
+    color: var(--primary) !important;
+    box-shadow: none !important;
 }
 .nav-item.active svg {
-    color: #ffffff !important;
+    color: var(--primary) !important;
 }
 
 /* Main Layout adjustments */
@@ -117,19 +116,19 @@ header.header {
 /* Core Layout Shadows & Borders */
 .card-preview, .card, .pending-panel {
     border-radius: var(--border-radius) !important;
-    box-shadow: var(--shadow-md) !important;
-    border: none !important;
+    box-shadow: var(--shadow-sm) !important;
+    border: 1px solid var(--border-color) !important;
     background: var(--card-bg) !important;
 }
 .card {
-    padding: 2rem !important;
+    padding: 1.5rem !important;
 }
 
 /* Card image area (Preview top part) */
 .card-image-area {
     border-radius: var(--border-radius) var(--border-radius) 0 0 !important;
-    background: #f8f9fa !important;
-    border: 1px dashed #dfe6e9 !important;
+    background: #f9fafb !important;
+    border-bottom: 1px solid var(--border-color) !important;
 }
 
 /* Input Fields Premium Feel */
@@ -152,7 +151,7 @@ header.header {
 .form-input:focus, .form-select:focus, .form-textarea:focus {
     background: #ffffff !important;
     border-color: var(--primary) !important;
-    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.1) !important;
+    box-shadow: 0 0 0 3px rgba(105, 65, 198, 0.1) !important;
     outline: none !important;
 }
 
@@ -164,7 +163,7 @@ header.header {
     font-weight: 600 !important;
     letter-spacing: 0 !important;
     color: white !important;
-    box-shadow: 0 4px 12px rgba(108, 92, 231, 0.2) !important;
+    box-shadow: 0 4px 12px rgba(105, 65, 198, 0.2) !important;
     transition: all 0.2s ease !important;
     border: none !important;
     width: 100% !important; /* Shodai buttons are typically full width or prominent */
@@ -172,7 +171,7 @@ header.header {
 .btn-publish:hover:not(:disabled) {
     background: var(--primary-hover) !important;
     transform: translateY(-1px) !important;
-    box-shadow: 0 6px 16px rgba(108, 92, 231, 0.3) !important;
+    box-shadow: 0 6px 16px rgba(105, 65, 198, 0.3) !important;
 }
 .btn-publish:disabled,
 .btn-publish.disabled {
@@ -190,7 +189,7 @@ header.header {
 }
 .upload-btn:hover {
     border-color: var(--primary) !important;
-    background: rgba(108, 92, 231, 0.02) !important;
+    background: rgba(105, 65, 198, 0.02) !important;
     color: var(--primary) !important;
 }
 .upload-btn svg {
@@ -248,7 +247,7 @@ header.header {
 .pending-filter-input:focus, .pending-filter-select:focus {
     background: #ffffff !important;
     border-color: var(--primary) !important;
-    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.1) !important;
+    box-shadow: 0 0 0 3px rgba(105, 65, 198, 0.1) !important;
     outline: none !important;
 }
 
@@ -271,7 +270,7 @@ header.header {
 .pending-filter-chip.is-active {
     background: var(--primary) !important;
     color: #ffffff !important;
-    box-shadow: 0 4px 12px rgba(108, 92, 231, 0.25) !important;
+    box-shadow: 0 4px 12px rgba(105, 65, 198, 0.25) !important;
 }
 
 .pending-refresh-btn {
@@ -287,7 +286,7 @@ header.header {
 .pending-refresh-btn:hover {
     border-color: var(--primary) !important;
     color: var(--primary) !important;
-    background: rgba(108, 92, 231, 0.05) !important;
+    background: rgba(105, 65, 198, 0.05) !important;
 }
 
 .table-header {
@@ -337,7 +336,7 @@ input[type="checkbox"] {
 #newsManualScheduleClearBtn:hover, #linkManualScheduleClearBtn:hover, .schedule-clear-btn:hover {
     border-color: var(--primary) !important;
     color: var(--primary) !important;
-    background: rgba(108, 92, 231, 0.05) !important;
+    background: rgba(105, 65, 198, 0.05) !important;
 }
 
 /* Action buttons (like edit icons in the reference image) */
@@ -467,7 +466,7 @@ input[type="checkbox"] {
 
 .manual-token-input:focus {
     border-color: var(--primary) !important;
-    box-shadow: 0 0 0 4px rgba(108, 92, 231, 0.1) !important;
+    box-shadow: 0 0 0 4px rgba(105, 65, 198, 0.1) !important;
     background: #ffffff !important;
     outline: none !important;
 }
@@ -829,4 +828,57 @@ input[type="checkbox"] {
     .pubilo-connect-actions > * {
         width: 100%;
     }
+}
+
+/* --- Untitled UI Theme for Settings --- */
+.settings-panel {
+    background: #ffffff !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius) !important;
+    box-shadow: var(--shadow-sm) !important;
+    overflow: hidden !important;
+}
+
+.settings-header {
+    background: #ffffff !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    padding: 1.5rem !important;
+}
+
+.settings-content {
+    background: #fcfcfd !important;
+    padding: 1.5rem !important;
+}
+
+.settings-section {
+    background: #ffffff !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius) !important;
+    margin-bottom: 1rem !important;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05) !important;
+    padding: 0 !important;
+}
+
+.settings-section.collapsible .settings-section-title {
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+    color: var(--text-main) !important;
+    padding: 1.25rem 1.5rem !important;
+}
+
+.settings-section.collapsible .settings-section-title:hover {
+    background: #f9fafb !important;
+}
+
+.settings-section.collapsible.open .settings-section-title {
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+.settings-section.collapsible .settings-section-content {
+    padding: 1.5rem !important;
+    background: #ffffff !important;
+}
+
+.settings-section-title {
+    color: var(--text-main) !important;
 }
