@@ -155,9 +155,118 @@
                 return;
             }
 
-            note.textContent = `สร้าง workspace แล้ว ยอดชำระรอ gateway: ฿${(payload.paymentOrder?.amountThb || 0).toLocaleString('th-TH')}`;
-            await hydrateAndResolve();
+            note.textContent = 'สร้าง workspace แล้ว กำลังไปหน้าชำระเงิน...';
+            const freshState = await fetchAuthState();
+            applyAuthState(freshState);
+            if (freshState.latestPaymentOrder?.id && freshState.latestPaymentOrder?.status !== 'paid') {
+                renderPaymentView(freshState.latestPaymentOrder.id);
+            } else {
+                await hydrateAndResolve();
+            }
         });
+    }
+
+    // ===== Payment QR View =====
+    let paymentPollTimer = null;
+
+    function renderPaymentView(orderId) {
+        const overlay = ensureOverlay();
+        overlay.classList.remove('is-hidden');
+        const card = overlay.querySelector('#pubiloAuthCard');
+        const amount = state.latestPaymentOrder?.amount_thb || 0;
+        const planLabel = state.plans?.find((p) => p.code === state.latestPaymentOrder?.plan_code)?.label || '';
+
+        card.innerHTML = `
+            <div class="pubilo-auth-panel pubilo-payment-panel">
+                <p class="pubilo-auth-label">ชำระเงิน</p>
+                <h2>สแกน QR เพื่อชำระ &#3647;${Number(amount).toLocaleString('th-TH')}</h2>
+                <p class="pubilo-auth-copy">${planLabel} — สแกนผ่านแอปธนาคารหรือ e-wallet</p>
+                <div class="pubilo-qr-area" id="pubiloQrArea">
+                    <p>กำลังสร้าง QR code...</p>
+                </div>
+                <div class="pubilo-payment-status" id="pubiloPaymentStatus"></div>
+                <p class="pubilo-auth-note" id="pubiloPaymentNote"></p>
+            </div>
+        `;
+
+        generateQr(orderId);
+    }
+
+    async function generateQr(orderId) {
+        const qrArea = document.getElementById('pubiloQrArea');
+        const statusEl = document.getElementById('pubiloPaymentStatus');
+        const noteEl = document.getElementById('pubiloPaymentNote');
+
+        try {
+            const res = await nativeFetch('/api/billing/create-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId }),
+            });
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                qrArea.innerHTML = `<p class="pubilo-auth-error">${data.error || 'สร้าง QR ไม่สำเร็จ'}</p>`;
+                return;
+            }
+
+            let qrHtml = '';
+            if (data.qrBase64) {
+                qrHtml = `<img src="data:image/png;base64,${data.qrBase64}" alt="QR PromptPay" class="pubilo-qr-image" />`;
+            }
+
+            if (data.urlpay) {
+                qrHtml += `<a href="${data.urlpay}" target="_blank" class="pubilo-pay-link">เปิดลิงก์ชำระเงิน</a>`;
+            }
+
+            qrArea.innerHTML = qrHtml || '<p>ไม่สามารถสร้าง QR ได้</p>';
+
+            if (data.timeOut > 0) {
+                noteEl.textContent = `หมดเวลาใน ${Math.ceil(data.timeOut / 60)} นาที`;
+            }
+
+            statusEl.innerHTML = '<p class="pubilo-status-waiting">รอการชำระเงิน...</p>';
+            startPaymentPolling(orderId);
+        } catch (err) {
+            qrArea.innerHTML = `<p class="pubilo-auth-error">เกิดข้อผิดพลาด: ${err.message}</p>`;
+        }
+    }
+
+    function startPaymentPolling(orderId) {
+        if (paymentPollTimer) clearInterval(paymentPollTimer);
+
+        paymentPollTimer = setInterval(async () => {
+            try {
+                const res = await nativeFetch(`/api/billing/payment-status/${orderId}`);
+                const data = await res.json();
+                if (!data.success) return;
+
+                const statusEl = document.getElementById('pubiloPaymentStatus');
+                const noteEl = document.getElementById('pubiloPaymentNote');
+
+                if (data.status === 'paid') {
+                    clearInterval(paymentPollTimer);
+                    paymentPollTimer = null;
+                    if (statusEl) statusEl.innerHTML = '<p class="pubilo-status-success">ชำระเงินสำเร็จ!</p>';
+                    if (noteEl) noteEl.textContent = 'กำลังเข้าสู่ระบบ...';
+                    setTimeout(() => hydrateAndResolve(), 1500);
+                    return;
+                }
+
+                if (data.status === 'expired') {
+                    clearInterval(paymentPollTimer);
+                    paymentPollTimer = null;
+                    if (statusEl) statusEl.innerHTML = '<p class="pubilo-auth-error">QR หมดอายุ</p>';
+                    if (noteEl) noteEl.innerHTML = '<button class="pubilo-primary-btn" id="pubiloRetryPayment">สร้าง QR ใหม่</button>';
+                    document.getElementById('pubiloRetryPayment')?.addEventListener('click', () => renderPaymentView(orderId));
+                    return;
+                }
+
+                if (data.timeOut > 0 && noteEl) {
+                    noteEl.textContent = `หมดเวลาใน ${Math.ceil(data.timeOut / 60)} นาที`;
+                }
+            } catch {}
+        }, 5000);
     }
 
     function ensureHeaderControls() {
@@ -268,6 +377,16 @@
 
         if (payload.onboardingRequired || !payload.workspace) {
             renderOnboardingView(payload);
+            return new Promise(() => {});
+        }
+
+        // ถ้า subscription ยัง pending_payment → แสดงหน้าจ่ายเงิน
+        if (
+            payload.workspace?.subscriptionStatus === 'pending_payment'
+            && payload.latestPaymentOrder?.id
+            && payload.latestPaymentOrder?.status !== 'paid'
+        ) {
+            renderPaymentView(payload.latestPaymentOrder.id);
             return new Promise(() => {});
         }
 

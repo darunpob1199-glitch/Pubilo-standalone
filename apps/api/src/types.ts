@@ -15,6 +15,9 @@ export interface Env {
     DATA_ENCRYPTION_KEY: string;
     INTERNAL_API_SECRET?: string;
     BILLING_ADMIN_KEY?: string;
+    TMW_USERNAME?: string;
+    TMW_PASSWORD?: string;
+    TMW_CON_ID?: string;
 }
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member';
