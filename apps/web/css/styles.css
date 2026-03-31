@@ -3112,6 +3112,18 @@
                 flex-shrink: 0;
             }
 
+            #billingPanel {
+                display: flex;
+                flex-direction: column;
+                height: calc(100vh - 60px - 1rem);
+                overflow: hidden;
+                flex: 1;
+            }
+
+            #billingPanel .pending-panel-header {
+                flex-shrink: 0;
+            }
+
             #textPanel {
                 display: flex;
                 flex-direction: column;

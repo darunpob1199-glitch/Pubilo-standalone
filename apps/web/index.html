@@ -11,8 +11,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/styles.css?v=6.7" />
-    <link rel="stylesheet" href="/css/premium-theme.css?v=6.8" />
+    <link rel="stylesheet" href="/css/styles.css?v=6.8" />
+    <link rel="stylesheet" href="/css/premium-theme.css?v=7.0" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
         .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange, .flatpickr-day.selected.inRange, .flatpickr-day.startRange.inRange, .flatpickr-day.endRange.inRange, .flatpickr-day.selected:focus, .flatpickr-day.startRange:focus, .flatpickr-day.endRange:focus, .flatpickr-day.selected:hover, .flatpickr-day.startRange:hover, .flatpickr-day.endRange:hover, .flatpickr-day.selected.prevMonthDay, .flatpickr-day.startRange.prevMonthDay, .flatpickr-day.endRange.prevMonthDay, .flatpickr-day.selected.nextMonthDay, .flatpickr-day.startRange.nextMonthDay, .flatpickr-day.endRange.nextMonthDay {
@@ -342,6 +342,13 @@
                                 d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                         </svg>
                         Settings
+                    </a>
+                    <a href="#billing" class="nav-item" id="billingNavBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                            <line x1="1" y1="10" x2="23" y2="10" />
+                        </svg>
+                        Billing
                     </a>
                 </div>
             </nav>
@@ -1131,7 +1138,7 @@
                 </div>
                 <div class="settings-content">
                     <!-- Page Token Section -->
-                    <div class="settings-section collapsible">
+                    <div class="settings-section collapsible" style="display: none;">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                             🔑 Page Token
                             <span class="collapse-icon">›</span>
@@ -1444,7 +1451,7 @@
                     </div>
 
                     <!-- Auto-Post Alternating Section -->
-                    <div class="settings-section collapsible" id="autoPostSettingsSection">
+                    <div class="settings-section collapsible" id="autoPostSettingsSection" style="display: none;">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                             🔄 Auto-Post Mode
                             <span class="collapse-icon">›</span>
@@ -1694,7 +1701,7 @@
                     </div>
 
                     <!-- Link Post Prompt Section -->
-                    <div class="settings-section collapsible">
+                    <div class="settings-section collapsible" style="display: none">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                             🔗 Link Post Prompt
                             <span class="collapse-icon">›</span>
@@ -1726,7 +1733,7 @@
                     </div>
 
                     <!-- Image Post Prompt Section -->
-                    <div class="settings-section collapsible">
+                    <div class="settings-section collapsible" style="display: none">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                             🖼️ Image Post Prompt
                             <span class="collapse-icon">›</span>
@@ -1758,7 +1765,7 @@
                     </div>
 
                     <!-- News Post Prompt Section -->
-                    <div class="settings-section collapsible">
+                    <div class="settings-section collapsible" style="display: none">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                             📰 News Post Prompt
                             <span class="collapse-icon">›</span>
@@ -1804,7 +1811,7 @@
                     </div>
 
                     <!-- AI Model Settings -->
-                    <div class="settings-section collapsible">
+                    <div class="settings-section collapsible" style="display: none">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                             🤖 AI Image Generation
                             <span class="collapse-icon">›</span>
@@ -1835,6 +1842,110 @@
                     <button class="btn-save" id="saveSettingsPanelBtn" style="margin-top: 1rem;">
                         บันทึกการตั้งค่า
                     </button>
+                </div>
+            </div>
+
+            <!-- Billing Panel -->
+            <div class="pending-panel" id="billingPanel" style="display: none">
+                <div class="pending-panel-header" style="align-items: baseline;">
+                    <h2 style="margin: 0; line-height: 1;">Billing</h2>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">จัดการแพ็กเกจและการชำระเงิน</p>
+                </div>
+                <div class="settings-content" style="padding: 1.5rem;">
+
+                    <!-- Current Plan Status Card -->
+                    <div id="billingCurrentPlan" class="settings-section" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+                            <div>
+                                <p style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 0.5rem;">แพ็กเกจปัจจุบัน</p>
+                                <h3 id="billingPlanName" style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin: 0;">-</h3>
+                                <p id="billingPlanPrice" style="color: var(--primary); font-weight: 700; font-size: 1.1rem; margin-top: 0.25rem;">-</p>
+                            </div>
+                            <div id="billingStatusBadge" style="padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600;">
+                                -
+                            </div>
+                        </div>
+                        <div style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color); display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem;">
+                            <div>
+                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">เริ่มใช้งาน</p>
+                                <p id="billingStartDate" style="font-weight: 600; color: var(--text-main);">-</p>
+                            </div>
+                            <div>
+                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">หมดอายุ</p>
+                                <p id="billingEndDate" style="font-weight: 600; color: var(--text-main);">-</p>
+                            </div>
+                            <div>
+                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">รอบบิล</p>
+                                <p id="billingInterval" style="font-weight: 600; color: var(--text-main);">-</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Plan Selection Cards -->
+                    <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1rem;">เลือกแพ็กเกจ</h3>
+                    <div id="billingPlanCards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                        <!-- Monthly -->
+                        <div class="billing-plan-card" data-plan="monthly_500" style="border: 2px solid var(--border-color); border-radius: 12px; padding: 1.5rem; cursor: pointer; transition: all 0.2s ease; background: #fff;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <span style="font-weight: 700; font-size: 1.1rem; color: var(--text-main);">รายเดือน</span>
+                                <span style="background: #f2f4f7; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">MONTHLY</span>
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <span style="font-size: 2rem; font-weight: 800; color: var(--text-main);">฿500</span>
+                                <span style="color: var(--text-muted); font-size: 0.9rem;"> / เดือน</span>
+                            </div>
+                            <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-muted); font-size: 0.9rem;">
+                                <li style="padding: 0.3rem 0;">✓ โพสต์ไม่จำกัด</li>
+                                <li style="padding: 0.3rem 0;">✓ ตั้งเวลาอัตโนมัติ</li>
+                                <li style="padding: 0.3rem 0;">✓ Auto Hide Posts</li>
+                                <li style="padding: 0.3rem 0;">✓ รองรับหลายเพจ</li>
+                            </ul>
+                            <button class="btn-save billing-select-plan-btn" data-plan="monthly_500" style="width: 100%; margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-weight: 600;">
+                                เลือกแพ็กเกจนี้
+                            </button>
+                        </div>
+                        <!-- Yearly -->
+                        <div class="billing-plan-card" data-plan="yearly_4499" style="border: 2px solid var(--primary); border-radius: 12px; padding: 1.5rem; cursor: pointer; transition: all 0.2s ease; background: #fff; position: relative;">
+                            <div style="position: absolute; top: -12px; right: 16px; background: var(--primary); color: white; padding: 0.2rem 0.8rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700;">ประหยัด 25%</div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <span style="font-weight: 700; font-size: 1.1rem; color: var(--text-main);">รายปี</span>
+                                <span style="background: #f9f5ff; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: var(--primary);">YEARLY</span>
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <span style="font-size: 2rem; font-weight: 800; color: var(--text-main);">฿4,499</span>
+                                <span style="color: var(--text-muted); font-size: 0.9rem;"> / ปี</span>
+                            </div>
+                            <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-muted); font-size: 0.9rem;">
+                                <li style="padding: 0.3rem 0;">✓ ทุกอย่างใน Monthly</li>
+                                <li style="padding: 0.3rem 0;">✓ ประหยัด ฿1,501 ต่อปี</li>
+                                <li style="padding: 0.3rem 0;">✓ Priority Support</li>
+                                <li style="padding: 0.3rem 0;">✓ Early Access ฟีเจอร์ใหม่</li>
+                            </ul>
+                            <button class="btn-save billing-select-plan-btn" data-plan="yearly_4499" style="width: 100%; margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-weight: 600; background: var(--primary); color: #fff;">
+                                เลือกแพ็กเกจนี้
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Payment History -->
+                    <div class="settings-section collapsible" style="border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 1rem;">
+                        <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')" style="padding: 1.25rem 1.5rem; margin: 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                            📋 ประวัติการชำระเงิน
+                            <span class="collapse-icon">›</span>
+                        </h3>
+                        <div class="settings-section-content" style="padding: 1.5rem;">
+                            <div id="billingPaymentHistory">
+                                <p style="color: var(--text-muted); text-align: center; padding: 2rem 0;">ยังไม่มีประวัติการชำระเงิน</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cancel Subscription -->
+                    <div style="text-align: center; margin-top: 1.5rem;">
+                        <button id="billingCancelBtn" style="background: none; border: none; color: #d92d20; font-size: 0.85rem; cursor: pointer; padding: 0.5rem 1rem; border-radius: 8px; transition: background 0.2s ease;">
+                            ยกเลิกแพ็กเกจ
+                        </button>
+                    </div>
                 </div>
             </div>
         </main>
@@ -1969,17 +2080,18 @@
     <img class="thumb-preview-popup" id="thumbPreviewPopup" src="" alt="" />
 
     <script src="/js/config.js?v=6.3"></script>
-    <script src="/js/auth-bootstrap.js?v=1.2"></script>
+    <script src="/js/auth-bootstrap.js?v=1.3"></script>
     <script src="/js/parts/01-thumb-preview.js?v=6.1"></script>
     <script src="/js/parts/02-dom-elements.js?v=6.3"></script>
     <script src="/js/parts/03-validation.js?v=6.5"></script>
     <script src="/js/parts/04-settings.js?v=6.9"></script>
     <script src="/js/parts/05-auto-post.js?v=6.8"></script>
-    <script src="/js/parts/06-pending-posts.js?v=6.6"></script>
-    <script src="/js/parts/07-earnings.js?v=6.3"></script>
+    <script src="/js/parts/06-billing.js?v=1.0"></script>
+    <script src="/js/parts/06-pending-posts.js?v=6.7"></script>
+    <script src="/js/parts/07-earnings.js?v=6.4"></script>
     <script src="/js/parts/08-quotes.js?v=6.1"></script>
-    <script src="/js/parts/08-post-tools.js?v=1.0"></script>
-    <script src="/js/parts/09-navigation.js?v=6.6"></script>
+    <script src="/js/parts/08-post-tools.js?v=1.1"></script>
+    <script src="/js/parts/09-navigation.js?v=6.7"></script>
     <script src="/js/parts/10-lazada.js?v=6.3"></script>
     <script src="/js/parts/11-image-generation.js?v=8.2"></script>
     <script src="/js/parts/12-publish.js?v=9.5"></script>

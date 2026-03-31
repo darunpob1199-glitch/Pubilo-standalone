@@ -1224,7 +1224,7 @@ app.post('/', async (c) => {
                             pageToken: pageTokenForPublish,
                             headers: facebookHeaders,
                             message: finalMessage,
-                            linkUrl: previewUrl || finalLink,
+                            linkUrl: finalLink,
                             title: attachmentTitle || undefined,
                             caption: previewSiteName || undefined,
                             description: attachmentDescription || finalMessage || undefined,
@@ -1279,7 +1279,7 @@ app.post('/', async (c) => {
 
             if (isLinkAttachmentPost) {
                 endpoint += '/feed';
-                params.append('link', previewUrl || finalLink);
+                params.append('link', finalLink);
                 if (finalMessage) params.append('message', finalMessage);
                 params.append('published', 'false');
                 params.append('unpublished_content_type', 'ADS_POST');

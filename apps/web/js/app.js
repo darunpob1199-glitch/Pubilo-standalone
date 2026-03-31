@@ -2027,6 +2027,8 @@ function showDashboard() {
     quotesPanel.style.display = "none";
     settingsPanel.style.display = "none";
     earningsPanel.style.display = "none";
+    const bp = document.getElementById("billingPanel");
+    if (bp) bp.style.display = "none";
     const tp = document.getElementById("textPanel");
     if (tp) tp.style.display = "none";
     const textModePanel = document.getElementById("textModePanel");
@@ -2424,6 +2426,27 @@ function showSettingsPanel() {
     appLayout.classList.add("pending-mode");
     document.body.style.overflow = "hidden";
     loadSettingsPanel();
+}
+
+// Show billing panel
+function showBillingPanel() {
+    document.querySelectorAll(".mode-container").forEach((c) => {
+        c.classList.remove("active");
+        c.style.display = "none";
+    });
+    pendingPanel.style.display = "none";
+    publishedPanel.style.display = "none";
+    quotesPanel.style.display = "none";
+    earningsPanel.style.display = "none";
+    settingsPanel.style.display = "none";
+    const tp = document.getElementById("textPanel");
+    if (tp) tp.style.display = "none";
+    const textModePanel = document.getElementById("textModePanel");
+    if (textModePanel) textModePanel.style.display = "none";
+    const billingPanel = document.getElementById("billingPanel");
+    if (billingPanel) billingPanel.style.display = "flex";
+    appLayout.classList.add("pending-mode");
+    document.body.style.overflow = "hidden";
 }
 
 // Show text panel (for adding quotes)
@@ -3058,6 +3081,9 @@ function handleNavigation() {
     } else if (hash === "settings") {
         document.getElementById("settingsNavBtn").classList.add("active");
         showSettingsPanel();
+    } else if (hash === "billing") {
+        document.getElementById("billingNavBtn").classList.add("active");
+        showBillingPanel();
     } else if (hash === "news") {
         document.getElementById("newsNavItem").classList.add("active");
         setPostMode("news");
@@ -3117,6 +3143,12 @@ earningsNavItem.addEventListener("click", (e) => {
 document.getElementById("settingsNavBtn").addEventListener("click", (e) => {
     e.preventDefault();
     navigateTo("settings");
+});
+
+// Billing nav item click
+document.getElementById("billingNavBtn").addEventListener("click", (e) => {
+    e.preventDefault();
+    navigateTo("billing");
 });
 
 // Link nav item click (Dashboard renamed to Link)

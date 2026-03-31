@@ -1249,6 +1249,8 @@ function showPostToolPanel(toolKey) {
     if (earningsPanel) earningsPanel.style.display = "none";
     const textPanelEl = document.getElementById("textPanel");
     if (textPanelEl) textPanelEl.style.display = "none";
+    const bp = document.getElementById("billingPanel");
+    if (bp) bp.style.display = "none";
 
     const dom = getPostToolDom(toolKey);
     if (dom.panel) dom.panel.style.display = "flex";
