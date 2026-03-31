@@ -85,10 +85,6 @@ document.addEventListener('DOMContentLoaded', () => {
         'deletePostsPanel',
         'textQuoteSubmitBtn',
         'addQuoteBtn',
-        'autoScheduleSettingsSection',
-        'autoPostSettingsSection',
-        'autoHideSettingsSection',
-        'hideTokenSettingGroup',
     ];
 
     hiddenIds.forEach((id) => {
