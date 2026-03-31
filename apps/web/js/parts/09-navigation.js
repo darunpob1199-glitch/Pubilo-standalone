@@ -57,6 +57,10 @@ function handleNavigation() {
     } else if (hash === "settings") {
         document.getElementById("settingsNavBtn").classList.add("active");
         showSettingsPanel();
+    } else if (hash === "billing") {
+        const billingNav = document.getElementById("billingNavBtn");
+        if (billingNav) billingNav.classList.add("active");
+        showBillingPanel();
     } else if (hash === "news") {
         document.getElementById("newsNavItem").classList.add("active");
         setPostMode("news");
@@ -128,6 +132,36 @@ document.getElementById("settingsNavBtn").addEventListener("click", (e) => {
     e.preventDefault();
     navigateTo("settings");
 });
+
+// Billing nav item click
+const billingNavBtn = document.getElementById("billingNavBtn");
+if (billingNavBtn) {
+    billingNavBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo("billing");
+    });
+}
+
+// showBillingPanel function
+function showBillingPanel() {
+    document.querySelectorAll(".mode-container").forEach((c) => {
+        c.classList.remove("active");
+        c.style.display = "none";
+    });
+    pendingPanel.style.display = "none";
+    publishedPanel.style.display = "none";
+    if (typeof quotesPanel !== 'undefined' && quotesPanel) quotesPanel.style.display = "none";
+    if (typeof earningsPanel !== 'undefined' && earningsPanel) earningsPanel.style.display = "none";
+    settingsPanel.style.display = "none";
+    const tp = document.getElementById("textPanel");
+    if (tp) tp.style.display = "none";
+    const textModePanel = document.getElementById("textModePanel");
+    if (textModePanel) textModePanel.style.display = "none";
+    const bp = document.getElementById("billingPanel");
+    if (bp) bp.style.display = "flex";
+    appLayout.classList.add("pending-mode");
+    document.body.style.overflow = "hidden";
+}
 
 // News nav item click
 document.getElementById("newsNavItem").addEventListener("click", (e) => {
