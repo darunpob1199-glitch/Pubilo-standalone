@@ -285,26 +285,35 @@
     function renderPlanSelectionView(profile) {
         const overlay = ensureOverlay();
         overlay.classList.remove('is-hidden');
+        const shell = overlay.querySelector('.pubilo-auth-shell');
+        const brand = overlay.querySelector('.pubilo-auth-brand');
         const card = overlay.querySelector('#pubiloAuthCard');
-        const subtitle = overlay.querySelector('#pubiloAuthSubtitle');
+
+        // ซ่อน brand card + full width
+        if (brand) brand.style.display = 'none';
+        if (shell) {
+            shell.style.gridTemplateColumns = '1fr';
+            shell.style.maxWidth = '720px';
+        }
 
         const isExpired = profile.workspace?.subscriptionStatus !== 'pending_payment';
-        if (subtitle) subtitle.textContent = isExpired ? 'กรุณาต่ออายุเพื่อใช้งานต่อ' : 'เลือกแพ็กเกจเพื่อเริ่มใช้งาน';
-
         const wsName = profile.workspace?.name || profile.user?.name || 'Pubilo';
         const heading = isExpired ? 'แพ็กเกจหมดอายุแล้ว' : 'เลือกแพ็กเกจ';
+        const subText = isExpired ? 'เลือกแพ็กเกจเพื่อต่ออายุการใช้งาน' : 'เลือกแพ็กเกจแล้วชำระผ่าน QR PromptPay ได้เลย';
         const btnText = isExpired ? 'ต่ออายุแพ็กเกจ' : 'ชำระเงิน';
 
         const plansHtml = (state.plans || []).map((plan, index) => {
             const isYearly = plan.interval === 'yearly';
             const badge = isYearly ? '<span class="pubilo-plan-badge">ประหยัด 25%</span>' : '';
+            const perUnit = isYearly ? '/ ปี' : '/ เดือน';
             return `
                 <label class="pubilo-plan-card ${index === 0 ? 'selected' : ''}" data-plan-card="${plan.code}">
                     <input type="radio" name="selectPlanCode" value="${plan.code}" ${index === 0 ? 'checked' : ''} />
                     ${badge}
-                    <div class="pubilo-plan-top">
-                        <span class="pubilo-plan-name">${plan.label}</span>
+                    <span class="pubilo-plan-name">${plan.label}</span>
+                    <div class="pubilo-plan-price">
                         <strong>&#3647;${plan.amountThb.toLocaleString('th-TH')}</strong>
+                        <span>${perUnit}</span>
                     </div>
                     <p>${plan.description}</p>
                     <span class="pubilo-plan-duration">${plan.durationDays} วัน</span>
@@ -313,11 +322,11 @@
         }).join('');
 
         card.innerHTML = `
-            <form class="pubilo-auth-panel" id="pubiloSelectPlanForm">
+            <form class="pubilo-auth-panel" id="pubiloSelectPlanForm" style="text-align:center;">
                 <p class="pubilo-auth-label">${wsName}</p>
                 <h2>${heading}</h2>
-                <p class="pubilo-auth-copy">เลือกแพ็กเกจแล้วชำระผ่าน QR PromptPay ได้เลย</p>
-                <div class="pubilo-plan-grid">${plansHtml}</div>
+                <p class="pubilo-auth-copy">${subText}</p>
+                <div class="pubilo-plan-grid is-horizontal">${plansHtml}</div>
                 <button class="pubilo-primary-btn" type="submit">${btnText}</button>
                 <p class="pubilo-auth-note" id="pubiloSelectPlanNote"></p>
                 <button type="button" class="pubilo-logout-link" id="pubiloSelectPlanLogout">Logout</button>
