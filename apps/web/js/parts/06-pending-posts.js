@@ -820,6 +820,8 @@ async function showPendingPanel(forceRefresh = false, view = "posts") {
     earningsPanel.style.display = "none";
     const tp = document.getElementById("textPanel");
     if (tp) tp.style.display = "none";
+    const bp = document.getElementById("billingPanel");
+    if (bp) bp.style.display = "none";
     // Lock body scroll
     document.body.style.overflow = "hidden";
     // Add pending mode class
@@ -917,6 +919,8 @@ function showDashboard() {
     earningsPanel.style.display = "none";
     const tp = document.getElementById("textPanel");
     if (tp) tp.style.display = "none";
+    const bp = document.getElementById("billingPanel");
+    if (bp) bp.style.display = "none";
     const textModePanel = document.getElementById("textModePanel");
     if (textModePanel) textModePanel.style.display = "none";
     // Reset mode-container display

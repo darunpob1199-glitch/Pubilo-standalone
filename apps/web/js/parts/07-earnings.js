@@ -12,6 +12,8 @@ function showEarningsPanel() {
     quotesPanel.style.display = "none";
     const tp = document.getElementById("textPanel");
     if (tp) tp.style.display = "none";
+    const bp = document.getElementById("billingPanel");
+    if (bp) bp.style.display = "none";
     earningsPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
     document.body.style.overflow = "hidden";
@@ -127,6 +129,8 @@ function showPublishedPanel() {
     earningsPanel.style.display = "none";
     const tp = document.getElementById("textPanel");
     if (tp) tp.style.display = "none";
+    const bp = document.getElementById("billingPanel");
+    if (bp) bp.style.display = "none";
     publishedPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
     document.body.style.overflow = "hidden";
@@ -634,6 +638,8 @@ function showSettingsPanel() {
     quotesPanel.style.display = "none";
     earningsPanel.style.display = "none";
     textPanel.style.display = "none";
+    const bp = document.getElementById("billingPanel");
+    if (bp) bp.style.display = "none";
     const textModePanel = document.getElementById("textModePanel");
     if (textModePanel) textModePanel.style.display = "none";
     settingsPanel.style.display = "flex";
