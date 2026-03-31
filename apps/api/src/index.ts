@@ -248,6 +248,9 @@ const workspaceProtectedPaths = [
     '/api/token-health',
     '/api/billing/current',
     '/api/billing/checkout-intent',
+    '/api/billing/create-payment',
+    '/api/billing/payment-status',
+    '/api/billing/cancel-payment',
 ];
 
 for (const path of workspaceProtectedPaths) {

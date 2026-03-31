@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { BILLING_PLANS, getBillingPlan } from '../config/plans';
 import type { Env } from '../types';
 import { getWorkspaceId } from '../lib/workspace';
+import { hasTmwConfig, createPay, detailPay, confirmPay, cancelPay } from '../lib/tmw-gateway';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -112,6 +113,208 @@ app.post('/checkout-intent', async (c) => {
             expiresAt,
         },
     });
+});
+
+// สร้าง payment ผ่าน TMW แม่มณี → ได้ QR code กลับมา
+app.post('/create-payment', async (c) => {
+    const workspaceId = getWorkspaceId(c);
+
+    if (!hasTmwConfig(c.env)) {
+        return c.json({ success: false, error: 'Payment gateway not configured' }, 503);
+    }
+
+    const body = await c.req.json();
+    const orderId = String(body.orderId || '').trim();
+    if (!orderId) {
+        return c.json({ success: false, error: 'Missing orderId' }, 400);
+    }
+
+    const order = await c.env.DB.prepare(`
+        SELECT id, workspace_id, subscription_id, amount_thb, status, gateway_reference
+        FROM payment_orders
+        WHERE id = ? AND workspace_id = ?
+        LIMIT 1
+    `).bind(orderId, workspaceId).first<{
+        id: string;
+        workspace_id: string;
+        subscription_id: string;
+        amount_thb: number;
+        status: string;
+        gateway_reference: string | null;
+    }>();
+
+    if (!order) {
+        return c.json({ success: false, error: 'Order not found' }, 404);
+    }
+    if (order.status === 'paid') {
+        return c.json({ success: false, error: 'Order already paid' }, 409);
+    }
+
+    // ถ้ามี gateway_reference อยู่แล้ว ดึง detail เลย ไม่ต้อง create ใหม่
+    if (order.gateway_reference) {
+        const detail = await detailPay(c.env, order.gateway_reference, true);
+        if (detail.status === 1) {
+            return c.json({
+                success: true,
+                orderId: order.id,
+                idPay: order.gateway_reference,
+                amount: detail.amount,
+                urlpay: detail.urlpay,
+                qrBase64: detail.qr_base64_image || null,
+                timeOut: detail.time_out,
+            });
+        }
+    }
+
+    // สร้าง payment ใหม่ที่ TMW
+    const ref1 = `pubilo-${orderId.slice(0, 8)}`;
+    const created = await createPay(c.env, order.amount_thb, ref1);
+    if (created.status !== 1 || !created.id_pay) {
+        return c.json({ success: false, error: created.msg || 'TMW create_pay failed' }, 502);
+    }
+
+    // ดึง QR code
+    const detail = await detailPay(c.env, created.id_pay, true);
+    if (detail.status !== 1) {
+        return c.json({ success: false, error: detail.msg || 'TMW detail_pay failed' }, 502);
+    }
+
+    // บันทึก gateway_reference ลง DB
+    await c.env.DB.prepare(`
+        UPDATE payment_orders
+        SET gateway = 'tmw_maemanee',
+            gateway_reference = ?,
+            qr_reference = ?,
+            payload_json = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    `).bind(
+        created.id_pay,
+        ref1,
+        JSON.stringify({
+            tmwIdPay: created.id_pay,
+            urlpay: detail.urlpay,
+            ref1,
+            amountThb: order.amount_thb,
+        }),
+        orderId,
+    ).run();
+
+    return c.json({
+        success: true,
+        orderId: order.id,
+        idPay: created.id_pay,
+        amount: detail.amount,
+        urlpay: detail.urlpay,
+        qrBase64: detail.qr_base64_image || null,
+        timeOut: detail.time_out,
+    });
+});
+
+// เช็คสถานะ payment — frontend poll endpoint นี้
+app.get('/payment-status/:orderId', async (c) => {
+    const workspaceId = getWorkspaceId(c);
+    const orderId = c.req.param('orderId');
+
+    const order = await c.env.DB.prepare(`
+        SELECT id, workspace_id, subscription_id, amount_thb, status, gateway_reference, paid_at
+        FROM payment_orders
+        WHERE id = ? AND workspace_id = ?
+        LIMIT 1
+    `).bind(orderId, workspaceId).first<{
+        id: string;
+        workspace_id: string;
+        subscription_id: string;
+        amount_thb: number;
+        status: string;
+        gateway_reference: string | null;
+        paid_at: string | null;
+    }>();
+
+    if (!order) {
+        return c.json({ success: false, error: 'Order not found' }, 404);
+    }
+
+    // ถ้า paid แล้วคืนเลย
+    if (order.status === 'paid') {
+        return c.json({ success: true, status: 'paid', paidAt: order.paid_at });
+    }
+
+    if (!order.gateway_reference || !hasTmwConfig(c.env)) {
+        return c.json({ success: true, status: order.status });
+    }
+
+    // เรียก confirm ที่ TMW
+    const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || '127.0.0.1';
+    const result = await confirmPay(c.env, order.gateway_reference, clientIp);
+
+    if (result.status === 1) {
+        // จ่ายสำเร็จ — อัปเดต order + subscription
+        const now = new Date().toISOString();
+        await c.env.DB.batch([
+            c.env.DB.prepare(`
+                UPDATE payment_orders
+                SET status = 'paid', paid_at = ?, updated_at = ?
+                WHERE id = ?
+            `).bind(now, now, orderId),
+            c.env.DB.prepare(`
+                UPDATE organization_subscriptions
+                SET status = 'active', updated_at = ?
+                WHERE id = ?
+            `).bind(now, order.subscription_id),
+        ]);
+
+        return c.json({ success: true, status: 'paid', paidAt: now });
+    }
+
+    // เช็ค time_out จาก detail
+    const detail = await detailPay(c.env, order.gateway_reference, false);
+    if (detail.time_out !== undefined && detail.time_out < 0) {
+        return c.json({ success: true, status: 'expired', timeOut: detail.time_out });
+    }
+
+    return c.json({ success: true, status: 'pending', timeOut: detail.time_out });
+});
+
+// ยกเลิก payment ที่หมดเวลา
+app.post('/cancel-payment', async (c) => {
+    const workspaceId = getWorkspaceId(c);
+    const body = await c.req.json();
+    const orderId = String(body.orderId || '').trim();
+
+    if (!orderId) {
+        return c.json({ success: false, error: 'Missing orderId' }, 400);
+    }
+
+    const order = await c.env.DB.prepare(`
+        SELECT id, gateway_reference, status
+        FROM payment_orders
+        WHERE id = ? AND workspace_id = ?
+        LIMIT 1
+    `).bind(orderId, workspaceId).first<{
+        id: string;
+        gateway_reference: string | null;
+        status: string;
+    }>();
+
+    if (!order) {
+        return c.json({ success: false, error: 'Order not found' }, 404);
+    }
+    if (order.status === 'paid') {
+        return c.json({ success: false, error: 'Cannot cancel paid order' }, 409);
+    }
+
+    if (order.gateway_reference && hasTmwConfig(c.env)) {
+        await cancelPay(c.env, order.gateway_reference).catch(() => {});
+    }
+
+    await c.env.DB.prepare(`
+        UPDATE payment_orders
+        SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    `).bind(orderId).run();
+
+    return c.json({ success: true });
 });
 
 export { app as billingRouter };
