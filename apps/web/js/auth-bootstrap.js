@@ -363,6 +363,14 @@
         });
     }
 
+    function getDaysRemaining() {
+        const periodEnd = state.workspace?.subscriptionPeriodEnd;
+        if (!periodEnd) return null;
+        const diff = new Date(periodEnd) - new Date();
+        if (diff <= 0) return 0;
+        return Math.ceil(diff / (24 * 60 * 60 * 1000));
+    }
+
     function ensureHeaderControls() {
         const headerRight = document.querySelector('.header-right');
         if (!headerRight) return;
@@ -376,8 +384,13 @@
         }
 
         const workspaceName = state.workspace?.name || 'No workspace';
+        const daysLeft = getDaysRemaining();
+        const daysHtml = daysLeft !== null
+            ? `<span class="pubilo-days-badge${daysLeft <= 7 ? ' is-warning' : ''}">${daysLeft} วัน</span>`
+            : '';
         chip.innerHTML = `
             <span class="pubilo-workspace-label">${workspaceName}</span>
+            ${daysHtml}
             <button type="button" id="pubiloLogoutBtn">Logout</button>
         `;
 

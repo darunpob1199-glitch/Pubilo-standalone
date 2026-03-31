@@ -1,4 +1,4 @@
-export type BillingPlanCode = 'monthly_500' | 'yearly_4499';
+export type BillingPlanCode = 'test_1' | 'monthly_500' | 'yearly_4499';
 
 export type BillingPlan = {
     code: BillingPlanCode;
@@ -10,6 +10,14 @@ export type BillingPlan = {
 };
 
 export const BILLING_PLANS: BillingPlan[] = [
+    {
+        code: 'test_1',
+        label: 'ทดสอบ',
+        interval: 'monthly',
+        amountThb: 1,
+        durationDays: 30,
+        description: 'แพ็กเกจทดสอบ 1 บาท 30 วัน',
+    },
     {
         code: 'monthly_500',
         label: 'รายเดือน',

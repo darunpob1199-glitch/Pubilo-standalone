@@ -711,6 +711,21 @@ input[type="checkbox"] {
     letter-spacing: -0.01em;
 }
 
+.pubilo-days-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #ecfdf5;
+    color: #065f46;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.pubilo-days-badge.is-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
 .pubilo-workspace-chip button {
     border: 1px solid rgba(59, 130, 246, 0.18);
     background: rgba(255, 255, 255, 0.92);

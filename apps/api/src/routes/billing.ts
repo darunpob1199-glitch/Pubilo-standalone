@@ -52,7 +52,18 @@ app.post('/checkout-intent', async (c) => {
     const subscriptionId = crypto.randomUUID();
     const orderId = crypto.randomUUID();
     const now = new Date();
-    const currentPeriodEnd = new Date(now.getTime() + plan.durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+    // เช็ค subscription เดิมที่ยังเหลือวัน → +วัน แทน reset
+    const existingSub = await c.env.DB.prepare(`
+        SELECT current_period_end FROM organization_subscriptions
+        WHERE workspace_id = ? AND status = 'active'
+        ORDER BY created_at DESC LIMIT 1
+    `).bind(workspaceId).first<{ current_period_end: string | null }>();
+
+    const baseDate = (existingSub?.current_period_end && new Date(existingSub.current_period_end) > now)
+        ? new Date(existingSub.current_period_end)
+        : now;
+    const currentPeriodEnd = new Date(baseDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000).toISOString();
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
     await c.env.DB.batch([
