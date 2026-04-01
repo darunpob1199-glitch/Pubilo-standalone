@@ -391,27 +391,37 @@
             }
             note.textContent = 'กำลังสร้าง Order...';
 
-            const response = await nativeFetch('/api/billing/checkout-intent', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ planCode }),
-            });
-            const data = await response.json();
-            if (!response.ok || !data.success) {
-                note.textContent = data.error || 'สร้าง order ไม่สำเร็จ';
-                return;
-            }
+            try {
+                const response = await nativeFetch('/api/billing/checkout-intent', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ planCode }),
+                });
+                const data = await response.json();
+                console.log('[PubiloAuth] checkout-intent response:', response.status, data);
 
-            const freshState = await fetchAuthState();
-            applyAuthState(freshState);
-            if (data.paymentOrder?.id) {
-                state.latestPaymentOrder = {
-                    id: data.paymentOrder.id,
-                    status: 'pending',
-                    amount_thb: data.paymentOrder.amountThb,
-                    plan_code: planCode,
-                };
-                renderPaymentView(data.paymentOrder.id);
+                if (!response.ok || !data.success) {
+                    note.textContent = data.error || `สร้าง order ไม่สำเร็จ (${response.status})`;
+                    return;
+                }
+
+                note.textContent = 'สร้าง Order สำเร็จ กำลังไปหน้าชำระเงิน...';
+                const freshState = await fetchAuthState();
+                applyAuthState(freshState);
+                if (data.paymentOrder?.id) {
+                    state.latestPaymentOrder = {
+                        id: data.paymentOrder.id,
+                        status: 'pending',
+                        amount_thb: data.paymentOrder.amountThb,
+                        plan_code: planCode,
+                    };
+                    renderPaymentView(data.paymentOrder.id);
+                } else {
+                    note.textContent = 'สร้าง order สำเร็จแต่ไม่มี paymentOrder id';
+                }
+            } catch (err) {
+                console.error('[PubiloAuth] checkout-intent error:', err);
+                note.textContent = `เกิดข้อผิดพลาด: ${err.message}`;
             }
         });
     }

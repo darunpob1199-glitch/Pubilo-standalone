@@ -104,7 +104,7 @@ window.fetch = function (url, options) {
     const bypassAuth =
         typeof url === 'string' && (
             url.startsWith('/api/auth/')
-            || url === '/api/billing/plans'
+            || url.startsWith('/api/billing/')
             || url === '/api/news-link'
             || url === '/health'
             || url === '/'
