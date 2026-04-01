@@ -38,6 +38,8 @@ function createPostToolState() {
             type: "all",
             day: "all",
             customDate: "",
+            clearBefore: "",
+            batchSize: 20,
         },
         pagination: {
             nextCursor: "",
@@ -66,6 +68,8 @@ function resetPostToolStateDefaults(toolKey) {
     state.filters.type = "all";
     state.filters.day = "all";
     state.filters.customDate = "";
+    state.filters.clearBefore = "";
+    state.filters.batchSize = 20;
     state.pagination.nextCursor = "";
     state.pagination.hasMore = false;
     state.pagination.loadingMore = false;
@@ -95,6 +99,10 @@ function getPostToolDom(toolKey) {
         typeFilter: document.getElementById(`${prefix}TypeFilter`),
         dayFilters: document.getElementById(`${prefix}DayFilters`),
         dateInput: document.getElementById(`${prefix}DateInput`),
+        pageSelect: document.getElementById(`${prefix}PageSelect`),
+        clearBeforeInput: document.getElementById(`${prefix}ClearBeforeInput`),
+        batchSizeInput: document.getElementById(`${prefix}BatchSizeInput`),
+        autoSelectBtn: document.getElementById(`${prefix}AutoSelectBtn`),
         filterMeta: document.getElementById(`${prefix}FilterMeta`),
         selectionMeta: document.getElementById(`${prefix}SelectionMeta`),
         selectVisibleBtn: document.getElementById(`${prefix}SelectVisibleBtn`),
@@ -165,6 +173,22 @@ function getPostToolItemId(post) {
 function getPostToolPositiveInt(value, fallback) {
     const parsed = parseInt(String(value || ""), 10);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function syncDeletePostToolPageSelect() {
+    const dom = getPostToolDom("delete");
+    const globalPageSelect = document.getElementById("pageSelect");
+    if (!dom.pageSelect || !globalPageSelect) return;
+
+    const globalOptionsHtml = globalPageSelect.innerHTML;
+    if (dom.pageSelect.innerHTML !== globalOptionsHtml) {
+        dom.pageSelect.innerHTML = globalOptionsHtml;
+    }
+
+    const globalValue = String(globalPageSelect.value || "");
+    if (globalValue && dom.pageSelect.value !== globalValue) {
+        dom.pageSelect.value = globalValue;
+    }
 }
 
 function escapePostToolHtml(value) {
@@ -281,8 +305,16 @@ function getPostToolFilteredPosts(toolKey) {
             case "last30":
                 return date && date >= last30Limit;
             default:
-                return true;
+                break;
         }
+
+        if (toolKey === "delete" && state.filters.clearBefore) {
+            const clearBeforeDate = parsePostToolDate(state.filters.clearBefore);
+            if (!clearBeforeDate) return false;
+            return !!date && date <= clearBeforeDate;
+        }
+
+        return true;
     });
 }
 
@@ -754,12 +786,41 @@ function syncPostToolInputs(toolKey) {
     if (dom.searchInput) dom.searchInput.value = state.filters.query;
     if (dom.typeFilter) dom.typeFilter.value = state.filters.type;
     if (dom.dateInput) dom.dateInput.value = state.filters.customDate;
+    if (dom.clearBeforeInput) dom.clearBeforeInput.value = state.filters.clearBefore;
+    if (dom.batchSizeInput) dom.batchSizeInput.value = String(getPostToolPositiveInt(state.filters.batchSize, 20) || 20);
     if (dom.keepLatestToggle) dom.keepLatestToggle.checked = Boolean(state.safeguards.keepLatestEnabled);
     if (dom.keepLatestInput) dom.keepLatestInput.value = String(getPostToolPositiveInt(state.safeguards.keepLatestCount, 10));
     if (dom.minAgeToggle) dom.minAgeToggle.checked = Boolean(state.safeguards.minAgeEnabled);
     if (dom.minAgeInput) dom.minAgeInput.value = String(getPostToolPositiveInt(state.safeguards.minAgeDays, 7));
     renderPostToolDayFilters(toolKey);
     renderPostToolPagination(toolKey);
+    if (toolKey === "delete") syncDeletePostToolPageSelect();
+}
+
+function autoSelectDeletePostsByRule() {
+    const toolKey = "delete";
+    const state = postToolStates[toolKey];
+    const batchSize = Math.min(Math.max(getPostToolPositiveInt(state.filters.batchSize, 20), 1), 200);
+    state.filters.batchSize = batchSize;
+
+    const eligible = getPostToolEligibleFilteredPosts(toolKey)
+        .slice()
+        .sort((a, b) => {
+            const aDate = parsePostToolDate(a.published_at || a.created_at);
+            const bDate = parsePostToolDate(b.published_at || b.created_at);
+            const aTime = aDate ? aDate.getTime() : Number.MAX_SAFE_INTEGER;
+            const bTime = bDate ? bDate.getTime() : Number.MAX_SAFE_INTEGER;
+            return aTime - bTime; // oldest first
+        });
+
+    const picked = eligible.slice(0, batchSize);
+    state.selectedIds.clear();
+    picked.forEach((post) => state.selectedIds.add(getPostToolItemId(post)));
+    renderPostToolTable(toolKey);
+
+    if (!picked.length) {
+        alert("ไม่พบโพสต์ที่ตรงเงื่อนไขวันเวลา/ประเภทในเพจนี้");
+    }
 }
 
 function mergePostToolPosts(existingPosts, incomingPosts) {
@@ -1103,9 +1164,15 @@ async function runPostToolAction(toolKey) {
     const state = postToolStates[toolKey];
     const eligible = getPostToolEligibleFilteredPosts(toolKey);
     const selectedPosts = eligible.filter((post) => state.selectedIds.has(getPostToolItemId(post)));
+    const batchSize = Math.min(Math.max(getPostToolPositiveInt(state.filters.batchSize, 20), 1), 200);
 
     if (!selectedPosts.length) {
         alert("เลือกโพสต์ก่อน");
+        return;
+    }
+
+    if (toolKey === "delete" && selectedPosts.length > batchSize) {
+        alert(`ตั้งค่าให้ลบทีละ ${batchSize} โพสต์ แต่ตอนนี้เลือกไว้ ${selectedPosts.length} โพสต์\nกรุณาลดจำนวนที่เลือก หรือกด "เลือกตามวันเวลา + จำนวน"`);
         return;
     }
 
@@ -1180,15 +1247,53 @@ function bindPostToolEvents(toolKey) {
         if (!target) return;
         state.filters.day = target.dataset.filter || "all";
         state.filters.customDate = "";
+        state.filters.clearBefore = "";
         if (dom.dateInput) dom.dateInput.value = "";
+        if (dom.clearBeforeInput) dom.clearBeforeInput.value = "";
         renderPostToolDayFilters(toolKey);
         renderPostToolTable(toolKey);
     });
 
     dom.dateInput?.addEventListener("change", (event) => {
         state.filters.customDate = event.target.value || "";
+        if (state.filters.customDate) {
+            state.filters.clearBefore = "";
+            if (dom.clearBeforeInput) dom.clearBeforeInput.value = "";
+        }
         renderPostToolDayFilters(toolKey);
         renderPostToolTable(toolKey);
+    });
+
+    dom.pageSelect?.addEventListener("change", () => {
+        const globalPageSelect = document.getElementById("pageSelect");
+        if (!globalPageSelect) return;
+        const nextPageId = String(dom.pageSelect.value || "");
+        if (!nextPageId || globalPageSelect.value === nextPageId) return;
+        globalPageSelect.value = nextPageId;
+        globalPageSelect.dispatchEvent(new Event("change"));
+        loadPostToolPosts(toolKey);
+        loadPostToolJobs(toolKey);
+    });
+
+    dom.clearBeforeInput?.addEventListener("change", (event) => {
+        state.filters.clearBefore = event.target.value || "";
+        if (state.filters.clearBefore) {
+            state.filters.customDate = "";
+            state.filters.day = "all";
+            if (dom.dateInput) dom.dateInput.value = "";
+        }
+        renderPostToolDayFilters(toolKey);
+        renderPostToolTable(toolKey);
+    });
+
+    dom.batchSizeInput?.addEventListener("input", (event) => {
+        state.filters.batchSize = Math.min(Math.max(getPostToolPositiveInt(event.target.value, 20), 1), 200);
+        event.target.value = String(state.filters.batchSize);
+    });
+
+    dom.autoSelectBtn?.addEventListener("click", () => {
+        if (toolKey !== "delete") return;
+        autoSelectDeletePostsByRule();
     });
 
     dom.selectVisibleBtn?.addEventListener("click", () => {
@@ -1258,6 +1363,9 @@ function showPostToolPanel(toolKey) {
     document.body.style.overflow = "hidden";
 
     bindPostToolEvents(toolKey);
+    if (toolKey === "delete") {
+        syncDeletePostToolPageSelect();
+    }
     loadPostToolPosts(toolKey);
     loadPostToolJobs(toolKey);
 }

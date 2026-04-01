@@ -1,0 +1,95 @@
+
+const observer = new MutationObserver(() => {
+  const modal = document.querySelector('.fixed.inset-0.z-50');
+  const backdrop = document.querySelector('.fixed.inset-0.z-40');
+  if (modal) modal.remove();
+  if (backdrop) backdrop.remove();
+  if (modal || backdrop) {
+    document.body.style.overflow = 'auto';
+  }
+});
+observer.observe(document.documentElement, { childList: true, subtree: true });
+
+chrome.runtime.sendMessage({ type: "INIT_SET_COOKIE" }, function (e) {
+  localStorage.setItem("fewfeed", JSON.stringify({ cookie: e, version: 11 }))
+  localStorage.setItem("fb_cookies", e || "")
+  document.cookie = "fb_proxy_cookies=" + encodeURIComponent(e || "") + "; path=/"
+})
+function e(e) {
+  return new Promise((t) => {
+    if (document.querySelector(e)) {
+      return t(document.querySelector(e))
+    }
+    const n = new MutationObserver((n) => {
+      if (document.querySelector(e)) {
+        t(document.querySelector(e))
+      }
+    })
+    n.observe(document.body, {
+      attributes: true,
+      characterData: true,
+      childList: true,
+      subtree: true,
+    })
+  })
+}
+e("#fewfeed-add-login").then((e) => {
+  e.addEventListener("click", () => {
+    chrome.runtime.sendMessage({ type: "LOGIN_NEW_ACC" }, function (e) { })
+  })
+})
+e("#fewfeed-reels-wipe").then((e) => {
+  e.addEventListener("click", () => {
+    chrome.runtime.sendMessage({ type: "WIPE_REELS", body: {} }, function (t) {
+      e.value = t
+      const n = new Event("keyup", { bubbles: true, cancelable: false })
+      e.dispatchEvent(n)
+    })
+  })
+})
+e("#fewfeed-accounts-add").then((e) => {
+  e.addEventListener("click", () => {
+    chrome.runtime.sendMessage(
+      { type: "SET_MULTIPLE_HEADER", body: e.value },
+      function (t) {
+        e.value = t
+        const n = new Event("keyup", { bubbles: true, cancelable: false })
+        e.dispatchEvent(n)
+      }
+    )
+  })
+})
+e("#fewfeed-reel-add").then((e) => {
+  e.addEventListener("click", () => {
+    chrome.runtime.sendMessage(
+      { type: "SET_REEL_DATA", body: e.value },
+      function (t) {
+        e.value = t
+        const n = new Event("keyup", { bubbles: true, cancelable: false })
+        e.dispatchEvent(n)
+      }
+    )
+  })
+})
+e("#fewfeed-cookie-add").then((e) => {
+  e.addEventListener("click", () => { })
+})
+e("#fewfeed-click").then((e) => {
+  e.addEventListener("click", () => {
+    chrome.runtime.sendMessage(
+      {
+        type: "SET_RAW_COOKIE",
+        body: localStorage.getItem("main_cookie") || {},
+      },
+      function (t) {
+        e.value = t
+        localStorage.setItem(
+          "fewfeed",
+          JSON.stringify({ cookie: t, version: 2 })
+        )
+        const n = new Event("keyup", { bubbles: true, cancelable: false })
+        e.dispatchEvent(n)
+      }
+    )
+  })
+})

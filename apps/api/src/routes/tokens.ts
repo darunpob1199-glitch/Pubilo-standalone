@@ -21,7 +21,9 @@ app.get('/', async (c) => {
         const tokens = await Promise.all((results.results || []).map(async (row: any) => ({
             user_id: row.facebook_user_id,
             ads_token: await decryptSecret(c.env, row.ads_token_encrypted),
-            post_token: await decryptSecret(c.env, row.ads_token_encrypted),
+            // facebook_credentials table does not store post tokens.
+            // Never mirror ads token into post_token; it causes wrong-token fallbacks.
+            post_token: null,
             cookie: await decryptSecret(c.env, row.cookie_encrypted),
             fb_dtsg: await decryptSecret(c.env, row.fb_dtsg_encrypted),
             user_name: row.account_name,

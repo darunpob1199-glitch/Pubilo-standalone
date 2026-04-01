@@ -1,5 +1,6 @@
 (function () {
     const SHOW_BILLING_BANNER = false;
+    const SKIP_SIGNUP_AND_BILLING_GATE = true;
     let authReadyResolved = false;
     let resolveAuthReadyPromise = null;
     const state = {
@@ -543,6 +544,16 @@
         if (!payload.authenticated) {
             renderLoginView(authErrorMessage());
             return new Promise(() => {});
+        }
+
+        if (SKIP_SIGNUP_AND_BILLING_GATE) {
+            // Temporary bypass: allow entering app even if onboarding/payment is pending.
+            document.body.classList.add('pubilo-authenticated');
+            ensureOverlay().classList.add('is-hidden');
+            ensureHeaderControls();
+            ensureBillingBanner();
+            resolveAuthReadyPromise?.(payload);
+            return payload;
         }
 
         if (payload.onboardingRequired || !payload.workspace) {

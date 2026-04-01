@@ -10,6 +10,25 @@ function isTmwSuccess(status: unknown): boolean {
     return Number(status) === 1;
 }
 
+function buildTmwErrorMessage(prefix: string, payload: any): string {
+    const msg = String(payload?.msg || '').trim();
+    const status = payload?.status;
+    const endpoint = payload?._meta?.endpoint;
+    const raw = String(payload?._meta?.raw || '').trim();
+    const base = msg || `${prefix} failed`;
+    const extra: string[] = [];
+    if (status !== undefined && status !== null && String(status) !== '') {
+        extra.push(`status=${status}`);
+    }
+    if (endpoint) {
+        extra.push(`endpoint=${endpoint}`);
+    }
+    if (!msg && raw) {
+        extra.push(`raw=${raw.slice(0, 120)}`);
+    }
+    return extra.length ? `${base} (${extra.join(', ')})` : base;
+}
+
 app.get('/plans', (c) => {
     return c.json({
         success: true,
@@ -167,43 +186,66 @@ app.post('/create-payment', async (c) => {
 
     // ถ้ามี gateway_reference อยู่แล้ว ดึง detail เลย ไม่ต้อง create ใหม่
     if (order.gateway_reference) {
-        const detail = await detailPay(c.env, order.gateway_reference, true);
-        if (isTmwSuccess(detail.status)) {
-            return c.json({
-                success: true,
-                orderId: order.id,
-                idPay: order.gateway_reference,
-                amount: detail.amount,
-                urlpay: detail.urlpay,
-                qrBase64: detail.qr_base64_image || null,
-                timeOut: detail.time_out,
-            });
+        try {
+            const detail = await detailPay(c.env, order.gateway_reference, true);
+            if (isTmwSuccess(detail.status)) {
+                return c.json({
+                    success: true,
+                    orderId: order.id,
+                    idPay: order.gateway_reference,
+                    amount: detail.amount,
+                    urlpay: detail.urlpay,
+                    qrBase64: detail.qr_base64_image || null,
+                    timeOut: detail.time_out,
+                });
+            }
+        } catch {
+            // Ignore and continue creating new payment below.
         }
     }
 
     // สร้าง payment ใหม่ที่ TMW
-    let ref1 = `pubilo-${orderId.slice(0, 8)}`;
-    let created = await createPay(c.env, order.amount_thb, ref1);
+    let ref1 = `p${Date.now().toString().slice(-7)}`;
+    let created;
+    try {
+        created = await createPay(c.env, order.amount_thb, ref1);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ success: false, error: `TMW create_pay request error: ${message}`, errorType: 'TMW_CREATE_PAY_REQUEST_ERROR' }, 502);
+    }
     if (!isTmwSuccess(created.status) || !created.id_pay) {
         // Retry once with unique ref1 in case gateway rejects duplicate references.
-        ref1 = `pubilo-${orderId.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
-        created = await createPay(c.env, order.amount_thb, ref1);
+        ref1 = `p${Math.floor(Math.random() * 1_000_0000).toString().padStart(7, '0')}`;
+        try {
+            created = await createPay(c.env, order.amount_thb, ref1);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return c.json({ success: false, error: `TMW create_pay retry request error: ${message}`, errorType: 'TMW_CREATE_PAY_RETRY_REQUEST_ERROR' }, 502);
+        }
     }
     if (!isTmwSuccess(created.status) || !created.id_pay) {
         return c.json({
             success: false,
-            error: created.msg || 'TMW create_pay failed',
+            error: buildTmwErrorMessage('TMW create_pay', created),
             errorType: 'TMW_CREATE_PAY_FAILED',
+            gateway: created?._meta || null,
         }, 502);
     }
 
     // ดึง QR code
-    const detail = await detailPay(c.env, created.id_pay, true);
+    let detail;
+    try {
+        detail = await detailPay(c.env, created.id_pay, true);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ success: false, error: `TMW detail_pay request error: ${message}`, errorType: 'TMW_DETAIL_PAY_REQUEST_ERROR' }, 502);
+    }
     if (!isTmwSuccess(detail.status)) {
         return c.json({
             success: false,
-            error: detail.msg || 'TMW detail_pay failed',
+            error: buildTmwErrorMessage('TMW detail_pay', detail),
             errorType: 'TMW_DETAIL_PAY_FAILED',
+            gateway: detail?._meta || null,
         }, 502);
     }
 

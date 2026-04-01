@@ -884,6 +884,11 @@ if (newsPublishBtn) {
         const pageToken = freshPageToken || getPageToken() || document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
         const cookie = fbCookie || localStorage.getItem("fewfeed_cookie");
         let adAccountId = document.getElementById("adAccountSelect")?.value;
+        if (!adAccountId) {
+            adAccountId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
+            const adAccountInput = document.getElementById("adAccountSelect");
+            if (adAccountInput && adAccountId) adAccountInput.value = adAccountId;
+        }
         const newsUrlInputEl = document.getElementById("newsUrlInput");
         const newsPrimaryTextEl = document.getElementById("newsPrimaryText");
         const newsPreviewDescEl = document.getElementById("newsPreviewDescription");
@@ -909,8 +914,10 @@ if (newsPublishBtn) {
         }
 
         if (!adAccountId) {
-            alert("ไม่มี Ad Account กรุณากด extension เพื่อดึง Ads Token ใหม่ แล้วลองอีกครั้ง");
-            return;
+            window.showPublishToast?.(
+                "ยังไม่เจอ Ad Account บนหน้าเว็บ กำลังให้เซิร์ฟเวอร์ค้นหาให้อัตโนมัติ",
+                "warning",
+            );
         }
         
         const linkUrlValue = newsUrlInputEl?.value?.trim();
@@ -947,10 +954,14 @@ if (newsPublishBtn) {
                 const latestPageToken = typeof getFreshPageTokenFromExtension === "function"
                     ? await getFreshPageTokenFromExtension(pageId, latestAdsToken)
                     : "";
+                const cachedPageToken =
+                    localStorage.getItem("fewfeed_selectedPageToken") ||
+                    localStorage.getItem("fewfeed_postToken") ||
+                    "";
 
                 return {
                     pageId,
-                    pageToken: latestPageToken || getPageToken() || document.getElementById("pageTokenInputPanel")?.value?.trim() || "",
+                    pageToken: latestPageToken || getPageToken() || cachedPageToken || document.getElementById("pageTokenInputPanel")?.value?.trim() || "",
                     accessToken: latestAdsToken,
                     cookieData: latestCookie,
                     targetPageIds:

@@ -6,6 +6,7 @@ const WORKSPACE_FACEBOOK_SESSION_MAP_KEY = "fewfeed_workspaceFacebookSessions_v1
 const SHOW_FACEBOOK_CONNECT_BANNER = false;
 let hasSeenExtensionReadySignal = false;
 let extensionMissingHintShown = false;
+const publishSessionRefreshRetryByMode = Object.create(null);
 let lastPersistedFacebookSessionSignature = "";
 let workspaceFacebookBootstrapPromise = null;
 
@@ -1387,10 +1388,21 @@ function setupPublishHandler(mode) {
                 localStorage.getItem("fewfeed_accessToken") ||
                 localStorage.getItem("fewfeed_token");
             const freshPageToken = await getFreshPageTokenFromExtension(pageId, adsToken);
+            const cachedPageToken =
+                localStorage.getItem("fewfeed_selectedPageToken") ||
+                localStorage.getItem("fewfeed_postToken") ||
+                "";
             const cookie =
                 fbCookie || localStorage.getItem("fewfeed_cookie");
             let adAccountId =
                 document.getElementById("adAccountSelect").value;
+            if (!adAccountId) {
+                adAccountId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
+                if (adAccountId) {
+                    const adAccountInput = document.getElementById("adAccountSelect");
+                    if (adAccountInput) adAccountInput.value = adAccountId;
+                }
+            }
 
             if (!adsToken) {
                 throw new Error(
@@ -1409,8 +1421,10 @@ function setupPublishHandler(mode) {
             }
 
             if (!adAccountId) {
-                throw new Error(
-                    "ไม่มี Ad Account กรุณากด extension เพื่อดึง Ads Token ใหม่ แล้วลองอีกครั้ง",
+                console.warn("[FEWFEED] No ad account selected on client, backend will auto-resolve from access token");
+                window.showPublishToast?.(
+                    "ยังไม่เจอ Ad Account บนหน้าเว็บ กำลังให้เซิร์ฟเวอร์ค้นหาให้อัตโนมัติ",
+                    "warning",
                 );
             }
 
@@ -1484,7 +1498,7 @@ function setupPublishHandler(mode) {
                     targetPageIds,
                     postMode: mode,
                     accessToken: adsToken, // Ads Token (server fetches Page Token from this)
-                    pageToken: freshPageToken || getPageToken() || "",
+                    pageToken: freshPageToken || getPageToken() || cachedPageToken || "",
                     cookieData: cookie,
                     pageId: pageId,
                     adAccountId: adAccountId,
@@ -1525,6 +1539,7 @@ function setupPublishHandler(mode) {
             const warningText = warningMatch ? warningMatch[1].replace(/\\"/g, '"') : "";
 
             if (urlMatch) {
+                publishSessionRefreshRetryByMode[mode] = false;
                 lastPublishedUrl = urlMatch[1];
                 if (warningText) {
                     showPublishToast(warningText, "error");
@@ -1698,7 +1713,34 @@ function setupPublishHandler(mode) {
                 throw new Error("Unexpected response from server");
             }
         } catch (err) {
-            console.error("[FEWFEED] Error:", err.message);
+            const errMessage = String(err?.message || err || "");
+            const isSessionExpiredError =
+                /session has been invalidated|error validating access token|facebook session หมดอายุ|errorcode["']?\s*:\s*190/i.test(errMessage);
+            if (isSessionExpiredError && !publishSessionRefreshRetryByMode[mode]) {
+                publishSessionRefreshRetryByMode[mode] = true;
+                try {
+                    const refreshResult = typeof refreshFacebookTokensFromExtension === "function"
+                        ? await refreshFacebookTokensFromExtension()
+                        : { success: false };
+                    if (refreshResult?.success) {
+                        showPublishToast("รีเฟรช Facebook session แล้ว กำลังลองโพสต์ให้อีกครั้ง", "warning");
+                        els.publishBtn.textContent =
+                            typeof getPrimaryPublishLabel === "function"
+                                ? getPrimaryPublishLabel(mode)
+                                : "POST NOW";
+                        els.publishBtn.disabled = false;
+                        setTimeout(() => {
+                            els.publishBtn.click();
+                        }, 180);
+                        return;
+                    }
+                } catch (_) {
+                    // Fall through to normal error message.
+                }
+            }
+
+            publishSessionRefreshRetryByMode[mode] = false;
+            console.error("[FEWFEED] Error:", errMessage);
             alert("Publish failed: " + err.message);
             els.publishBtn.textContent =
                 typeof getPrimaryPublishLabel === "function"
@@ -2511,6 +2553,11 @@ async function fetchAdAccounts(accessToken) {
         return "";
     }
 
+    const storedAdAccountId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
+    if (!input.value && storedAdAccountId) {
+        input.value = storedAdAccountId;
+    }
+
     try {
         const adAccounts = await requestAdAccountsFromExtension(accessToken);
         const nextId = setSelectedAdAccount(adAccounts);
@@ -2518,6 +2565,12 @@ async function fetchAdAccounts(accessToken) {
         return nextId;
     } catch (error) {
         console.warn("[FEWFEED] Failed to fetch ad accounts from extension:", error);
+        const fallbackId = String(input.value || storedAdAccountId || "").trim();
+        if (fallbackId) {
+            localStorage.setItem("fewfeed_selectedAdAccountId", fallbackId);
+            input.value = fallbackId;
+            return fallbackId;
+        }
         input.value = "";
         return "";
     }
@@ -2546,30 +2599,23 @@ async function getFreshPageTokenFromExtension(pageId, accessToken) {
         localStorage.setItem("fewfeed_selectedPageToken", nextToken);
 
         const tokenInput = document.getElementById("pageTokenInputPanel");
-        const shouldPersistToSettings =
-            !(typeof isCookieBoundFacebookToken === "function" && isCookieBoundFacebookToken(nextToken));
-
-        if (tokenInput && shouldPersistToSettings) {
+        if (tokenInput) {
             tokenInput.value = nextToken;
         }
 
-        if (shouldPersistToSettings) {
-            try {
-                await fetch("/api/page-settings", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        pageId,
-                        postToken: nextToken,
-                        pageName: matchedPage?.name || undefined,
-                        pictureUrl: matchedPage?.picture?.data?.url || undefined,
-                    }),
-                });
-            } catch (persistError) {
-                console.warn("[FEWFEED] Failed to persist fresh page token:", persistError);
-            }
-        } else {
-            console.log("[FEWFEED] Skipping page-settings persist for cookie-bound session token");
+        try {
+            await fetch("/api/page-settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    pageId,
+                    postToken: nextToken,
+                    pageName: matchedPage?.name || undefined,
+                    pictureUrl: matchedPage?.picture?.data?.url || undefined,
+                }),
+            });
+        } catch (persistError) {
+            console.warn("[FEWFEED] Failed to persist fresh page token:", persistError);
         }
 
         if (typeof mergeLoadedPageTokens === "function") {
@@ -2844,6 +2890,8 @@ function normalizeExtensionSessionData(rawData = {}) {
         fbDtsg: pickString(rawData.fbDtsg, rawData.fewfeed_fbDtsg),
         userId: pickString(rawData.userId, rawData.fewfeed_userId),
         userName: pickString(rawData.userName, rawData.fewfeed_userName),
+        avatarUrl: pickString(rawData.avatarUrl, rawData.fewfeed_avatarUrl),
+        pageTokenMap: rawData.pageTokenMap || rawData.fewfeed_pageTokenMap || null,
     };
 }
 
@@ -2875,11 +2923,10 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
 
     persistWorkspaceFacebookSessionSnapshot(session);
 
-    if (session.adsToken) {
-        localStorage.setItem("fewfeed_accessToken", session.adsToken);
-        localStorage.setItem("fewfeed_token", session.adsToken);
-        fbToken = session.adsToken;
-    }
+    // Always overwrite — clear stale tokens so code-190 loops stop.
+    localStorage.setItem("fewfeed_accessToken", session.adsToken || "");
+    localStorage.setItem("fewfeed_token", session.adsToken || "");
+    fbToken = session.adsToken || "";
     if (session.postToken) {
         localStorage.setItem("fewfeed_postToken", session.postToken);
         fbPostToken = session.postToken;
@@ -2896,6 +2943,48 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
     }
     if (session.userName) {
         localStorage.setItem("fewfeed_userName", session.userName);
+    }
+    if (session.avatarUrl) {
+        localStorage.setItem("fewfeed_avatarUrl", session.avatarUrl);
+    }
+
+    // Persist page tokens from extension into localStorage + DB
+    if (session.pageTokenMap) {
+        try {
+            const raw = typeof session.pageTokenMap === "string" ? JSON.parse(session.pageTokenMap) : session.pageTokenMap;
+            if (raw && typeof raw === "object" && Object.keys(raw).length > 0) {
+                const simpleMap = {};
+                for (const [pid, entry] of Object.entries(raw)) {
+                    const tok = typeof entry === "string" ? entry : entry?.token;
+                    if (tok) simpleMap[pid] = tok;
+                }
+                if (Object.keys(simpleMap).length > 0) {
+                    localStorage.setItem("fewfeed_pageTokenMap", JSON.stringify(simpleMap));
+                    const currentPageId = typeof getCurrentPageId === "function" ? getCurrentPageId() : "";
+                    if (currentPageId && simpleMap[currentPageId]) {
+                        localStorage.setItem("fewfeed_selectedPageToken", simpleMap[currentPageId]);
+                    }
+                    console.log("[FEWFEED] Page token map updated from extension:", Object.keys(simpleMap).length, "pages");
+
+                    for (const [pid, tok] of Object.entries(simpleMap)) {
+                        const pageName = typeof raw[pid] === "object" ? raw[pid]?.name : undefined;
+                        const pictureUrl = typeof raw[pid] === "object" ? raw[pid]?.picture : undefined;
+                        fetch("/api/page-settings", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                pageId: pid,
+                                postToken: tok,
+                                ...(pageName ? { pageName } : {}),
+                                ...(pictureUrl ? { pictureUrl } : {}),
+                            }),
+                        }).catch(() => {});
+                    }
+                }
+            }
+        } catch (ptErr) {
+            console.warn("[FEWFEED] Failed to apply page token map:", ptErr);
+        }
     }
 
     const effectiveUserId = localStorage.getItem("fewfeed_userId") || session.userId || "";
@@ -3045,7 +3134,7 @@ async function refreshFacebookTokensFromExtension() {
 
         const timeout = setTimeout(() => {
             finish({ success: false });
-        }, 10000);
+        }, 20000);
 
         window.addEventListener("message", handleMessage);
         window.postMessage({ type: "FEWFEED_REFRESH_TOKEN" }, "*");
@@ -3419,13 +3508,30 @@ function showCookieStatus(
         const accessToken = localStorage.getItem(
             "fewfeed_accessToken",
         );
+        const storedAvatarUrl = localStorage.getItem("fewfeed_avatarUrl") || "";
         const avatarImg =
             document.getElementById("headerAvatarImg");
         const avatarInitial = document.getElementById(
             "headerAvatarInitial",
         );
 
-        if (userId && accessToken && avatarImg) {
+        if (storedAvatarUrl && avatarImg) {
+            avatarImg.src = storedAvatarUrl;
+            avatarImg.onload = () => {
+                avatarImg.style.display = "block";
+                if (avatarInitial)
+                    avatarInitial.style.display = "none";
+            };
+            avatarImg.onerror = () => {
+                avatarImg.style.display = "none";
+                if (avatarInitial) {
+                    avatarInitial.style.display = "flex";
+                    avatarInitial.textContent = (userName || "U")
+                        .charAt(0)
+                        .toUpperCase();
+                }
+            };
+        } else if (userId && accessToken && avatarImg) {
             const avatarUrl = `https://graph.facebook.com/${userId}/picture?type=normal&width=72&height=72&access_token=${accessToken}`;
             avatarImg.src = avatarUrl;
             avatarImg.onload = () => {

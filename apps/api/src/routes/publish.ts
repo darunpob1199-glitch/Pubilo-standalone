@@ -120,6 +120,69 @@ async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieD
     return '';
 }
 
+async function fetchFreshPageTokenFromWorkspaceCredentials(
+    env: Env,
+    organizationId: string,
+    pageId: string,
+): Promise<string> {
+    try {
+        const rows = await env.DB.prepare(`
+            SELECT ads_token_encrypted, cookie_encrypted
+            FROM facebook_credentials
+            WHERE workspace_id = ?
+            ORDER BY updated_at DESC
+            LIMIT 5
+        `).bind(organizationId).all<{ ads_token_encrypted?: string | null; cookie_encrypted?: string | null }>();
+
+        for (const row of rows.results || []) {
+            const adsToken = String(await decryptSecret(env, row?.ads_token_encrypted) || '').trim();
+            const cookie = String(await decryptSecret(env, row?.cookie_encrypted) || '').trim();
+            if (!adsToken) continue;
+
+            const token = await fetchFreshPageToken(pageId, adsToken, cookie);
+            if (token) {
+                return token;
+            }
+        }
+    } catch (error) {
+        console.warn('[publish] workspace facebook_credentials token fetch failed:', error);
+    }
+
+    return '';
+}
+
+async function recoverAdsTokenFromWorkspaceCredentials(
+    env: Env,
+    organizationId: string,
+): Promise<string> {
+    try {
+        const rows = await env.DB.prepare(`
+            SELECT ads_token_encrypted
+            FROM facebook_credentials
+            WHERE workspace_id = ?
+            ORDER BY updated_at DESC
+            LIMIT 3
+        `).bind(organizationId).all<{ ads_token_encrypted?: string | null }>();
+
+        for (const row of rows.results || []) {
+            const adsToken = String(await decryptSecret(env, row?.ads_token_encrypted) || '').trim();
+            if (!adsToken) continue;
+
+            const testResp = await fetch(
+                `${FB_API}/me?access_token=${encodeURIComponent(adsToken)}&fields=id`,
+            );
+            const testData = await testResp.json() as any;
+            if (testData?.id && !testData?.error) {
+                console.log('[publish] Recovered valid ads token from workspace credentials');
+                return adsToken;
+            }
+        }
+    } catch (error) {
+        console.warn('[publish] ads token recovery from workspace credentials failed:', error);
+    }
+    return '';
+}
+
 function buildAuthCandidates(tokens: Array<string | null | undefined>): string[] {
     const seen = new Set<string>();
     const candidates: string[] = [];
@@ -855,33 +918,44 @@ app.post('/', async (c) => {
             return c.json({ success: false, error: 'Missing organizationId' }, 400);
         }
 
-        let storedPageToken = pageToken;
+        const requestedPageToken = typeof pageToken === 'string' ? pageToken.trim() : '';
+        let storedPageToken = '';
         let storedHideToken = '';
 
-        if (!storedPageToken) {
-            console.log('[publish] No direct pageToken provided, checking D1 page_settings...');
-            try {
-                const dbResult = await c.env.DB.prepare(
-                    'SELECT post_token_encrypted, hide_token_encrypted FROM page_settings WHERE organization_id = ? AND page_id = ? LIMIT 1'
-                ).bind(organizationId, pageId).first<{ post_token_encrypted: string | null; hide_token_encrypted: string | null }>();
+        // Always read page_settings token as a durable fallback.
+        try {
+            const dbResult = await c.env.DB.prepare(
+                'SELECT post_token_encrypted, hide_token_encrypted FROM page_settings WHERE organization_id = ? AND page_id = ? LIMIT 1'
+            ).bind(organizationId, pageId).first<{ post_token_encrypted: string | null; hide_token_encrypted: string | null }>();
 
-                if (dbResult?.post_token_encrypted) {
-                    storedPageToken = await decryptSecret(c.env, dbResult.post_token_encrypted) || '';
-                    console.log('[publish] Got stored Page Token from D1 page_settings');
-                }
-                if (dbResult?.hide_token_encrypted) {
-                    storedHideToken = await decryptSecret(c.env, dbResult.hide_token_encrypted) || '';
-                }
-            } catch (dbErr) {
-                console.error('[publish] D1 error:', dbErr);
+            if (dbResult?.post_token_encrypted) {
+                storedPageToken = await decryptSecret(c.env, dbResult.post_token_encrypted) || '';
+                console.log('[publish] Got stored Page Token from D1 page_settings');
             }
+            if (dbResult?.hide_token_encrypted) {
+                storedHideToken = await decryptSecret(c.env, dbResult.hide_token_encrypted) || '';
+            }
+        } catch (dbErr) {
+            console.error('[publish] D1 error:', dbErr);
         }
 
         const facebookHeaders = buildFacebookHeaders(cookieData);
-        const freshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
+        let freshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
+        if (!freshPageToken) {
+            const workspaceFreshPageToken = await fetchFreshPageTokenFromWorkspaceCredentials(
+                c.env,
+                organizationId,
+                pageId,
+            );
+            if (workspaceFreshPageToken) {
+                freshPageToken = workspaceFreshPageToken;
+                console.log('[publish] Recovered fresh page token from workspace facebook_credentials');
+            }
+        }
         const authCandidates = buildAuthCandidates([
             freshPageToken,
             storedPageToken,
+            requestedPageToken,
             accessToken,
         ]);
 
@@ -1021,6 +1095,7 @@ app.post('/', async (c) => {
                 storedHideToken,
                 freshPageToken,
                 storedPageToken,
+                requestedPageToken,
                 accessToken,
             ]);
             let lastError = '';
@@ -1226,83 +1301,167 @@ app.post('/', async (c) => {
         }
 
         const normalizedAdAccountId = normalizeAdAccountId(adAccountId);
+        let resolvedAdAccountId = normalizedAdAccountId;
+        let accessibleAdAccounts: string[] = [];
+
+        if (isLinkAttachmentPost && accessToken && !resolvedAdAccountId) {
+            try {
+                accessibleAdAccounts = await fetchAccessibleAdAccountIds(accessToken, facebookHeaders);
+                resolvedAdAccountId = accessibleAdAccounts[0] || '';
+            } catch (error) {
+                console.warn('[publish] Failed to auto-resolve ad account from access token:', error);
+            }
+        }
         const normalizedCallToAction = normalizeCallToActionType(callToAction);
-        const canUseAdCreativeFlow = isLinkAttachmentPost && !!accessToken && !!normalizedAdAccountId;
+        const canUseAdCreativeFlow = isLinkAttachmentPost && !!accessToken && !!resolvedAdAccountId;
 
         if (isLinkAttachmentPost) {
-            if (!canUseAdCreativeFlow) {
-                return c.json({
-                    success: false,
-                    error: 'ไม่พบ Ads Token หรือ Ad Account สำหรับโพสต์แบบการ์ด กรุณากด extension เพื่อเชื่อมต่อใหม่',
-                    errorType: 'MissingAdCreativeAuth',
-                }, 400);
-            }
+            // Include access token as last-resort candidate for feed fallback.
+            // Some workspaces can still post via feed with a valid user token even when
+            // page token lookup temporarily fails.
+            const pageTokenCandidates = buildAuthCandidates([
+                freshPageToken,
+                requestedPageToken,
+                storedPageToken,
+                accessToken,
+            ]);
+            const pageTokenForPublish = pageTokenCandidates[0] || '';
+            let adCreativeError: string | null = null;
 
-            const pageTokenForPublish = freshPageToken || storedPageToken;
-            if (!pageTokenForPublish) {
-                return c.json({
-                    success: false,
-                    error: 'ไม่พบ Page Token สำหรับเผยแพร่โพสต์ กรุณาเชื่อมต่อ extension ใหม่แล้วลองอีกครั้ง',
-                    errorType: 'MissingPageToken',
-                }, 400);
-            }
+            console.log('[publish] Link post diagnostics:', {
+                hasClientAccessToken: !!accessToken,
+                resolvedAdAccountId: resolvedAdAccountId || '(none)',
+                canUseAdCreativeFlow,
+                pageTokenCandidateCount: pageTokenCandidates.length,
+            });
 
-            try {
-                const creativeResult = await createStandaloneAdCreative({
-                    pageId,
-                    accessToken,
-                    cookieHeaders: facebookHeaders,
-                    adAccountId: normalizedAdAccountId,
-                    linkUrl: finalLink || publishLinkUrl,
-                    hostedImageUrl: hostedImageUrl || undefined,
-                    message: finalMessage,
-                    title: attachmentTitle || undefined,
-                    caption: previewSiteName || undefined,
-                    description: attachmentDescription || undefined,
-                    callToAction: normalizedCallToAction,
-                });
+            // Primary: ad creative produces rich cards with custom image, title, CTA button.
+            if (canUseAdCreativeFlow) {
+                try {
+                    const creativeResult = await createStandaloneAdCreative({
+                        pageId,
+                        accessToken,
+                        cookieHeaders: facebookHeaders,
+                        adAccountId: resolvedAdAccountId,
+                        linkUrl: finalLink || publishLinkUrl,
+                        hostedImageUrl: hostedImageUrl || undefined,
+                        message: finalMessage,
+                        title: attachmentTitle || undefined,
+                        caption: previewSiteName || undefined,
+                        description: attachmentDescription || undefined,
+                        callToAction: normalizedCallToAction,
+                    });
 
-                if (!scheduleTimestamp) {
-                    await publishExistingUnpublishedPost(creativeResult.postId, pageTokenForPublish, facebookHeaders);
-                }
+                    if (!scheduleTimestamp && pageTokenForPublish) {
+                        await publishExistingUnpublishedPost(creativeResult.postId, pageTokenForPublish, facebookHeaders);
+                    }
 
-                const publishedUrl = buildFacebookPostUrl(creativeResult.postId, pageId);
-                await recordPublishedSuccess(creativeResult.postId, publishedUrl, {
-                    flow: 'adcreative',
-                    creativeId: creativeResult.creativeId,
-                    materializedBy: creativeResult.materializedBy,
-                });
-                const hideResult = await maybeHideAfterPublish(creativeResult.postId);
-
-                return c.json({
-                    success: true,
-                    postId: creativeResult.postId,
-                    url: publishedUrl,
-                    timelineHidden: hideResult.hidden,
-                    ...(hideResult.attempted && !hideResult.hidden ? { warning: `ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}` } : {}),
-                    needsScheduling: !!scheduleTimestamp,
-                    ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
-                    _debug: {
+                    const publishedUrl = buildFacebookPostUrl(creativeResult.postId, pageId);
+                    await recordPublishedSuccess(creativeResult.postId, publishedUrl, {
                         flow: 'adcreative',
                         creativeId: creativeResult.creativeId,
-                        adAccountId: normalizedAdAccountId,
-                        requestedAdAccountId: normalizedAdAccountId,
-                        materializedBy: creativeResult.materializedBy || '',
-                        hide: hideResult,
-                    },
-                });
-            } catch (error) {
-                const rawMessage = error instanceof Error ? error.message : String(error);
+                        materializedBy: creativeResult.materializedBy,
+                    });
+                    const hideResult = await maybeHideAfterPublish(creativeResult.postId);
+
+                    return c.json({
+                        success: true,
+                        postId: creativeResult.postId,
+                        url: publishedUrl,
+                        timelineHidden: hideResult.hidden,
+                        ...(hideResult.attempted && !hideResult.hidden ? { warning: `ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}` } : {}),
+                        needsScheduling: !!scheduleTimestamp,
+                        ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                        _debug: {
+                            flow: 'adcreative',
+                            creativeId: creativeResult.creativeId,
+                            adAccountId: resolvedAdAccountId,
+                            materializedBy: creativeResult.materializedBy || '',
+                            hide: hideResult,
+                        },
+                    });
+                } catch (error) {
+                    adCreativeError = error instanceof Error ? error.message : String(error);
+                    console.warn('[publish] adcreative failed, falling back to feed:', adCreativeError);
+                }
+            }
+
+            // Fallback: feed with target URL. Try each page token candidate until one works.
+            if (pageTokenCandidates.length === 0) {
                 return c.json({
                     success: false,
-                    error: `โพสต์ถูกยกเลิกเพื่อป้องกันลิงก์เพียว: ${rawMessage}`,
-                    errorType: 'StrictRichLinkCardFailure',
+                    error: adCreativeError
+                        ? `Ad creative ไม่สำเร็จ: ${adCreativeError} — และไม่พบ Page Token สำหรับ fallback`
+                        : 'ไม่พบ Page Token สำหรับโพสต์ลิงก์ กรุณากด extension ใหม่แล้วลองอีกครั้ง',
+                    errorType: 'MissingPageToken',
                     _debug: {
-                        flow: 'adcreative',
-                        reason: rawMessage,
+                        adCreativeError,
+                        canUseAdCreativeFlow,
+                        candidateCount: authCandidates.length,
                     },
                 }, 400);
             }
+
+            let lastFeedError = '';
+            for (const candidateToken of pageTokenCandidates) {
+                try {
+                    const feedResult = await publishLinkCardViaFeed({
+                        pageId,
+                        pageToken: candidateToken,
+                        headers: facebookHeaders,
+                        message: finalMessage,
+                        linkUrl: finalLink || publishLinkUrl,
+                        scheduledTime: scheduleTimestamp || undefined,
+                    });
+
+                    const feedUrl = buildFacebookPostUrl(feedResult.postId, pageId);
+                    await recordPublishedSuccess(feedResult.postId, feedUrl, {
+                        flow: adCreativeError ? 'feed-fallback' : 'feed-link',
+                    });
+                    const hideResult = await maybeHideAfterPublish(feedResult.postId);
+
+                    return c.json({
+                        success: true,
+                        postId: feedResult.postId,
+                        url: feedUrl,
+                        timelineHidden: hideResult.hidden,
+                        ...(hideResult.attempted && !hideResult.hidden ? { warning: `ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}` } : {}),
+                        ...(adCreativeError ? { warning: 'Ad creative ไม่สำเร็จ ระบบสลับไปโพสต์ผ่าน feed แทน' } : {}),
+                        needsScheduling: !!scheduleTimestamp,
+                        ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                        _debug: {
+                            flow: adCreativeError ? 'feed-fallback' : 'feed-link',
+                            adCreativeError,
+                            hide: hideResult,
+                        },
+                    });
+                } catch (feedError) {
+                    lastFeedError = feedError instanceof Error ? feedError.message : String(feedError);
+                    console.warn(`[publish] feed candidate failed (${pageTokenCandidates.indexOf(candidateToken) + 1}/${pageTokenCandidates.length}):`, lastFeedError);
+                }
+            }
+
+            const isSessionInvalidated = /session has been invalidated|error validating access token|changed.*password|security reasons/i.test(
+                `${adCreativeError || ''} ${lastFeedError || ''}`
+            );
+            const userMessage = isSessionInvalidated
+                ? 'Facebook session หมดอายุ กรุณา logout แล้ว login Facebook ใหม่ จากนั้นกดปุ่ม extension แล้วรีเฟรชหน้า'
+                : adCreativeError
+                    ? `โพสต์ไม่สำเร็จ กรุณา login Facebook ใหม่แล้วกด extension`
+                    : `โพสต์ไม่สำเร็จ: ${lastFeedError}`;
+
+            return c.json({
+                success: false,
+                error: userMessage,
+                errorType: isSessionInvalidated ? 'SessionExpired' : 'LinkPublishFailed',
+                ...(isSessionInvalidated ? { errorCode: 190 } : {}),
+                _debug: {
+                    adCreativeError,
+                    feedError: lastFeedError,
+                    candidatesTried: pageTokenCandidates.length,
+                    isSessionInvalidated,
+                },
+            }, 400);
         }
 
         let lastFacebookError: any = null;

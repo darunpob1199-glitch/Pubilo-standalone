@@ -1,6 +1,8 @@
 import type { MiddlewareHandler } from 'hono';
 import type { Env } from '../types';
 
+const SKIP_SUBSCRIPTION_ENFORCEMENT = true;
+
 type SubscriptionContext = {
     Bindings: Env;
     Variables: {
@@ -11,6 +13,11 @@ type SubscriptionContext = {
 };
 
 export const requireActiveSubscription: MiddlewareHandler<SubscriptionContext> = async (c, next) => {
+    if (SKIP_SUBSCRIPTION_ENFORCEMENT) {
+        await next();
+        return;
+    }
+
     // Bypass สำหรับ internal requests (cron jobs)
     if (c.get('sessionId') === 'internal') {
         await next();

@@ -219,6 +219,7 @@
                         <div class="pending-filter-search">
                             <input class="pending-filter-input" id="deletePostsSearchInput" type="search" placeholder="ค้นหาข้อความหรือ post id" />
                         </div>
+                        <select class="pending-filter-select" id="deletePostsPageSelect"></select>
                         <select class="pending-filter-select" id="deletePostsTypeFilter">
                             <option value="all">ทุกประเภท</option>
                             <option value="link">Link</option>
@@ -236,6 +237,16 @@
                             <input class="pending-filter-input" id="deletePostsDateInput" type="date" />
                         </div>
                         <div class="pending-filter-meta" id="deletePostsFilterMeta"></div>
+                    </div>
+                    <div class="pending-filter-bar post-tool-filter-bar">
+                        <div class="pending-filter-search" style="min-width: 260px;">
+                            <input class="pending-filter-input" id="deletePostsClearBeforeInput" type="datetime-local" />
+                        </div>
+                        <div class="pending-filter-search" style="max-width: 180px;">
+                            <input class="pending-filter-input" id="deletePostsBatchSizeInput" type="number" min="1" max="200" step="1" value="20" placeholder="ลบทีละกี่โพสต์" />
+                        </div>
+                        <button class="post-tool-secondary-btn" id="deletePostsAutoSelectBtn" type="button">เลือกตามวันเวลา + จำนวน</button>
+                        <div class="pending-filter-meta">เคลียร์ตามเงื่อนไข: โพสต์ที่เผยแพร่ก่อนวันเวลาที่กำหนด และเลือกสูงสุดตามจำนวนต่อรอบ</div>
                     </div>
                     <div class="post-tool-selection-bar">
                         <div class="post-tool-selection-meta" id="deletePostsSelectionMeta">ยังไม่ได้เลือกโพสต์</div>

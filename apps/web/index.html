@@ -142,15 +142,33 @@
             <!-- Post Token -->
             <div class="token-item" id="modalPostItem">
                 <div class="token-label">
-                    📮 Post Token (EAAChZC...)
+                    📮 Page Token (ใช้โพสต์จริง)
                     <span class="token-status" id="modalPostTokenStatus">-</span>
                 </div>
                 <div class="token-value" id="modalPostTokenValue" style="margin-bottom: 0.5rem;">-</div>
+                <textarea id="manualPageTokenInput" class="manual-token-input" placeholder="วาง Page Token ที่นี่... (ดึงจาก developers.facebook.com/tools/explorer/ เลือก Page Token)" rows="3"></textarea>
                 <div class="token-btn-group">
+                    <button class="token-copy-btn token-save-btn" onclick="saveManualPageToken()">
+                        💾 บันทึก Page Token
+                    </button>
                     <button class="token-copy-btn" onclick="copyToken('post')">
                         📋 Copy
                     </button>
                 </div>
+                <p style="margin:0.5rem 0 0; font-size:0.78rem; color:#6b7280; line-height:1.4;">
+                    วิธีดึง Page Token: เปิด <a href="https://developers.facebook.com/tools/explorer/" target="_blank" style="color:#2563eb;">Graph API Explorer</a>
+                    → เลือก App → กด Get User Access Token (manage_pages, pages_show_list) → เลือกเพจ → copy Page Access Token แล้ววางที่นี่
+                </p>
+            </div>
+            <!-- Token Diagnostic -->
+            <div class="token-item" style="border-top: 2px solid #e5e7eb; padding-top: 1rem;">
+                <div class="token-label">
+                    🔍 Extension Diagnostic
+                </div>
+                <button class="token-copy-btn token-save-btn" id="runTokenDiagnosticBtn" style="margin-bottom:0.5rem;">
+                    ตรวจสอบ Extension + Token
+                </button>
+                <pre id="tokenDiagnosticOutput" style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:0.75rem; font-size:0.78rem; white-space:pre-wrap; word-break:break-all; max-height:300px; overflow:auto; display:none;"></pre>
             </div>
         </div>
     </div>
@@ -1017,6 +1035,7 @@
                         <input class="pending-filter-input" id="deletePostsSearchInput" type="search"
                             placeholder="ค้นหาข้อความหรือ post id" />
                     </div>
+                    <select class="pending-filter-select" id="deletePostsPageSelect"></select>
                     <select class="pending-filter-select" id="deletePostsTypeFilter">
                         <option value="all">ทุกประเภท</option>
                         <option value="link">Link</option>
@@ -1034,6 +1053,16 @@
                         <input class="pending-filter-input" id="deletePostsDateInput" type="date" />
                     </div>
                     <div class="pending-filter-meta" id="deletePostsFilterMeta"></div>
+                </div>
+                <div class="pending-filter-bar post-tool-filter-bar">
+                    <div class="pending-filter-search" style="min-width: 260px;">
+                        <input class="pending-filter-input" id="deletePostsClearBeforeInput" type="datetime-local" />
+                    </div>
+                    <div class="pending-filter-search" style="max-width: 180px;">
+                        <input class="pending-filter-input" id="deletePostsBatchSizeInput" type="number" min="1" max="200" step="1" value="20" placeholder="ลบทีละกี่โพสต์" />
+                    </div>
+                    <button class="post-tool-secondary-btn" id="deletePostsAutoSelectBtn" type="button">เลือกตามวันเวลา + จำนวน</button>
+                    <div class="pending-filter-meta">เคลียร์ตามเงื่อนไข: โพสต์ที่เผยแพร่ก่อนวันเวลาที่กำหนด และเลือกสูงสุดตามจำนวนต่อรอบ</div>
                 </div>
                 <div class="post-tool-selection-bar">
                     <div class="post-tool-selection-meta" id="deletePostsSelectionMeta">ยังไม่ได้เลือกโพสต์</div>
@@ -1855,104 +1884,96 @@
 
             <!-- Billing Panel -->
             <div class="pending-panel" id="billingPanel" style="display: none">
-                <div class="pending-panel-header" style="align-items: baseline;">
-                    <h2 style="margin: 0; line-height: 1;">Billing</h2>
-                    <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">จัดการแพ็กเกจและการชำระเงิน</p>
+                <div class="pending-panel-header" style="align-items: baseline; gap: 0.5rem;">
+                    <h2 style="margin: 0; line-height: 1; font-size: 1.35rem;">Billing</h2>
+                    <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">จัดการแพ็กเกจและการชำระเงิน</p>
                 </div>
-                <div class="settings-content" style="padding: 1.5rem;">
+                <div class="settings-content billing-content">
 
                     <!-- Current Plan Status Card -->
-                    <div id="billingCurrentPlan" class="settings-section" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+                    <div id="billingCurrentPlan" class="billing-current-plan">
+                        <div class="billing-plan-header">
                             <div>
-                                <p style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 0.5rem;">แพ็กเกจปัจจุบัน</p>
-                                <h3 id="billingPlanName" style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin: 0;">-</h3>
-                                <p id="billingPlanPrice" style="color: var(--primary); font-weight: 700; font-size: 1.1rem; margin-top: 0.25rem;">-</p>
+                                <p class="billing-label">แพ็กเกจปัจจุบัน</p>
+                                <h3 id="billingPlanName" class="billing-plan-name">-</h3>
+                                <p id="billingPlanPrice" class="billing-plan-price">-</p>
                             </div>
-                            <div id="billingStatusBadge" style="padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600;">
-                                -
-                            </div>
+                            <div id="billingStatusBadge" class="billing-status-badge">-</div>
                         </div>
-                        <div style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color); display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem;">
+                        <div class="billing-plan-meta">
                             <div>
-                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">เริ่มใช้งาน</p>
-                                <p id="billingStartDate" style="font-weight: 600; color: var(--text-main);">-</p>
+                                <p class="billing-meta-label">เริ่มใช้งาน</p>
+                                <p id="billingStartDate" class="billing-meta-value">-</p>
                             </div>
                             <div>
-                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">หมดอายุ</p>
-                                <p id="billingEndDate" style="font-weight: 600; color: var(--text-main);">-</p>
+                                <p class="billing-meta-label">หมดอายุ</p>
+                                <p id="billingEndDate" class="billing-meta-value">-</p>
                             </div>
                             <div>
-                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">รอบบิล</p>
-                                <p id="billingInterval" style="font-weight: 600; color: var(--text-main);">-</p>
+                                <p class="billing-meta-label">รอบบิล</p>
+                                <p id="billingInterval" class="billing-meta-value">-</p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Plan Selection Cards -->
-                    <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1rem;">เลือกแพ็กเกจ</h3>
-                    <div id="billingPlanCards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                    <h3 class="billing-section-title">เลือกแพ็กเกจ</h3>
+                    <div id="billingPlanCards" class="billing-cards-grid">
                         <!-- Monthly -->
-                        <div class="billing-plan-card" data-plan="monthly_500" style="border: 2px solid var(--border-color); border-radius: 12px; padding: 1.5rem; cursor: pointer; transition: all 0.2s ease; background: #fff;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                                <span style="font-weight: 700; font-size: 1.1rem; color: var(--text-main);">รายเดือน</span>
-                                <span style="background: #f2f4f7; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">MONTHLY</span>
+                        <div class="billing-card billing-plan-card" data-plan="monthly_500">
+                            <div class="billing-card-top">
+                                <span class="billing-card-name">รายเดือน</span>
+                                <span class="billing-card-badge">MONTHLY</span>
                             </div>
-                            <div style="margin-bottom: 1rem;">
-                                <span style="font-size: 2rem; font-weight: 800; color: var(--text-main);">฿500</span>
-                                <span style="color: var(--text-muted); font-size: 0.9rem;"> / เดือน</span>
+                            <div class="billing-card-price">
+                                <span class="billing-card-amount">฿500</span>
+                                <span class="billing-card-period">/ เดือน</span>
                             </div>
-                            <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-muted); font-size: 0.9rem;">
-                                <li style="padding: 0.3rem 0;">✓ โพสต์ไม่จำกัด</li>
-                                <li style="padding: 0.3rem 0;">✓ ตั้งเวลาอัตโนมัติ</li>
-                                <li style="padding: 0.3rem 0;">✓ Auto Hide Posts</li>
-                                <li style="padding: 0.3rem 0;">✓ รองรับหลายเพจ</li>
+                            <ul class="billing-card-features">
+                                <li>โพสต์ไม่จำกัด</li>
+                                <li>ตั้งเวลาอัตโนมัติ</li>
+                                <li>Auto Hide Posts</li>
+                                <li>รองรับหลายเพจ</li>
                             </ul>
-                            <button class="btn-save billing-select-plan-btn" data-plan="monthly_500" style="width: 100%; margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-weight: 600;">
-                                เลือกแพ็กเกจนี้
-                            </button>
+                            <button class="billing-card-btn billing-select-plan-btn" data-plan="monthly_500">เลือกแพ็กเกจนี้</button>
                         </div>
                         <!-- Yearly -->
-                        <div class="billing-plan-card" data-plan="yearly_4499" style="border: 2px solid var(--primary); border-radius: 12px; padding: 1.5rem; cursor: pointer; transition: all 0.2s ease; background: #fff; position: relative;">
-                            <div style="position: absolute; top: -12px; right: 16px; background: var(--primary); color: white; padding: 0.2rem 0.8rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700;">ประหยัด 25%</div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                                <span style="font-weight: 700; font-size: 1.1rem; color: var(--text-main);">รายปี</span>
-                                <span style="background: #f9f5ff; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: var(--primary);">YEARLY</span>
+                        <div class="billing-card billing-card--featured billing-plan-card" data-plan="yearly_4499">
+                            <div class="billing-card-ribbon">ประหยัด 25%</div>
+                            <div class="billing-card-top">
+                                <span class="billing-card-name">รายปี</span>
+                                <span class="billing-card-badge billing-card-badge--primary">YEARLY</span>
                             </div>
-                            <div style="margin-bottom: 1rem;">
-                                <span style="font-size: 2rem; font-weight: 800; color: var(--text-main);">฿4,499</span>
-                                <span style="color: var(--text-muted); font-size: 0.9rem;"> / ปี</span>
+                            <div class="billing-card-price">
+                                <span class="billing-card-amount">฿4,499</span>
+                                <span class="billing-card-period">/ ปี</span>
                             </div>
-                            <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-muted); font-size: 0.9rem;">
-                                <li style="padding: 0.3rem 0;">✓ ทุกอย่างใน Monthly</li>
-                                <li style="padding: 0.3rem 0;">✓ ประหยัด ฿1,501 ต่อปี</li>
-                                <li style="padding: 0.3rem 0;">✓ Priority Support</li>
-                                <li style="padding: 0.3rem 0;">✓ Early Access ฟีเจอร์ใหม่</li>
+                            <ul class="billing-card-features">
+                                <li>ทุกอย่างใน Monthly</li>
+                                <li>ประหยัด ฿1,501 ต่อปี</li>
+                                <li>Priority Support</li>
+                                <li>Early Access ฟีเจอร์ใหม่</li>
                             </ul>
-                            <button class="btn-save billing-select-plan-btn" data-plan="yearly_4499" style="width: 100%; margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-weight: 600; background: var(--primary); color: #fff;">
-                                เลือกแพ็กเกจนี้
-                            </button>
+                            <button class="billing-card-btn billing-card-btn--primary billing-select-plan-btn" data-plan="yearly_4499">เลือกแพ็กเกจนี้</button>
                         </div>
                     </div>
 
                     <!-- Payment History -->
-                    <div class="settings-section collapsible" style="border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 1rem;">
-                        <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')" style="padding: 1.25rem 1.5rem; margin: 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                            📋 ประวัติการชำระเงิน
+                    <div class="billing-history-section">
+                        <h3 class="billing-history-toggle" onclick="this.parentElement.classList.toggle('open')">
+                            ประวัติการชำระเงิน
                             <span class="collapse-icon">›</span>
                         </h3>
-                        <div class="settings-section-content" style="padding: 1.5rem;">
+                        <div class="billing-history-body">
                             <div id="billingPaymentHistory">
-                                <p style="color: var(--text-muted); text-align: center; padding: 2rem 0;">ยังไม่มีประวัติการชำระเงิน</p>
+                                <p class="billing-empty-state">ยังไม่มีประวัติการชำระเงิน</p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Cancel Subscription -->
-                    <div style="text-align: center; margin-top: 1.5rem;">
-                        <button id="billingCancelBtn" style="background: none; border: none; color: #d92d20; font-size: 0.85rem; cursor: pointer; padding: 0.5rem 1rem; border-radius: 8px; transition: background 0.2s ease;">
-                            ยกเลิกแพ็กเกจ
-                        </button>
+                    <div class="billing-cancel-row">
+                        <button id="billingCancelBtn" class="billing-cancel-btn">ยกเลิกแพ็กเกจ</button>
                     </div>
                 </div>
             </div>
@@ -2088,7 +2109,7 @@
     <img class="thumb-preview-popup" id="thumbPreviewPopup" src="" alt="" />
 
     <script src="/js/config.js?v=6.3"></script>
-    <script src="/js/auth-bootstrap.js?v=1.4"></script>
+    <script src="/js/auth-bootstrap.js?v=1.5"></script>
     <script src="/js/parts/01-thumb-preview.js?v=6.1"></script>
     <script src="/js/parts/02-dom-elements.js?v=6.3"></script>
     <script src="/js/parts/03-validation.js?v=6.7"></script>
@@ -2098,11 +2119,11 @@
     <script src="/js/parts/06-pending-posts.js?v=6.7"></script>
     <script src="/js/parts/07-earnings.js?v=6.6"></script>
     <script src="/js/parts/08-quotes.js?v=6.1"></script>
-    <script src="/js/parts/08-post-tools.js?v=1.1"></script>
+    <script src="/js/parts/08-post-tools.js?v=1.2"></script>
     <script src="/js/parts/09-navigation.js?v=7.0"></script>
     <script src="/js/parts/10-lazada.js?v=6.3"></script>
-    <script src="/js/parts/11-image-generation.js?v=8.5"></script>
-    <script src="/js/parts/12-publish.js?v=10.4"></script>
+    <script src="/js/parts/11-image-generation.js?v=8.8"></script>
+    <script src="/js/parts/12-publish.js?v=11.2"></script>
 
     <!-- Lightbox Modal -->
     <div class="lightbox-overlay" id="lightboxOverlay">

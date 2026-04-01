@@ -5,6 +5,23 @@
 console.log("[Pubilo Content] Script loaded on", window.location.href);
 globalThis.__PUBILO_CONTENT_SCRIPT_ACTIVE__ = true;
 
+async function safeSendMessage(msg, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const result = await chrome.runtime.sendMessage(msg);
+      return result;
+    } catch (err) {
+      const isDisconnected =
+        /receiving end does not exist|extension context invalidated|message port closed/i.test(
+          err?.message || ""
+        );
+      console.warn(`[Pubilo Content] sendMessage attempt ${attempt}/${retries} failed:`, err?.message);
+      if (!isDisconnected || attempt === retries) throw err;
+      await new Promise((r) => setTimeout(r, 800 * attempt));
+    }
+  }
+}
+
 // Main function - request tokens from background and wait for them
 async function initializeTokens() {
   console.log("[Pubilo Content] Requesting tokens from background...");
@@ -14,38 +31,47 @@ async function initializeTokens() {
 
   try {
     // 1) Read stored data first (fast path, avoids waiting on network fetch every reload).
-    let data = await chrome.runtime.sendMessage({ action: "getStoredData" });
+    let data = await safeSendMessage({ action: "getStoredData" });
 
+    const hasStoredPageTokenMap = (() => {
+      try {
+        const raw = data?.pageTokenMap || "{}";
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        return !!parsed && typeof parsed === "object" && Object.keys(parsed).length > 0;
+      } catch (_) {
+        return false;
+      }
+    })();
     const hasStoredSession = !!(
       data?.accessToken ||
       data?.fewfeed_accessToken ||
-      data?.cookie ||
-      data?.fewfeed_cookie
+      hasStoredPageTokenMap
     );
 
     // 2) If nothing stored yet, trigger fresh token fetch from background.
     if (!hasStoredSession) {
-      data = await chrome.runtime.sendMessage({ action: "fetchToken" });
+      data = await safeSendMessage({ action: "fetchToken" });
     }
 
     // Get existing localStorage values as fallback
     const existingToken = localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
-    const existingFbDtsg = localStorage.getItem("fewfeed_fbDtsg");
-    const existingCookie = localStorage.getItem("fewfeed_cookie");
     const existingUserId = localStorage.getItem("fewfeed_userId");
     const existingUserName = localStorage.getItem("fewfeed_userName");
+    const existingAvatarUrl = localStorage.getItem("fewfeed_avatarUrl");
 
-    // Use new data if available, otherwise keep existing
-    let finalToken = data?.fewfeed_accessToken || data?.accessToken || existingToken || "";
-    let finalFbDtsg = data?.fewfeed_fbDtsg || data?.fbDtsg || existingFbDtsg || "";
-    let finalCookie = data?.fewfeed_cookie || data?.cookie || existingCookie || "";
+    // Use extension payload as source of truth.
+    // Do NOT fall back to stale localStorage token/cookie here.
+    let finalToken = data?.fewfeed_accessToken || data?.accessToken || "";
+    let finalFbDtsg = data?.fewfeed_fbDtsg || data?.fbDtsg || "";
+    let finalCookie = data?.fewfeed_cookie || data?.cookie || "";
     let finalUserId = data?.fewfeed_userId || data?.userId || existingUserId || "";
     let finalUserName = data?.fewfeed_userName || data?.userName || existingUserName || "Facebook User";
+    let finalAvatarUrl = data?.fewfeed_avatarUrl || data?.avatarUrl || existingAvatarUrl || "";
 
     // Fallback: if token fetch timed out, at least try reading cookie snapshot directly.
     if (!finalCookie && !finalToken) {
       try {
-        const cookieFallback = await chrome.runtime.sendMessage({ action: "getFacebookCookies" });
+        const cookieFallback = await safeSendMessage({ action: "getFacebookCookies" });
         if (cookieFallback?.success && cookieFallback.cookie) {
           finalCookie = cookieFallback.cookie;
           finalUserId = cookieFallback.userId || finalUserId || "";
@@ -64,23 +90,14 @@ async function initializeTokens() {
       fromStorage: !!existingToken
     });
 
-    // Save to localStorage (update with new data)
-    if (finalToken) {
-      localStorage.setItem("fewfeed_accessToken", finalToken);
-      localStorage.setItem("fewfeed_token", finalToken);
-    }
-    if (finalFbDtsg) {
-      localStorage.setItem("fewfeed_fbDtsg", finalFbDtsg);
-    }
-    if (finalUserId) {
-      localStorage.setItem("fewfeed_userId", finalUserId);
-    }
-    if (finalUserName) {
-      localStorage.setItem("fewfeed_userName", finalUserName);
-    }
-    if (finalCookie) {
-      localStorage.setItem("fewfeed_cookie", finalCookie);
-    }
+    // Always overwrite localStorage — clear stale tokens when extension returns empty.
+    localStorage.setItem("fewfeed_accessToken", finalToken);
+    localStorage.setItem("fewfeed_token", finalToken);
+    localStorage.setItem("fewfeed_fbDtsg", finalFbDtsg);
+    localStorage.setItem("fewfeed_userId", finalUserId || localStorage.getItem("fewfeed_userId") || "");
+    localStorage.setItem("fewfeed_userName", finalUserName || localStorage.getItem("fewfeed_userName") || "");
+    localStorage.setItem("fewfeed_cookie", finalCookie);
+    localStorage.setItem("fewfeed_avatarUrl", finalAvatarUrl);
 
     console.log("[Pubilo Content] Data saved to localStorage");
     syncPageUiFromInjectedData({
@@ -91,6 +108,29 @@ async function initializeTokens() {
       userName: finalUserName,
     });
 
+    // Also persist page tokens from extension storage into localStorage
+    let pageTokenMapRaw = data?.pageTokenMap || "{}";
+    try {
+      const pageTokenMap = typeof pageTokenMapRaw === "string" ? JSON.parse(pageTokenMapRaw) : pageTokenMapRaw;
+      if (pageTokenMap && typeof pageTokenMap === "object" && Object.keys(pageTokenMap).length > 0) {
+        const simpleMap = {};
+        for (const [pageId, entry] of Object.entries(pageTokenMap)) {
+          const token = typeof entry === "string" ? entry : entry?.token;
+          if (token) simpleMap[pageId] = token;
+        }
+        if (Object.keys(simpleMap).length > 0) {
+          localStorage.setItem("fewfeed_pageTokenMap", JSON.stringify(simpleMap));
+          const firstPageId = Object.keys(simpleMap)[0];
+          if (!localStorage.getItem("fewfeed_selectedPageToken")) {
+            localStorage.setItem("fewfeed_selectedPageToken", simpleMap[firstPageId]);
+          }
+          console.log("[Pubilo Content] Stored page tokens for", Object.keys(simpleMap).length, "pages from extension");
+        }
+      }
+    } catch (ptErr) {
+      console.warn("[Pubilo Content] Failed to parse page token map:", ptErr);
+    }
+
     // Notify the page that data is ready
     window.postMessage({
       type: "FEWFEED_COOKIE_INJECTED",
@@ -98,7 +138,9 @@ async function initializeTokens() {
       token: finalToken,
       fbDtsg: finalFbDtsg,
       userId: finalUserId,
-      userName: finalUserName
+      userName: finalUserName,
+      avatarUrl: finalAvatarUrl,
+      pageTokenMap: pageTokenMapRaw
     }, "*");
 
     if (!finalCookie && !finalToken) {
@@ -134,11 +176,41 @@ async function initializeTokens() {
   } catch (error) {
     console.error("[FEWFEED Content] Error:", error);
     hideLoadingIndicator();
-    window.postMessage({
-      type: "FEWFEED_EXTENSION_DIAGNOSTIC",
-      reason: "content_exception",
-      detail: error?.message || String(error)
-    }, "*");
+
+    // Even when background is unreachable, inject whatever localStorage has
+    // so the web page can proceed with cached tokens.
+    const cachedToken = localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token") || "";
+    const cachedCookie = localStorage.getItem("fewfeed_cookie") || "";
+    const cachedUserId = localStorage.getItem("fewfeed_userId") || "";
+    const cachedUserName = localStorage.getItem("fewfeed_userName") || "";
+    const cachedFbDtsg = localStorage.getItem("fewfeed_fbDtsg") || "";
+    const cachedPageTokenMap = localStorage.getItem("fewfeed_pageTokenMap") || "{}";
+
+    if (cachedToken || cachedCookie) {
+      console.log("[Pubilo Content] Background unreachable, injecting cached localStorage data");
+      window.postMessage({
+        type: "FEWFEED_COOKIE_INJECTED",
+        cookie: cachedCookie,
+        token: cachedToken,
+        fbDtsg: cachedFbDtsg,
+        userId: cachedUserId,
+        userName: cachedUserName,
+        pageTokenMap: cachedPageTokenMap
+      }, "*");
+      syncPageUiFromInjectedData({
+        accessToken: cachedToken,
+        fbDtsg: cachedFbDtsg,
+        cookie: cachedCookie,
+        userId: cachedUserId,
+        userName: cachedUserName,
+      });
+    } else {
+      window.postMessage({
+        type: "FEWFEED_EXTENSION_DIAGNOSTIC",
+        reason: "content_exception",
+        detail: error?.message || String(error)
+      }, "*");
+    }
   }
 }
 
@@ -238,7 +310,7 @@ async function fetchPageTokenFromExtension(pageId) {
     throw new Error("ไม่พบ Ads Token จาก extension");
   }
 
-  const response = await chrome.runtime.sendMessage({
+  const response = await safeSendMessage({
     action: "fetchPages",
     accessToken,
     cookie
@@ -374,7 +446,7 @@ window.addEventListener("message", async (event) => {
   if (event.data.type === "FEWFEED_GET_DATA") {
     let response;
     try {
-      response = await chrome.runtime.sendMessage({ action: "getStoredData" });
+      response = await safeSendMessage({ action: "getStoredData" });
     } catch (error) {
       response = {
         success: false,
@@ -390,7 +462,7 @@ window.addEventListener("message", async (event) => {
 
   // Page requesting to fetch Pages from Facebook API
   if (event.data.type === "FEWFEED_FETCH_PAGES") {
-    const response = await chrome.runtime.sendMessage({
+    const response = await safeSendMessage({
       action: "fetchPages",
       accessToken: event.data.accessToken,
       cookie: localStorage.getItem("fewfeed_cookie")
@@ -403,7 +475,7 @@ window.addEventListener("message", async (event) => {
 
   // Page requesting to fetch Ad Accounts from Facebook API
   if (event.data.type === "FEWFEED_FETCH_AD_ACCOUNTS") {
-    const response = await chrome.runtime.sendMessage({
+    const response = await safeSendMessage({
       action: "fetchAdAccounts",
       accessToken: event.data.accessToken,
       cookie: localStorage.getItem("fewfeed_cookie")
@@ -433,7 +505,7 @@ window.addEventListener("message", async (event) => {
       console.error("[FEWFEED Content] WARNING: fb_dtsg is empty!");
     }
 
-    const response = await chrome.runtime.sendMessage({
+    const response = await safeSendMessage({
       action: "schedulePostGraphQL",
       postId: event.data.postId,
       pageId: event.data.pageId,
@@ -454,7 +526,7 @@ window.addEventListener("message", async (event) => {
   // Page requesting to convert Lazada URL to affiliate link
   if (event.data.type === "FEWFEED_CONVERT_LAZADA_LINK") {
     console.log("[FEWFEED Content] Converting Lazada link:", event.data.productUrl);
-    const response = await chrome.runtime.sendMessage({
+    const response = await safeSendMessage({
       action: "convertLazadaLink",
       productUrl: event.data.productUrl
     });
@@ -467,7 +539,7 @@ window.addEventListener("message", async (event) => {
   // Page requesting to convert Lazada URL for News mode
   if (event.data.type === "FEWFEED_CONVERT_NEWS_LAZADA_LINK") {
     console.log("[FEWFEED Content] Converting News Lazada link:", event.data.productUrl);
-    const response = await chrome.runtime.sendMessage({
+    const response = await safeSendMessage({
       action: "convertLazadaLink",
       productUrl: event.data.productUrl
     });
@@ -479,7 +551,7 @@ window.addEventListener("message", async (event) => {
 
   // Page requesting to check Lazada login status
   if (event.data.type === "FEWFEED_CHECK_LAZADA_LOGIN") {
-    const response = await chrome.runtime.sendMessage({ action: "checkLazadaLogin" });
+    const response = await safeSendMessage({ action: "checkLazadaLogin" });
     window.postMessage({
       type: "FEWFEED_LAZADA_LOGIN_STATUS",
       data: response
@@ -503,4 +575,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Mark that extension is installed
 document.documentElement.setAttribute("data-fewfeed-extension", "true");
 window.postMessage({ type: "FEWFEED_EXTENSION_READY" }, "*");
-console.log("[Pubilo Content] Extension v9.0 ready - Ads Token + Cookie only");
+console.log("[Pubilo Content] Extension v9.1.4 ready - stale token validator + temp-tab fallback");
