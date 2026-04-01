@@ -14,9 +14,9 @@ export const BILLING_PLANS: BillingPlan[] = [
         code: 'test_1',
         label: 'ทดสอบ',
         interval: 'monthly',
-        amountThb: 10,
+        amountThb: 1,
         durationDays: 30,
-        description: 'แพ็กเกจทดสอบ 10 บาท 30 วัน',
+        description: 'แพ็กเกจทดสอบ 1 บาท 30 วัน',
     },
     {
         code: 'monthly_500',
