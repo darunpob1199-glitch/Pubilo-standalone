@@ -1360,7 +1360,7 @@ function showPostToolPanel(toolKey) {
     const dom = getPostToolDom(toolKey);
     if (dom.panel) dom.panel.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = "";
 
     bindPostToolEvents(toolKey);
     if (toolKey === "delete") {
