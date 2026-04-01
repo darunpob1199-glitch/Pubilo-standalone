@@ -644,6 +644,7 @@ const hideMobileStatus = document.getElementById("hideMobileStatus");
 const hideAddedPhotos = document.getElementById("hideAddedPhotos");
 const autoHideTokenInput = document.getElementById("autoHideTokenInput");
 const autoHideTokenGroup = document.getElementById("autoHideTokenGroup");
+const hideAfterPublishToggle = document.getElementById("hideAfterPublishToggle");
 
 // Auto-resize textarea function
 function autoResizeTextarea(textarea) {
@@ -1027,6 +1028,20 @@ if (hideMobileStatus) hideMobileStatus.addEventListener("change", saveAutoHideCo
 if (hideAddedPhotos) hideAddedPhotos.addEventListener("change", saveAutoHideConfig);
 if (autoHideTokenInput) autoHideTokenInput.addEventListener("change", saveAutoHideConfig);
 
+// Hide-after-publish toggle → save to localStorage (same key as the old dropdown)
+if (hideAfterPublishToggle) {
+    hideAfterPublishToggle.addEventListener("change", () => {
+        const pageId = getCurrentPageId();
+        const value = hideAfterPublishToggle.checked ? "hide_timeline" : "stay";
+        const key = `fewfeed_afterPublishAction:${pageId || "_default"}`;
+        localStorage.setItem(key, value);
+        localStorage.setItem("fewfeed_afterPublishAction", value);
+        // Keep the dropdown in sync if it still exists
+        const dropdown = document.getElementById("afterPublishActionSelectPanel");
+        if (dropdown) dropdown.value = value;
+    });
+}
+
 // Post mode button handlers - toggle on/off
 postModeImage.addEventListener("click", () => {
     const newMode = currentPostMode === 'image' ? null : 'image';
@@ -1320,6 +1335,14 @@ async function loadSettingsPanel() {
 
     // Load Auto-Hide config
     await loadAutoHideConfig();
+
+    // Restore hide-after-publish toggle from localStorage
+    if (hideAfterPublishToggle) {
+        const pageId = getCurrentPageId();
+        const key = `fewfeed_afterPublishAction:${pageId || "_default"}`;
+        const saved = localStorage.getItem(key) || localStorage.getItem("fewfeed_afterPublishAction") || "stay";
+        hideAfterPublishToggle.checked = saved === "hide_timeline";
+    }
 }
 
 // Auto schedule checkbox change handler for panel
