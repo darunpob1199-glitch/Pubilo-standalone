@@ -137,18 +137,14 @@
                 min-height: 0;
             }
 
-            /* Pending/Tool mode - fill viewport height */
+            /* Pending/Tool mode - allow natural scrolling */
             .app-layout.pending-mode {
-                display: flex;
-                flex-direction: column;
-                height: 100vh;
-                min-height: 100vh;
-                overflow: hidden;
+                display: block;
+                min-height: calc(100vh - 60px);
             }
             .app-layout.pending-mode > .main-content {
                 height: auto;
-                flex: 1;
-                min-height: 0;
+                min-height: calc(100vh - 140px);
             }
 
             /* Sidebar */
@@ -519,7 +515,6 @@
                 gap: 0.5rem;
                 align-items: stretch;
                 min-height: 0;
-                height: min(850px, calc(100vh - 140px));
             }
 
             /* Preview Panel - Center */
@@ -2269,13 +2264,14 @@
                 overflow-y: auto;
                 flex: 1;
                 width: 100%;
+                min-height: 400px;
             }
 
             #pendingPanel {
                 display: flex;
                 flex-direction: column;
-                height: 100%;
-                overflow: hidden;
+                min-height: 0;
+                overflow: visible;
             }
 
             #pendingPanel .pending-panel-header {
@@ -2414,8 +2410,8 @@
             #publishedPanel {
                 display: flex;
                 flex-direction: column;
-                height: 100%;
-                overflow: hidden;
+                min-height: 0;
+                overflow: visible;
             }
 
             #publishedPanel .pending-panel-header {
@@ -2425,6 +2421,7 @@
             #publishedPanel .pending-table-container {
                 overflow-y: auto;
                 flex: 1;
+                min-height: 400px;
             }
 
             #publishedPanel .pending-summary-bar,
@@ -2554,8 +2551,8 @@
             .post-tool-panel {
                 display: flex;
                 flex-direction: column;
-                height: 100%;
-                overflow: hidden;
+                min-height: 0;
+                overflow: visible;
             }
 
             .post-tool-note {
@@ -3097,7 +3094,7 @@
             #quotesPanel {
                 display: flex;
                 flex-direction: column;
-                height: 100%;
+                min-height: 0;
                 overflow-y: auto;
             }
 
@@ -3109,7 +3106,7 @@
             #settingsPanel {
                 display: flex;
                 flex-direction: column;
-                height: 100%;
+                min-height: 0;
                 overflow-y: auto;
                 flex: 1;
             }
@@ -3121,7 +3118,7 @@
             #billingPanel {
                 display: flex;
                 flex-direction: column;
-                height: 100%;
+                min-height: 0;
                 overflow-y: auto;
                 flex: 1;
             }
@@ -3133,7 +3130,7 @@
             #textPanel {
                 display: flex;
                 flex-direction: column;
-                height: 100%;
+                min-height: 0;
                 overflow-y: auto;
             }
 
@@ -3144,7 +3141,7 @@
             #earningsPanel {
                 display: flex;
                 flex-direction: column;
-                height: 100%;
+                min-height: 0;
                 overflow-y: auto;
             }
 
