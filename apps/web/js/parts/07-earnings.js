@@ -16,7 +16,7 @@ function showEarningsPanel() {
     if (bp) bp.style.display = "none";
     earningsPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = "";
     loadEarnings();
 }
 
@@ -133,7 +133,7 @@ function showPublishedPanel() {
     if (bp) bp.style.display = "none";
     publishedPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = "";
     const currentPageId = getCurrentPageId();
     const shouldSilentRefresh =
         currentPublishedPosts.length > 0 &&
@@ -652,7 +652,7 @@ function showSettingsPanel() {
     if (textModePanel) textModePanel.style.display = "none";
     settingsPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = "";
     loadSettingsPanel();
 }
 

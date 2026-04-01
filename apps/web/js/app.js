@@ -1997,8 +1997,8 @@ async function showPendingPanel(forceRefresh = false) {
     earningsPanel.style.display = "none";
     const tp = document.getElementById("textPanel");
     if (tp) tp.style.display = "none";
-    // Lock body scroll
-    document.body.style.overflow = "hidden";
+    // Allow body scroll
+    document.body.style.overflow = "";
     // Show pending panel (full width)
     pendingPanel.style.display = "flex";
     // Add pending mode class
@@ -2079,7 +2079,7 @@ function showEarningsPanel() {
     if (tp) tp.style.display = "none";
     earningsPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = "";
     loadEarnings();
 }
 
@@ -2187,8 +2187,8 @@ function showQuotesPanel() {
     if (tp) tp.style.display = "none";
     quotesPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    // Lock body scroll
-    document.body.style.overflow = "hidden";
+    // Allow body scroll
+    document.body.style.overflow = "";
     // Load quotes
     loadQuotes();
 }
@@ -2207,7 +2207,7 @@ function showPublishedPanel() {
     if (tp) tp.style.display = "none";
     publishedPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = "";
     loadPublishedPosts();
 }
 
@@ -2447,7 +2447,7 @@ function showSettingsPanel() {
     if (textModePanel) textModePanel.style.display = "none";
     settingsPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = "";
     loadSettingsPanel();
 }
 
@@ -2469,7 +2469,7 @@ function showBillingPanel() {
     const billingPanel = document.getElementById("billingPanel");
     if (billingPanel) billingPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = "";
 }
 
 // Show text panel (for adding quotes)

@@ -823,7 +823,7 @@ async function showPendingPanel(forceRefresh = false, view = "posts") {
     const bp = document.getElementById("billingPanel");
     if (bp) bp.style.display = "none";
     // Lock body scroll
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = "";
     // Add pending mode class
     appLayout.classList.add("pending-mode");
 
