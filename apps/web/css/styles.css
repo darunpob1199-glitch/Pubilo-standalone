@@ -137,12 +137,18 @@
                 min-height: 0;
             }
 
-            /* Pending mode - allow content to grow with table */
+            /* Pending/Tool mode - fill viewport height */
             .app-layout.pending-mode {
-                align-items: stretch;
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+                min-height: 100vh;
+                overflow: hidden;
             }
             .app-layout.pending-mode > .main-content {
                 height: auto;
+                flex: 1;
+                min-height: 0;
             }
 
             /* Sidebar */
@@ -2268,7 +2274,7 @@
             #pendingPanel {
                 display: flex;
                 flex-direction: column;
-                height: calc(100vh - 60px - 1rem);
+                height: 100%;
                 overflow: hidden;
             }
 
@@ -2408,7 +2414,7 @@
             #publishedPanel {
                 display: flex;
                 flex-direction: column;
-                height: calc(100vh - 60px - 1rem);
+                height: 100%;
                 overflow: hidden;
             }
 
@@ -2548,8 +2554,8 @@
             .post-tool-panel {
                 display: flex;
                 flex-direction: column;
-                height: calc(100vh - 60px - 1rem);
-                overflow-y: auto;
+                height: 100%;
+                overflow: hidden;
             }
 
             .post-tool-note {
@@ -3091,7 +3097,7 @@
             #quotesPanel {
                 display: flex;
                 flex-direction: column;
-                height: calc(100vh - 60px - 1rem);
+                height: 100%;
                 overflow-y: auto;
             }
 
@@ -3103,7 +3109,7 @@
             #settingsPanel {
                 display: flex;
                 flex-direction: column;
-                height: calc(100vh - 60px - 1rem);
+                height: 100%;
                 overflow-y: auto;
                 flex: 1;
             }
@@ -3115,7 +3121,7 @@
             #billingPanel {
                 display: flex;
                 flex-direction: column;
-                height: calc(100vh - 60px - 1rem);
+                height: 100%;
                 overflow-y: auto;
                 flex: 1;
             }
@@ -3127,7 +3133,7 @@
             #textPanel {
                 display: flex;
                 flex-direction: column;
-                height: calc(100vh - 60px - 1rem);
+                height: 100%;
                 overflow-y: auto;
             }
 
@@ -3138,7 +3144,7 @@
             #earningsPanel {
                 display: flex;
                 flex-direction: column;
-                height: calc(100vh - 60px - 1rem);
+                height: 100%;
                 overflow-y: auto;
             }
 
