@@ -15,8 +15,7 @@ function normalizeAfterPublishActionSetting(value) {
     const normalized = String(value || "").trim().toLowerCase();
     if (
         normalized === "published" ||
-        normalized === "pending" ||
-        normalized === "hide_timeline"
+        normalized === "pending"
     ) return normalized;
     return "stay";
 }
@@ -497,6 +496,8 @@ async function saveAutoPostConfig(mode, colorBg, sharePageId, colorBgPresets, sh
             body: JSON.stringify(body)
         });
         const data = await response.json();
+        await saveAutoHideConfig();
+
         if (data.success) {
             console.log("[Auto-Post] Config saved:", data.settings);
             if (mode !== undefined) setAutoPostMode(mode);
@@ -512,7 +513,7 @@ async function saveAutoPostConfig(mode, colorBg, sharePageId, colorBgPresets, sh
 async function loadAutoHideConfig() {
     const pageId = getCurrentPageId();
     console.log("[Auto-Hide] loadAutoHideConfig called, pageId:", pageId);
-    if (!pageId) return;
+    if (!pageId || !autoHideEnabled) return;
 
     try {
         const response = await fetch(`/api/auto-hide-config?pageId=${pageId}`);
@@ -562,7 +563,7 @@ function setAutoHideNowStatus(message, tone = "muted") {
 
 async function saveAutoHideConfig() {
     const pageId = getCurrentPageId();
-    if (!pageId) return;
+    if (!pageId || !autoHideEnabled) return;
 
     const enabled = autoHideEnabled.checked;
     const hideTypes = getHideTypes();
@@ -585,7 +586,7 @@ async function saveAutoHideConfig() {
 
 async function triggerAutoHideNow() {
     const pageId = getCurrentPageId();
-    if (!pageId) {
+    if (!pageId || !autoHideEnabled) {
         alert("กรุณาเลือกเพจก่อน");
         return;
     }
@@ -640,7 +641,7 @@ async function triggerAutoHideNow() {
 }
 
 // Auto-hide checkbox change handlers
-autoHideEnabled.addEventListener("change", saveAutoHideConfig);
+if (autoHideEnabled) autoHideEnabled.addEventListener("change", saveAutoHideConfig);
 if (hideSharedStory) hideSharedStory.addEventListener("change", saveAutoHideConfig);
 if (hideMobileStatus) hideMobileStatus.addEventListener("change", saveAutoHideConfig);
 if (hideAddedPhotos) hideAddedPhotos.addEventListener("change", saveAutoHideConfig);
@@ -1066,13 +1067,13 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
     const pageColorPicker = document.getElementById("pageColorPicker");
 
     // Build ONE complete request with ALL settings including token
-    // Get hide token (separate from post token)
+    // Optional dedicated token for Auto Hide
     const hideToken = hideTokenInputPanel ? hideTokenInputPanel.value.trim() : "";
 
     const requestBody = {
         pageId,
         postToken: durablePostToken,
-        hideToken,  // Separate token for auto-hide (optional)
+        hideToken,
         autoSchedule,
         scheduleMinutes: mins,
         workingHoursStart: workingStart,
@@ -1140,7 +1141,6 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
             });
         }
 
-        // Save Auto-Hide config (uses different table)
         await saveAutoHideConfig();
 
         if (data.success) {

@@ -331,15 +331,6 @@
                         </svg>
                         Earnings
                     </a>
-                    <a href="#hide-posts" class="nav-item" id="hidePostsNavItem">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20C7 20 2.73 16.89 1 12c.92-2.6 2.65-4.77 4.94-6.25" />
-                            <path d="M10.58 10.58A2 2 0 0 0 10 12a2 2 0 0 0 2 2c.52 0 1-.2 1.36-.52" />
-                            <path d="M9.88 4.24A10.94 10.94 0 0 1 12 4c5 0 9.27 3.11 11 8a11.8 11.8 0 0 1-1.88 3.18" />
-                            <line x1="1" y1="1" x2="23" y2="23" />
-                        </svg>
-                        Hide Posts
-                    </a>
                     <a href="#delete-posts" class="nav-item" id="deletePostsNavItem">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="3 6 5 6 21 6" />
@@ -942,82 +933,6 @@
                 </div>
             </div>
 
-            <div class="pending-panel post-tool-panel" id="hidePostsPanel" style="display: none">
-                <div class="pending-panel-header">
-                    <h2>Hide Posts</h2>
-                    <div class="pending-panel-toolbar">
-                        <button class="pending-refresh-btn" id="hidePostsRefreshBtn" type="button">โหลดโพสต์</button>
-                        <button class="tool-primary-btn tool-primary-btn-hide" id="hidePostsRunBtn" type="button">ซ่อนที่เลือก</button>
-                    </div>
-                </div>
-                <div class="post-tool-note is-hide">
-                    ซ่อนโพสต์จำนวนมากโดยไม่ลบออกจากเพจ เหมาะกับการเคลียร์หน้าเพจก่อน แล้วค่อยย้อนดู history งานย้อนหลังได้
-                </div>
-                <div class="post-tool-guard-card">
-                    <div class="post-tool-guard-grid">
-                        <label class="post-tool-guard-option">
-                            <input type="checkbox" id="hidePostsKeepLatestToggle" checked />
-                            <span>กันโพสต์ล่าสุดไว้</span>
-                            <input class="post-tool-number-input" id="hidePostsKeepLatestInput" type="number" min="0" step="1" value="10" />
-                            <span>รายการ</span>
-                        </label>
-                        <label class="post-tool-guard-option">
-                            <input type="checkbox" id="hidePostsMinAgeToggle" checked />
-                            <span>ซ่อนเฉพาะโพสต์ที่เก่ากว่า</span>
-                            <input class="post-tool-number-input" id="hidePostsMinAgeInput" type="number" min="0" step="1" value="7" />
-                            <span>วัน</span>
-                        </label>
-                    </div>
-                    <div class="post-tool-guard-meta" id="hidePostsSafeguardMeta"></div>
-                </div>
-                <div class="pending-summary-bar" id="hidePostsSummaryBar"></div>
-                <div class="pending-filter-bar post-tool-filter-bar">
-                    <div class="pending-filter-search">
-                        <input class="pending-filter-input" id="hidePostsSearchInput" type="search"
-                            placeholder="ค้นหาข้อความหรือ post id" />
-                    </div>
-                    <select class="pending-filter-select" id="hidePostsTypeFilter">
-                        <option value="all">ทุกประเภท</option>
-                        <option value="link">Link</option>
-                        <option value="text">Text</option>
-                        <option value="image">Image</option>
-                        <option value="reels">Reels</option>
-                    </select>
-                    <div class="pending-quick-filters" id="hidePostsDayFilters">
-                        <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
-                        <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
-                        <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
-                        <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
-                    </div>
-                    <div class="pending-filter-search published-date-filter">
-                        <input class="pending-filter-input" id="hidePostsDateInput" type="date" />
-                    </div>
-                    <div class="pending-filter-meta" id="hidePostsFilterMeta"></div>
-                </div>
-                <div class="post-tool-selection-bar">
-                    <div class="post-tool-selection-meta" id="hidePostsSelectionMeta">ยังไม่ได้เลือกโพสต์</div>
-                    <div class="post-tool-selection-actions">
-                        <button class="post-tool-secondary-btn" id="hidePostsSelectVisibleBtn" type="button">เลือกที่เห็น</button>
-                        <button class="post-tool-secondary-btn" id="hidePostsClearSelectionBtn" type="button">ล้างที่เลือก</button>
-                    </div>
-                </div>
-                <div class="post-tool-body">
-                    <div class="post-tool-main">
-                        <div class="pending-table-container" id="hidePostsTableContainer">
-                            <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
-                        </div>
-                        <div class="post-tool-pagination">
-                            <div class="post-tool-pagination-meta" id="hidePostsLoadMoreMeta"></div>
-                            <button class="post-tool-secondary-btn" id="hidePostsLoadMoreBtn" type="button">โหลดเพิ่ม</button>
-                        </div>
-                    </div>
-                    <aside class="post-tool-side">
-                        <div class="post-tool-side-header">Recent Jobs</div>
-                        <div class="post-tool-jobs" id="hidePostsJobs"></div>
-                    </aside>
-                </div>
-            </div>
-
             <div class="pending-panel post-tool-panel" id="deletePostsPanel" style="display: none">
                 <div class="pending-panel-header">
                     <h2>Delete Posts</h2>
@@ -1190,12 +1105,12 @@
                                 </p>
                             </div>
                             <div class="setting-group" id="hideTokenSettingGroup" style="margin-top: 1rem;">
-                                <label class="form-label">🙈 Token สำหรับ Hide</label>
+                                <label class="form-label">🙈 Token สำหรับ Auto Hide</label>
                                 <input type="text" id="hideTokenInputPanel" class="form-input"
                                     placeholder="EAAxxxxxxx... (ถ้าไม่ใส่ จะใช้ Token โพสต์แทน)"
                                     style="font-family: monospace; font-size: 0.85rem;" />
                                 <p class="setting-desc">
-                                    ใช้สำหรับ Auto Hide โพสต์ (ถ้าไม่ใส่จะใช้ Token โพสต์)
+                                    ใช้กับฟีเจอร์ซ่อนโพสต์อัตโนมัติใน Settings ถ้าไม่ใส่จะใช้ Token โพสต์แทน
                                 </p>
                             </div>
                         </div>
@@ -1471,19 +1386,18 @@
                                     <option value="stay" selected>อยู่หน้าเดิม (โพสต์ต่อได้ทันที)</option>
                                     <option value="published">ไปหน้า Published</option>
                                     <option value="pending">ไปหน้า Pending</option>
-                                    <option value="hide_timeline">โพสต์แล้วซ่อนจากหน้าเพจทันที</option>
                                 </select>
                                 <p class="setting-desc">
-                                    ใช้กับโพสต์ทันทีเท่านั้น (ถ้าตั้งเวลา ระบบยังไปหน้า Pending ตามเดิม)
+                                    ใช้กับโพสต์ทันทีเท่านั้น ถ้าตั้งเวลา ระบบยังไปหน้า Pending ตามเดิม
                                 </p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Auto-Post Alternating Section -->
-                    <div class="settings-section collapsible" id="autoPostSettingsSection" style="display: none;">
+                    <div class="settings-section collapsible" id="autoPostSettingsSection">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
-                            🔄 Auto-Post Mode
+                            🔄 Auto Post
                             <span class="collapse-icon">›</span>
                         </h3>
                         <div class="settings-section-content">
@@ -1691,7 +1605,6 @@
                         </div>
                     </div>
 
-                    <!-- Auto Hide Posts Section -->
                     <div class="settings-section collapsible" id="autoHideSettingsSection">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                             🙈 Auto Hide Posts
@@ -1703,32 +1616,27 @@
                                     <input type="checkbox" id="autoHideEnabled" />
                                     <span>ซ่อนโพสต์อัตโนมัติ</span>
                                 </label>
-                                <p class="setting-desc">ซ่อนโพสต์ประเภทที่เลือกจาก Timeline</p>
+                                <p class="setting-desc">
+                                    เปิดให้ worker ไล่ซ่อนโพสต์ที่เข้าเงื่อนไขจากหน้าเพจโดยอัตโนมัติ
+                                </p>
                                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap;">
-                                    <button type="button" id="autoHideNowBtn" class="btn"
-                                        style="padding: 0.4rem 0.75rem; font-size: 0.85rem;">
-                                        ซ่อนทันที
+                                    <button type="button" id="autoHideNowBtn" class="btn" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;">
+                                        รันตอนนี้
                                     </button>
                                     <span id="autoHideNowStatus" style="font-size: 0.82rem; color: #6b7280;"></span>
                                 </div>
                                 <div id="hideTypesGroup" style="margin-top: 0.75rem; margin-left: 1.5rem;">
                                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                        <label
-                                            style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                            <input type="checkbox" id="hideSharedStory" checked
-                                                style="width: 16px; height: 16px;">
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                            <input type="checkbox" id="hideSharedStory" checked style="width: 16px; height: 16px;">
                                             <span style="font-size: 0.9rem;">shared_story (แชร์โพสต์)</span>
                                         </label>
-                                        <label
-                                            style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                            <input type="checkbox" id="hideMobileStatus" checked
-                                                style="width: 16px; height: 16px;">
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                            <input type="checkbox" id="hideMobileStatus" checked style="width: 16px; height: 16px;">
                                             <span style="font-size: 0.9rem;">mobile_status_update (สถานะ)</span>
                                         </label>
-                                        <label
-                                            style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                            <input type="checkbox" id="hideAddedPhotos" checked
-                                                style="width: 16px; height: 16px;">
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                            <input type="checkbox" id="hideAddedPhotos" checked style="width: 16px; height: 16px;">
                                             <span style="font-size: 0.9rem;">added_photos (เพิ่มรูป)</span>
                                         </label>
                                     </div>
@@ -1932,7 +1840,7 @@
                             <ul class="billing-card-features">
                                 <li>โพสต์ไม่จำกัด</li>
                                 <li>ตั้งเวลาอัตโนมัติ</li>
-                                <li>Auto Hide Posts</li>
+                                <li>จัดการคิวโพสต์</li>
                                 <li>รองรับหลายเพจ</li>
                             </ul>
                             <button class="billing-card-btn billing-select-plan-btn" data-plan="monthly_500">เลือกแพ็กเกจนี้</button>

@@ -889,8 +889,7 @@ function normalizeAfterPublishAction(value) {
     const normalized = String(value || "").trim().toLowerCase();
     if (
         normalized === "published" ||
-        normalized === "pending" ||
-        normalized === "hide_timeline"
+        normalized === "pending"
     ) {
         return normalized;
     }
@@ -982,8 +981,6 @@ function setupPublishHandler(mode) {
             return;
         }
         const pageIdAtClick = document.getElementById("pageSelect")?.value || "";
-        const afterPublishActionAtClick = getAfterPublishActionForCurrentPage();
-        const hideFromTimelineAfterPublish = afterPublishActionAtClick === "hide_timeline";
         const targetPageIdsAtClick =
             typeof getSelectedTargetPageIds === "function"
                 ? getSelectedTargetPageIds()
@@ -1112,7 +1109,6 @@ function setupPublishHandler(mode) {
                         cookieData: cookie,
                         fbDtsg,
                         scheduleInSystem: scheduleSource === "manual",
-                        hideFromTimeline: hideFromTimelineAfterPublish,
                         scheduledTime: scheduledTime
                             ? Math.floor(scheduledTime.getTime() / 1000)
                             : null,
@@ -1319,7 +1315,6 @@ function setupPublishHandler(mode) {
                         cookieData: cookie,
                         fbDtsg,
                         scheduleInSystem: scheduleSource === "manual",
-                        hideFromTimeline: hideFromTimelineAfterPublish,
                         scheduledTime: scheduledTime
                             ? Math.floor(scheduledTime.getTime() / 1000)
                             : null,
@@ -1504,12 +1499,11 @@ function setupPublishHandler(mode) {
                     adAccountId: adAccountId,
                     callToAction: ctaConfig.type,
                     callToActionLabel: ctaConfig.label,
-                    fbDtsg: fbDtsg, // Required for GraphQL scheduling
-                    scheduleInSystem: scheduleSource === "manual",
-                    hideFromTimeline: hideFromTimelineAfterPublish,
-                    scheduledTime: scheduledTime
-                        ? Math.floor(scheduledTime.getTime() / 1000)
-                        : null, // Unix timestamp
+                        fbDtsg: fbDtsg, // Required for GraphQL scheduling
+                        scheduleInSystem: scheduleSource === "manual",
+                        scheduledTime: scheduledTime
+                            ? Math.floor(scheduledTime.getTime() / 1000)
+                            : null, // Unix timestamp
                 }),
             });
 

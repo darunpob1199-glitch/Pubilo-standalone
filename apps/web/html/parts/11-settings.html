@@ -225,7 +225,7 @@
                         <!-- Auto-Post Alternating Section -->
                         <div class="settings-section collapsible">
                             <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
-                                🔄 Auto-Post Mode
+                                🔄 Auto Post
                                 <span class="collapse-icon">›</span>
                             </h3>
                             <div class="settings-section-content">
@@ -355,7 +355,7 @@
                         </div>
 
                         <!-- Auto Hide Posts Section -->
-                        <div class="settings-section collapsible">
+                        <div class="settings-section collapsible" id="autoHideSettingsSection">
                             <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                                 🙈 Auto Hide Posts
                                 <span class="collapse-icon">›</span>
@@ -366,25 +366,12 @@
                                     <input type="checkbox" id="autoHideEnabled" />
                                     <span>ซ่อนโพสต์อัตโนมัติ</span>
                                 </label>
-                                <p class="setting-desc">ซ่อนโพสต์ประเภทที่เลือกจาก Timeline</p>
+                                <p class="setting-desc">เปิดให้ worker ไล่ซ่อนโพสต์ที่เข้าเงื่อนไขจากหน้าเพจโดยอัตโนมัติ</p>
                                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap;">
                                     <button type="button" id="autoHideNowBtn" class="btn" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;">
-                                        ซ่อนทันที
+                                        รันตอนนี้
                                     </button>
                                     <span id="autoHideNowStatus" style="font-size: 0.82rem; color: #6b7280;"></span>
-                                </div>
-                                <div id="autoHideTokenGroup" style="margin-top: 0.75rem; display: none;">
-                                    <label class="form-label">Auto Hide Token (optional)</label>
-                                    <input
-                                        type="text"
-                                        id="autoHideTokenInput"
-                                        class="form-input"
-                                        placeholder="EAAxxxxxxx..."
-                                        style="font-family: monospace; font-size: 0.85rem;"
-                                    />
-                                    <p class="setting-desc">
-                                        ถ้าไม่ใส่ จะใช้ Access Token ของเพจแทน
-                                    </p>
                                 </div>
                                 <div id="hideTypesGroup" style="margin-top: 0.75rem; margin-left: 1.5rem;">
                                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
