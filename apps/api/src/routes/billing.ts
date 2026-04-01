@@ -6,6 +6,10 @@ import { hasTmwConfig, createPay, detailPay, confirmPay, cancelPay } from '../li
 
 const app = new Hono<{ Bindings: Env }>();
 
+function isTmwSuccess(status: unknown): boolean {
+    return Number(status) === 1;
+}
+
 app.get('/plans', (c) => {
     return c.json({
         success: true,
@@ -164,7 +168,7 @@ app.post('/create-payment', async (c) => {
     // ถ้ามี gateway_reference อยู่แล้ว ดึง detail เลย ไม่ต้อง create ใหม่
     if (order.gateway_reference) {
         const detail = await detailPay(c.env, order.gateway_reference, true);
-        if (detail.status === 1) {
+        if (isTmwSuccess(detail.status)) {
             return c.json({
                 success: true,
                 orderId: order.id,
@@ -178,16 +182,29 @@ app.post('/create-payment', async (c) => {
     }
 
     // สร้าง payment ใหม่ที่ TMW
-    const ref1 = `pubilo-${orderId.slice(0, 8)}`;
-    const created = await createPay(c.env, order.amount_thb, ref1);
-    if (created.status !== 1 || !created.id_pay) {
-        return c.json({ success: false, error: created.msg || 'TMW create_pay failed' }, 502);
+    let ref1 = `pubilo-${orderId.slice(0, 8)}`;
+    let created = await createPay(c.env, order.amount_thb, ref1);
+    if (!isTmwSuccess(created.status) || !created.id_pay) {
+        // Retry once with unique ref1 in case gateway rejects duplicate references.
+        ref1 = `pubilo-${orderId.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+        created = await createPay(c.env, order.amount_thb, ref1);
+    }
+    if (!isTmwSuccess(created.status) || !created.id_pay) {
+        return c.json({
+            success: false,
+            error: created.msg || 'TMW create_pay failed',
+            errorType: 'TMW_CREATE_PAY_FAILED',
+        }, 502);
     }
 
     // ดึง QR code
     const detail = await detailPay(c.env, created.id_pay, true);
-    if (detail.status !== 1) {
-        return c.json({ success: false, error: detail.msg || 'TMW detail_pay failed' }, 502);
+    if (!isTmwSuccess(detail.status)) {
+        return c.json({
+            success: false,
+            error: detail.msg || 'TMW detail_pay failed',
+            errorType: 'TMW_DETAIL_PAY_FAILED',
+        }, 502);
     }
 
     // บันทึก gateway_reference ลง DB
@@ -258,7 +275,7 @@ app.get('/payment-status/:orderId', async (c) => {
     const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || '127.0.0.1';
     const result = await confirmPay(c.env, order.gateway_reference, clientIp);
 
-    if (result.status === 1) {
+    if (isTmwSuccess(result.status)) {
         const now = new Date().toISOString();
         await c.env.DB.batch([
             c.env.DB.prepare(`
