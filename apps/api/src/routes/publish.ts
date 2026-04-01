@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
 import { recordPublishHistory } from '../lib/publish-history';
-import { decryptSecret } from '../lib/encryption';
+import { decryptSecret, encryptSecret } from '../lib/encryption';
 import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -118,6 +118,25 @@ async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieD
     }
 
     return '';
+}
+
+async function persistPageTokenIfNeeded(
+    env: Env,
+    organizationId: string,
+    pageId: string,
+    token: string,
+): Promise<void> {
+    if (!token || !organizationId || !pageId) return;
+    try {
+        const encrypted = await encryptSecret(env, token);
+        await env.DB.prepare(`
+            UPDATE page_settings
+            SET post_token_encrypted = ?, updated_at = ?
+            WHERE organization_id = ? AND page_id = ? AND (post_token_encrypted IS NULL OR post_token_encrypted = '')
+        `).bind(encrypted, new Date().toISOString(), organizationId, pageId).run();
+    } catch (err) {
+        console.warn('[publish] Failed to persist page token:', err);
+    }
 }
 
 function buildAuthCandidates(tokens: Array<string | null | undefined>): string[] {
@@ -1272,6 +1291,7 @@ app.post('/', async (c) => {
                     creativeId: creativeResult.creativeId,
                     materializedBy: creativeResult.materializedBy,
                 });
+                await persistPageTokenIfNeeded(c.env, organizationId, pageId, pageTokenForPublish);
                 const hideResult = await maybeHideAfterPublish(creativeResult.postId);
 
                 return c.json({
@@ -1441,6 +1461,7 @@ app.post('/', async (c) => {
                 flow: isLinkAttachmentPost ? 'facebook-link-post' : 'facebook-direct-post',
                 postMode: postMode || null,
             });
+            await persistPageTokenIfNeeded(c.env, organizationId, pageId, authToken);
             const hideResult = await maybeHideAfterPublish(postId);
             return c.json({
                 success: true,
