@@ -1013,7 +1013,7 @@ input[type="checkbox"] {
     border: 1px solid var(--border-color) !important;
     border-radius: var(--border-radius) !important;
     box-shadow: var(--shadow-sm) !important;
-    overflow: hidden !important;
+    overflow: visible !important;
 }
 
 .settings-header {
