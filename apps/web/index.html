@@ -324,31 +324,6 @@
                         </svg>
                         Published
                     </a>
-                    <a href="#earnings" class="nav-item" id="earningsNavItem">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="12" y1="1" x2="12" y2="23" />
-                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                        </svg>
-                        Earnings
-                    </a>
-                    <a href="#hide-posts" class="nav-item" id="hidePostsNavItem">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20C7 20 2.73 16.89 1 12c.92-2.6 2.65-4.77 4.94-6.25" />
-                            <path d="M10.58 10.58A2 2 0 0 0 10 12a2 2 0 0 0 2 2c.52 0 1-.2 1.36-.52" />
-                            <path d="M9.88 4.24A10.94 10.94 0 0 1 12 4c5 0 9.27 3.11 11 8a11.8 11.8 0 0 1-1.88 3.18" />
-                            <line x1="1" y1="1" x2="23" y2="23" />
-                        </svg>
-                        Hide Posts
-                    </a>
-                    <a href="#delete-posts" class="nav-item" id="deletePostsNavItem">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            <line x1="10" y1="11" x2="10" y2="17" />
-                            <line x1="14" y1="11" x2="14" y2="17" />
-                        </svg>
-                        Delete Posts
-                    </a>
                 </div>
 
                 <div class="nav-section">
@@ -942,170 +917,10 @@
                 </div>
             </div>
 
-            <div class="pending-panel post-tool-panel" id="hidePostsPanel" style="display: none">
-                <div class="pending-panel-header">
-                    <h2>Hide Posts</h2>
-                    <div class="pending-panel-toolbar">
-                        <button class="pending-refresh-btn" id="hidePostsRefreshBtn" type="button">โหลดโพสต์</button>
-                        <button class="tool-primary-btn tool-primary-btn-hide" id="hidePostsRunBtn" type="button">ซ่อนที่เลือก</button>
-                    </div>
-                </div>
-                <div class="post-tool-note is-hide">
-                    ซ่อนโพสต์จำนวนมากโดยไม่ลบออกจากเพจ เหมาะกับการเคลียร์หน้าเพจก่อน แล้วค่อยย้อนดู history งานย้อนหลังได้
-                </div>
-                <div class="post-tool-guard-card">
-                    <div class="post-tool-guard-grid">
-                        <label class="post-tool-guard-option">
-                            <input type="checkbox" id="hidePostsKeepLatestToggle" checked />
-                            <span>กันโพสต์ล่าสุดไว้</span>
-                            <input class="post-tool-number-input" id="hidePostsKeepLatestInput" type="number" min="0" step="1" value="10" />
-                            <span>รายการ</span>
-                        </label>
-                        <label class="post-tool-guard-option">
-                            <input type="checkbox" id="hidePostsMinAgeToggle" checked />
-                            <span>ซ่อนเฉพาะโพสต์ที่เก่ากว่า</span>
-                            <input class="post-tool-number-input" id="hidePostsMinAgeInput" type="number" min="0" step="1" value="7" />
-                            <span>วัน</span>
-                        </label>
-                    </div>
-                    <div class="post-tool-guard-meta" id="hidePostsSafeguardMeta"></div>
-                </div>
-                <div class="pending-summary-bar" id="hidePostsSummaryBar"></div>
-                <div class="pending-filter-bar post-tool-filter-bar">
-                    <div class="pending-filter-search">
-                        <input class="pending-filter-input" id="hidePostsSearchInput" type="search"
-                            placeholder="ค้นหาข้อความหรือ post id" />
-                    </div>
-                    <select class="pending-filter-select" id="hidePostsTypeFilter">
-                        <option value="all">ทุกประเภท</option>
-                        <option value="link">Link</option>
-                        <option value="text">Text</option>
-                        <option value="image">Image</option>
-                        <option value="reels">Reels</option>
-                    </select>
-                    <div class="pending-quick-filters" id="hidePostsDayFilters">
-                        <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
-                        <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
-                        <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
-                        <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
-                    </div>
-                    <div class="pending-filter-search published-date-filter">
-                        <input class="pending-filter-input" id="hidePostsDateInput" type="date" />
-                    </div>
-                    <div class="pending-filter-meta" id="hidePostsFilterMeta"></div>
-                </div>
-                <div class="post-tool-selection-bar">
-                    <div class="post-tool-selection-meta" id="hidePostsSelectionMeta">ยังไม่ได้เลือกโพสต์</div>
-                    <div class="post-tool-selection-actions">
-                        <button class="post-tool-secondary-btn" id="hidePostsSelectVisibleBtn" type="button">เลือกที่เห็น</button>
-                        <button class="post-tool-secondary-btn" id="hidePostsClearSelectionBtn" type="button">ล้างที่เลือก</button>
-                    </div>
-                </div>
-                <div class="post-tool-body">
-                    <div class="post-tool-main">
-                        <div class="pending-table-container" id="hidePostsTableContainer">
-                            <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
-                        </div>
-                        <div class="post-tool-pagination">
-                            <div class="post-tool-pagination-meta" id="hidePostsLoadMoreMeta"></div>
-                            <button class="post-tool-secondary-btn" id="hidePostsLoadMoreBtn" type="button">โหลดเพิ่ม</button>
-                        </div>
-                    </div>
-                    <aside class="post-tool-side">
-                        <div class="post-tool-side-header">Recent Jobs</div>
-                        <div class="post-tool-jobs" id="hidePostsJobs"></div>
-                    </aside>
-                </div>
-            </div>
+            <div id="hidePostsPanel" style="display:none" aria-hidden="true"></div>
+            <div id="deletePostsPanel" style="display:none" aria-hidden="true"></div>
 
-            <div class="pending-panel post-tool-panel" id="deletePostsPanel" style="display: none">
-                <div class="pending-panel-header">
-                    <h2>Delete Posts</h2>
-                    <div class="pending-panel-toolbar">
-                        <button class="pending-refresh-btn" id="deletePostsRefreshBtn" type="button">โหลดโพสต์</button>
-                        <button class="tool-primary-btn tool-primary-btn-delete" id="deletePostsRunBtn" type="button">ลบที่เลือก</button>
-                    </div>
-                </div>
-                <div class="post-tool-note is-delete">
-                    ลบโพสต์ออกจาก Facebook แบบ batch สำหรับเคลียร์เพจจำนวนมาก ปุ่มนี้ควรใช้หลังจากเช็ก filter และรายการที่เลือกแล้วเท่านั้น
-                </div>
-                <div class="pending-summary-bar" id="deletePostsSummaryBar"></div>
-                <div class="pending-filter-bar post-tool-filter-bar">
-                    <div class="pending-filter-search">
-                        <input class="pending-filter-input" id="deletePostsSearchInput" type="search"
-                            placeholder="ค้นหาข้อความหรือ post id" />
-                    </div>
-                    <select class="pending-filter-select" id="deletePostsPageSelect"></select>
-                    <select class="pending-filter-select" id="deletePostsTypeFilter">
-                        <option value="all">ทุกประเภท</option>
-                        <option value="link">Link</option>
-                        <option value="text">Text</option>
-                        <option value="image">Image</option>
-                        <option value="reels">Reels</option>
-                    </select>
-                    <div class="pending-quick-filters" id="deletePostsDayFilters">
-                        <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
-                        <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
-                        <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
-                        <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
-                    </div>
-                    <div class="pending-filter-search published-date-filter">
-                        <input class="pending-filter-input" id="deletePostsDateInput" type="date" />
-                    </div>
-                    <div class="pending-filter-meta" id="deletePostsFilterMeta"></div>
-                </div>
-                <div class="pending-filter-bar post-tool-filter-bar">
-                    <div class="pending-filter-search" style="min-width: 260px;">
-                        <input class="pending-filter-input" id="deletePostsClearBeforeInput" type="datetime-local" />
-                    </div>
-                    <div class="pending-filter-search" style="max-width: 180px;">
-                        <input class="pending-filter-input" id="deletePostsBatchSizeInput" type="number" min="1" max="200" step="1" value="20" placeholder="ลบทีละกี่โพสต์" />
-                    </div>
-                    <button class="post-tool-secondary-btn" id="deletePostsAutoSelectBtn" type="button">เลือกตามวันเวลา + จำนวน</button>
-                    <div class="pending-filter-meta">เคลียร์ตามเงื่อนไข: โพสต์ที่เผยแพร่ก่อนวันเวลาที่กำหนด และเลือกสูงสุดตามจำนวนต่อรอบ</div>
-                </div>
-                <div class="post-tool-selection-bar">
-                    <div class="post-tool-selection-meta" id="deletePostsSelectionMeta">ยังไม่ได้เลือกโพสต์</div>
-                    <div class="post-tool-selection-actions">
-                        <button class="post-tool-secondary-btn" id="deletePostsSelectVisibleBtn" type="button">เลือกที่เห็น</button>
-                        <button class="post-tool-secondary-btn" id="deletePostsClearSelectionBtn" type="button">ล้างที่เลือก</button>
-                    </div>
-                </div>
-                <div class="post-tool-body">
-                    <div class="post-tool-main">
-                        <div class="pending-table-container" id="deletePostsTableContainer">
-                            <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
-                        </div>
-                        <div class="post-tool-pagination">
-                            <div class="post-tool-pagination-meta" id="deletePostsLoadMoreMeta"></div>
-                            <button class="post-tool-secondary-btn" id="deletePostsLoadMoreBtn" type="button">โหลดเพิ่ม</button>
-                        </div>
-                    </div>
-                    <aside class="post-tool-side">
-                        <div class="post-tool-side-header">Recent Jobs</div>
-                        <div class="post-tool-jobs" id="deletePostsJobs"></div>
-                    </aside>
-                </div>
-            </div>
-
-            <!-- Earnings Panel -->
-            <div class="pending-panel" id="earningsPanel" style="display: none">
-                <div class="pending-panel-header">
-                    <h2>Earnings</h2>
-                    <button id="refreshEarningsBtn"
-                        style="padding: 0.5rem 1rem; background: #1877f2; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 0.9rem;">
-                        Refresh
-                    </button>
-                </div>
-                <div id="earningsContent" style="padding: 1rem;">
-                    <div id="earningsLoading" style="text-align: center; padding: 2rem; color: #666;">
-                        Loading earnings data...
-                    </div>
-                    <div id="earningsData" style="display: none;">
-                        <!-- Earnings cards will be inserted here -->
-                    </div>
-                </div>
-            </div>
+            <div id="earningsPanel" style="display:none" aria-hidden="true"></div>
 
             <!-- Quotes Panel - List only (add via #text) -->
             <div class="pending-panel" id="quotesPanel" style="display: none">
@@ -2096,19 +1911,18 @@
     <!-- Hover Preview Popup (must be before script) -->
     <img class="thumb-preview-popup" id="thumbPreviewPopup" src="" alt="" />
 
-    <script src="/js/config.js?v=6.3"></script>
+    <script src="/js/config.js?v=6.4"></script>
     <script src="/js/auth-bootstrap.js?v=1.5"></script>
     <script src="/js/parts/01-thumb-preview.js?v=6.1"></script>
     <script src="/js/parts/02-dom-elements.js?v=6.3"></script>
     <script src="/js/parts/03-validation.js?v=6.8"></script>
     <script src="/js/parts/04-settings.js?v=7.1"></script>
     <script src="/js/parts/05-auto-post.js?v=7.0"></script>
-    <script src="/js/parts/06-billing.js?v=1.0"></script>
+    <script src="/js/parts/06-billing.js?v=1.6"></script>
     <script src="/js/parts/06-pending-posts.js?v=6.7"></script>
-    <script src="/js/parts/07-earnings.js?v=6.6"></script>
     <script src="/js/parts/08-quotes.js?v=6.1"></script>
     <script src="/js/parts/08-post-tools.js?v=1.2"></script>
-    <script src="/js/parts/09-navigation.js?v=7.0"></script>
+    <script src="/js/parts/09-navigation.js?v=7.2"></script>
     <script src="/js/parts/10-lazada.js?v=6.3"></script>
     <script src="/js/parts/11-image-generation.js?v=9.2"></script>
     <script src="/js/parts/12-publish.js?v=11.2"></script>

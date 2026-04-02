@@ -3,12 +3,16 @@
 function getAllowedHash(rawHash) {
     const fallbackMap = {
         quotes: "pending",
-        earnings: "news",
         "hide-posts": "news",
         "delete-posts": "news",
     };
 
-    if (rawHash === "link") {
+    if (
+        rawHash === "link"
+        || rawHash === "earnings"
+        || rawHash === "hide-posts"
+        || rawHash === "delete-posts"
+    ) {
         return "news";
     }
 
@@ -42,18 +46,9 @@ function handleNavigation() {
     } else if (hash === "published") {
         publishedNavItem.classList.add("active");
         showPublishedPanel();
-    } else if (hash === "hide-posts") {
-        if (hidePostsNavItem) hidePostsNavItem.classList.add("active");
-        showHidePostsPanel();
-    } else if (hash === "delete-posts") {
-        if (deletePostsNavItem) deletePostsNavItem.classList.add("active");
-        showDeletePostsPanel();
     } else if (hash === "quotes") {
         pendingNavItem.classList.add("active");
         showQuotesPanel();
-    } else if (hash === "earnings") {
-        earningsNavItem.classList.add("active");
-        showEarningsPanel();
     } else if (hash === "settings") {
         document.getElementById("settingsNavBtn").classList.add("active");
         showSettingsPanel();
@@ -107,28 +102,6 @@ publishedNavItem.addEventListener("click", (e) => {
     e.preventDefault();
     navigateTo("published");
 });
-
-if (hidePostsNavItem) {
-    hidePostsNavItem.addEventListener("click", (e) => {
-        e.preventDefault();
-        navigateTo("hide-posts");
-    });
-}
-
-if (deletePostsNavItem) {
-    deletePostsNavItem.addEventListener("click", (e) => {
-        e.preventDefault();
-        navigateTo("delete-posts");
-    });
-}
-
-// Earnings nav item click
-if (earningsNavItem) {
-    earningsNavItem.addEventListener("click", (e) => {
-        e.preventDefault();
-        navigateTo(window.PUBILO_WEB_ONLY_MODE ? "news" : "earnings");
-    });
-}
 
 // Settings nav item click
 document.getElementById("settingsNavBtn").addEventListener("click", (e) => {
