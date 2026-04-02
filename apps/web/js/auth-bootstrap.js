@@ -306,9 +306,15 @@
         const checkSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="8" fill="currentColor" opacity="0.15"/><path d="M5 8l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
         const features = {
+<<<<<<< HEAD
             test_1: ['ทดสอบระบบ', '30 วัน'],
             monthly_500: ['โพสต์ไม่จำกัด', 'ตั้งเวลาอัตโนมัติ', 'Auto Hide Posts', 'รองรับหลายเพจ'],
             yearly_4499: ['ทุกอย่างใน Monthly', 'ประหยัด ฿1,501 ต่อปี', 'Priority Support', 'Early Access ฟีเจอร์ใหม่'],
+=======
+            test_1: ['✓ ทดสอบระบบ', '✓ 30 วัน'],
+            monthly_500: ['✓ โพสต์ไม่จำกัด', '✓ ตั้งเวลาอัตโนมัติ', '✓ จัดการคิวโพสต์', '✓ รองรับหลายเพจ'],
+            yearly_4499: ['✓ ทุกอย่างใน Monthly', '✓ ประหยัด ฿1,501 ต่อปี', '✓ Priority Support', '✓ Early Access ฟีเจอร์ใหม่'],
+>>>>>>> 4c214be72fb7687acccd2a48103e6d19a0c1a9b0
         };
 
         const plansHtml = (state.plans || []).map((plan, index) => {

@@ -894,10 +894,6 @@ if (newsPublishBtn) {
         const newsPreviewDescEl = document.getElementById("newsPreviewDescription");
         const newsPreviewCaptionEl = document.getElementById("newsPreviewCaption");
         const ctaConfig = getCurrentCtaConfig("news");
-        const hideFromTimelineAfterPublish =
-            typeof window.getAfterPublishActionForCurrentPage === "function"
-                ? window.getAfterPublishActionForCurrentPage() === "hide_timeline"
-                : false;
         
         if (!pageId) {
             alert("กรุณาเลือกเพจก่อน");
@@ -921,11 +917,19 @@ if (newsPublishBtn) {
         }
         
         const linkUrlValue = newsUrlInputEl?.value?.trim();
+        const blockedUrlReason = typeof window.getBlockedPublishUrlReason === "function"
+            ? window.getBlockedPublishUrlReason(linkUrlValue)
+            : "";
         const descriptionText = newsDescriptionInput?.value?.trim() || newsPreviewDescEl?.textContent?.trim() || "";
         const captionText = newsPreviewCaptionEl?.textContent?.trim() || "S.LAZADA.CO.TH";
         const primaryText = newsPrimaryTextEl?.value?.trim() || "";
         let imageData = newsGeneratedImages[newsSelectedIndex];
         
+        if (blockedUrlReason) {
+            alert(blockedUrlReason);
+            return;
+        }
+
         if (!linkUrlValue || !descriptionText || !imageData) {
             alert("กรุณากรอกข้อมูลให้ครบ");
             return;
@@ -979,7 +983,6 @@ if (newsPublishBtn) {
                     callToAction: ctaConfig.type,
                     callToActionLabel: ctaConfig.label,
                     scheduleInSystem: scheduleSource === "manual",
-                    hideFromTimeline: hideFromTimelineAfterPublish,
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
                         : null,

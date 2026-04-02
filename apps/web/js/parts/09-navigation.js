@@ -4,7 +4,7 @@ function getAllowedHash(rawHash) {
     const fallbackMap = {
         quotes: "pending",
         earnings: "news",
-        "hide-posts": "news",
+        "hide-posts": "settings",
         "delete-posts": "news",
     };
 
@@ -43,8 +43,8 @@ function handleNavigation() {
         publishedNavItem.classList.add("active");
         showPublishedPanel();
     } else if (hash === "hide-posts") {
-        if (hidePostsNavItem) hidePostsNavItem.classList.add("active");
-        showHidePostsPanel();
+        document.getElementById("settingsNavBtn").classList.add("active");
+        showSettingsPanel();
     } else if (hash === "delete-posts") {
         if (deletePostsNavItem) deletePostsNavItem.classList.add("active");
         showDeletePostsPanel();
@@ -107,13 +107,6 @@ publishedNavItem.addEventListener("click", (e) => {
     e.preventDefault();
     navigateTo("published");
 });
-
-if (hidePostsNavItem) {
-    hidePostsNavItem.addEventListener("click", (e) => {
-        e.preventDefault();
-        navigateTo("hide-posts");
-    });
-}
 
 if (deletePostsNavItem) {
     deletePostsNavItem.addEventListener("click", (e) => {

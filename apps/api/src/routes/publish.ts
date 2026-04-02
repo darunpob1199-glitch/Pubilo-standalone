@@ -7,6 +7,15 @@ import { getWorkspaceId } from '../lib/workspace';
 const app = new Hono<{ Bindings: Env }>();
 
 const FB_API = 'https://graph.facebook.com/v21.0';
+const DEFAULT_GHOST_TARGET_COUNTRIES = ['TH'];
+
+type GhostAdSeed = {
+    adId: string;
+    adsetId: string;
+    campaignId: string;
+    raw: any;
+    source: 'stored' | 'page-match' | 'account-match' | 'bootstrap';
+};
 
 function buildFacebookHeaders(cookieData?: string): Record<string, string> | undefined {
     const normalizedCookie = typeof cookieData === 'string' ? cookieData.trim() : '';
@@ -293,6 +302,54 @@ function deriveSiteName(inputCaption?: string, targetUrl?: string): string {
     return 'PUBILO';
 }
 
+function getBlockedTargetUrlReason(
+    rawUrl: string,
+    options?: { apiOrigin?: string; appOrigin?: string; requestUrl?: string },
+): string {
+    const value = String(rawUrl || '').trim();
+    if (!value) return '';
+
+    let parsed: URL;
+    try {
+        parsed = new URL(value);
+    } catch {
+        return 'ลิงก์ปลายทางไม่ถูกต้อง';
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    const path = `${parsed.pathname}${parsed.search}${parsed.hash}`.toLowerCase();
+    const blockedHosts = new Set<string>();
+
+    for (const candidate of [options?.apiOrigin, options?.appOrigin, options?.requestUrl]) {
+        if (!candidate) continue;
+        try {
+            blockedHosts.add(new URL(candidate).hostname.toLowerCase());
+        } catch {
+            // Ignore parse errors.
+        }
+    }
+
+    if (blockedHosts.has(host)) {
+        return 'ห้ามใช้ลิงก์ภายใน Pubilo เป็นปลายทาง';
+    }
+
+    if (
+        host.includes('facebook.com')
+        && /(\/login|\/checkpoint|\/dialog|\/oauth|\/auth|\/recover)/.test(path)
+    ) {
+        return 'ห้ามใช้ลิงก์ล็อกอินหรือยืนยันตัวตนของ Facebook เป็นปลายทาง';
+    }
+
+    if (
+        host.includes('postcron.com')
+        && (path.includes('/auth/') || path.includes('/callback') || path.includes('access_token'))
+    ) {
+        return 'ห้ามใช้ลิงก์ callback/login ของ Postcron เป็นปลายทาง';
+    }
+
+    return '';
+}
+
 function normalizeTargetPageIds(input: unknown, currentPageId: string): string[] {
     if (!Array.isArray(input)) return [];
 
@@ -353,6 +410,133 @@ async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
         CREATE INDEX IF NOT EXISTS idx_scheduled_publish_queue_batch_id
         ON scheduled_publish_queue (batch_id, status, scheduled_time)
     `).run();
+}
+
+async function ensureGhostAdSeedsTable(env: Env): Promise<void> {
+    await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS ghost_ad_seeds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id TEXT NOT NULL,
+            page_id TEXT NOT NULL,
+            ad_account_id TEXT NOT NULL,
+            campaign_id TEXT NOT NULL,
+            adset_id TEXT NOT NULL,
+            seed_ad_id TEXT,
+            source TEXT NOT NULL DEFAULT 'bootstrap',
+            metadata_json TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (organization_id, page_id, ad_account_id)
+        )
+    `).run();
+
+    await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_ghost_ad_seeds_lookup
+        ON ghost_ad_seeds (organization_id, page_id, ad_account_id)
+    `).run();
+}
+
+async function loadGhostAdSeed(
+    env: Env,
+    organizationId: string,
+    pageId: string,
+    adAccountId: string,
+): Promise<GhostAdSeed | null> {
+    await ensureGhostAdSeedsTable(env);
+
+    const row = await env.DB.prepare(`
+        SELECT campaign_id, adset_id, seed_ad_id, metadata_json
+        FROM ghost_ad_seeds
+        WHERE organization_id = ? AND page_id = ? AND ad_account_id = ?
+        LIMIT 1
+    `).bind(organizationId, pageId, adAccountId).first<{
+        campaign_id?: string | null;
+        adset_id?: string | null;
+        seed_ad_id?: string | null;
+        metadata_json?: string | null;
+    }>();
+
+    const campaignId = String(row?.campaign_id || '').trim();
+    const adsetId = String(row?.adset_id || '').trim();
+    if (!campaignId || !adsetId) return null;
+
+    let raw: any = null;
+    try {
+        raw = row?.metadata_json ? JSON.parse(row.metadata_json) : null;
+    } catch {
+        raw = null;
+    }
+
+    return {
+        adId: String(row?.seed_ad_id || '').trim(),
+        adsetId,
+        campaignId,
+        raw,
+        source: 'stored',
+    };
+}
+
+async function saveGhostAdSeed(
+    env: Env,
+    params: {
+        organizationId: string;
+        pageId: string;
+        adAccountId: string;
+        campaignId: string;
+        adsetId: string;
+        seedAdId?: string;
+        source?: GhostAdSeed['source'];
+        metadata?: any;
+    },
+): Promise<void> {
+    if (!params.organizationId || !params.pageId || !params.adAccountId || !params.campaignId || !params.adsetId) {
+        return;
+    }
+
+    await ensureGhostAdSeedsTable(env);
+
+    await env.DB.prepare(`
+        INSERT INTO ghost_ad_seeds (
+            organization_id,
+            page_id,
+            ad_account_id,
+            campaign_id,
+            adset_id,
+            seed_ad_id,
+            source,
+            metadata_json,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(organization_id, page_id, ad_account_id) DO UPDATE SET
+            campaign_id = excluded.campaign_id,
+            adset_id = excluded.adset_id,
+            seed_ad_id = excluded.seed_ad_id,
+            source = excluded.source,
+            metadata_json = excluded.metadata_json,
+            updated_at = CURRENT_TIMESTAMP
+    `).bind(
+        params.organizationId,
+        params.pageId,
+        params.adAccountId,
+        params.campaignId,
+        params.adsetId,
+        params.seedAdId || null,
+        params.source || 'bootstrap',
+        params.metadata ? JSON.stringify(params.metadata) : null,
+    ).run();
+}
+
+async function deleteGhostAdSeed(
+    env: Env,
+    organizationId: string,
+    pageId: string,
+    adAccountId: string,
+): Promise<void> {
+    await ensureGhostAdSeedsTable(env);
+    await env.DB.prepare(`
+        DELETE FROM ghost_ad_seeds
+        WHERE organization_id = ? AND page_id = ? AND ad_account_id = ?
+    `).bind(organizationId, pageId, adAccountId).run();
 }
 
 async function enqueueScheduledPublish(
@@ -581,7 +765,7 @@ async function fetchReusableAdSeed(params: {
     accessToken: string;
     pageId: string;
     headers?: Record<string, string>;
-}): Promise<{ adId: string; adsetId: string; campaignId: string; raw: any } | null> {
+}): Promise<GhostAdSeed | null> {
     const fields = 'id,name,adset_id,campaign_id,created_time,creative{id,effective_object_story_id,object_story_id,object_story_spec}';
     const response = await fetch(
         `${FB_API}/${params.adAccountId}/ads?fields=${encodeURIComponent(fields)}&limit=100&access_token=${encodeURIComponent(params.accessToken)}`,
@@ -594,10 +778,12 @@ async function fetchReusableAdSeed(params: {
     }
 
     const rows = Array.isArray(data?.data) ? data.data : [];
-    const matchingRows = rows
+    const normalizedRows = rows
         .map((row: any) => {
             const spec = row?.creative?.object_story_spec || {};
             const creativePageId = String(spec?.page_id || '');
+            const hasLinkData = !!spec?.link_data?.link;
+            const hasStoryId = !!(row?.creative?.object_story_id || row?.creative?.effective_object_story_id);
             return {
                 row,
                 adId: String(row?.id || ''),
@@ -605,21 +791,43 @@ async function fetchReusableAdSeed(params: {
                 campaignId: String(row?.campaign_id || ''),
                 createdTime: String(row?.created_time || ''),
                 creativePageId,
+                hasLinkData,
+                hasStoryId,
             };
         })
-        .filter((row: any) => row.adId && row.adsetId && row.creativePageId === String(params.pageId))
+        .filter((row: any) => row.adId && row.adsetId && row.campaignId)
         .sort((a: any, b: any) => (a.createdTime < b.createdTime ? 1 : a.createdTime > b.createdTime ? -1 : 0));
 
-    if (!matchingRows.length) {
+    const pageMatch = normalizedRows.find((row: any) => row.creativePageId === String(params.pageId));
+    if (pageMatch) {
+        return {
+            adId: pageMatch.adId,
+            adsetId: pageMatch.adsetId,
+            campaignId: pageMatch.campaignId,
+            raw: pageMatch.row,
+            source: 'page-match',
+        };
+    }
+
+    const accountMatch = normalizedRows
+        .filter((row: any) => row.hasLinkData || row.hasStoryId || row.creativePageId)
+        .sort((a: any, b: any) => {
+            const scoreA = Number(!!a.hasLinkData) * 2 + Number(!!a.hasStoryId);
+            const scoreB = Number(!!b.hasLinkData) * 2 + Number(!!b.hasStoryId);
+            if (scoreA !== scoreB) return scoreB - scoreA;
+            return a.createdTime < b.createdTime ? 1 : a.createdTime > b.createdTime ? -1 : 0;
+        })[0];
+
+    if (!accountMatch) {
         return null;
     }
 
-    const selected = matchingRows[0];
     return {
-        adId: selected.adId,
-        adsetId: selected.adsetId,
-        campaignId: selected.campaignId,
-        raw: selected.row,
+        adId: accountMatch.adId,
+        adsetId: accountMatch.adsetId,
+        campaignId: accountMatch.campaignId,
+        raw: accountMatch.row,
+        source: 'account-match',
     };
 }
 
@@ -652,13 +860,15 @@ async function fetchAccessibleAdAccountIds(
 }
 
 async function resolveAdSeedContext(params: {
+    env: Env;
+    organizationId: string;
     preferredAdAccountId: string;
     accessToken: string;
     pageId: string;
     headers?: Record<string, string>;
 }): Promise<{
     adAccountId: string;
-    seed: { adId: string; adsetId: string; campaignId: string; raw: any } | null;
+    seed: GhostAdSeed | null;
     scannedAccounts: string[];
 }> {
     const candidateAccounts = [params.preferredAdAccountId].filter(Boolean);
@@ -675,6 +885,20 @@ async function resolveAdSeedContext(params: {
 
     for (const accountId of candidateAccounts) {
         try {
+            const storedSeed = await loadGhostAdSeed(
+                params.env,
+                params.organizationId,
+                params.pageId,
+                accountId,
+            );
+            if (storedSeed?.adsetId) {
+                return {
+                    adAccountId: accountId,
+                    seed: storedSeed,
+                    scannedAccounts: candidateAccounts,
+                };
+            }
+
             const seed = await fetchReusableAdSeed({
                 adAccountId: accountId,
                 accessToken: params.accessToken,
@@ -701,6 +925,166 @@ async function resolveAdSeedContext(params: {
         seed: null,
         scannedAccounts: candidateAccounts,
     };
+}
+
+async function createGhostBootstrapCampaign(params: {
+    adAccountId: string;
+    accessToken: string;
+    headers?: Record<string, string>;
+    pageId: string;
+}): Promise<{ campaignId: string; objective: string; raw: any }> {
+    const objectives = ['OUTCOME_TRAFFIC', 'LINK_CLICKS'];
+    let lastError = '';
+
+    for (const objective of objectives) {
+        const body = new URLSearchParams({
+            access_token: params.accessToken,
+            name: `Pubilo Ghost Seed ${params.pageId}`,
+            objective,
+            status: 'PAUSED',
+            special_ad_categories: '[]',
+        });
+
+        const response = await fetch(`${FB_API}/${params.adAccountId}/campaigns`, {
+            method: 'POST',
+            headers: {
+                ...(params.headers || {}),
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body.toString(),
+        });
+        const data = await response.json() as any;
+        if (!data?.error && data?.id) {
+            return {
+                campaignId: String(data.id),
+                objective,
+                raw: data,
+            };
+        }
+        lastError = data?.error?.message || `Failed to create bootstrap campaign with objective ${objective}`;
+    }
+
+    throw new Error(lastError || 'Failed to create bootstrap campaign');
+}
+
+async function createGhostBootstrapAdSet(params: {
+    adAccountId: string;
+    accessToken: string;
+    headers?: Record<string, string>;
+    pageId: string;
+    campaignId: string;
+}): Promise<{ adsetId: string; raw: any }> {
+    const targeting = JSON.stringify({
+        geo_locations: {
+            countries: DEFAULT_GHOST_TARGET_COUNTRIES,
+        },
+        publisher_platforms: ['facebook'],
+        facebook_positions: ['feed'],
+        device_platforms: ['mobile', 'desktop'],
+        age_min: 18,
+        age_max: 65,
+    });
+
+    const variants: Array<Record<string, string>> = [
+        {
+            billing_event: 'IMPRESSIONS',
+            optimization_goal: 'LINK_CLICKS',
+            bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+            destination_type: 'WEBSITE',
+            promoted_object: JSON.stringify({ page_id: params.pageId }),
+        },
+        {
+            billing_event: 'IMPRESSIONS',
+            optimization_goal: 'LINK_CLICKS',
+            bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+            destination_type: 'WEBSITE',
+        },
+        {
+            billing_event: 'IMPRESSIONS',
+            optimization_goal: 'REACH',
+            bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+        },
+    ];
+
+    let lastError = '';
+
+    for (const variant of variants) {
+        const body = new URLSearchParams({
+            access_token: params.accessToken,
+            name: `Pubilo Ghost Seed ${params.pageId}`,
+            campaign_id: params.campaignId,
+            status: 'PAUSED',
+            daily_budget: '10000',
+            targeting,
+            ...variant,
+        });
+
+        const response = await fetch(`${FB_API}/${params.adAccountId}/adsets`, {
+            method: 'POST',
+            headers: {
+                ...(params.headers || {}),
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body.toString(),
+        });
+        const data = await response.json() as any;
+        if (!data?.error && data?.id) {
+            return {
+                adsetId: String(data.id),
+                raw: data,
+            };
+        }
+        lastError = data?.error?.message || 'Failed to create bootstrap adset';
+    }
+
+    throw new Error(lastError || 'Failed to create bootstrap adset');
+}
+
+async function bootstrapGhostAdSeed(params: {
+    env: Env;
+    organizationId: string;
+    pageId: string;
+    adAccountId: string;
+    accessToken: string;
+    headers?: Record<string, string>;
+}): Promise<GhostAdSeed> {
+    const campaign = await createGhostBootstrapCampaign({
+        adAccountId: params.adAccountId,
+        accessToken: params.accessToken,
+        headers: params.headers,
+        pageId: params.pageId,
+    });
+
+    const adset = await createGhostBootstrapAdSet({
+        adAccountId: params.adAccountId,
+        accessToken: params.accessToken,
+        headers: params.headers,
+        pageId: params.pageId,
+        campaignId: campaign.campaignId,
+    });
+
+    const seed: GhostAdSeed = {
+        adId: '',
+        adsetId: adset.adsetId,
+        campaignId: campaign.campaignId,
+        raw: {
+            campaign: campaign.raw,
+            adset: adset.raw,
+        },
+        source: 'bootstrap',
+    };
+
+    await saveGhostAdSeed(params.env, {
+        organizationId: params.organizationId,
+        pageId: params.pageId,
+        adAccountId: params.adAccountId,
+        campaignId: seed.campaignId,
+        adsetId: seed.adsetId,
+        source: seed.source,
+        metadata: seed.raw,
+    });
+
+    return seed;
 }
 
 async function fetchAdStoryIdWithRetry(
@@ -740,77 +1124,133 @@ async function fetchAdStoryIdWithRetry(
 }
 
 async function materializeCreativeWithAd(params: {
+    env: Env;
+    organizationId: string;
     adAccountId: string;
     accessToken: string;
     pageId: string;
     creativeId: string;
     headers?: Record<string, string>;
-    seed?: { adId: string; adsetId: string; campaignId: string; raw: any } | null;
+    seed?: GhostAdSeed | null;
 }): Promise<{ adId: string; adsetId: string; campaignId: string; postId: string; seedAdId: string; adData: any }> {
-    const seed = params.seed ?? await fetchReusableAdSeed({
-        adAccountId: params.adAccountId,
-        accessToken: params.accessToken,
-        pageId: params.pageId,
-        headers: params.headers,
-    });
-
-    if (!seed?.adsetId) {
-        throw new Error('No reusable adset found for this page in the selected ad account');
-    }
-
-    const requestParams = new URLSearchParams({
-        access_token: params.accessToken,
-        name: `Pubilo ${Date.now()}`,
-        adset_id: seed.adsetId,
-        creative: JSON.stringify({ creative_id: params.creativeId }),
-        status: 'PAUSED',
-    });
-
-    const createResponse = await fetch(`${FB_API}/${params.adAccountId}/ads`, {
-        method: 'POST',
-        headers: {
-            ...(params.headers || {}),
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: requestParams.toString(),
-    });
-    const createData = await createResponse.json() as any;
-    if (createData?.error) {
-        throw new Error(createData.error.message || 'Failed to create ad from creative');
-    }
-
-    const adId = String(createData?.id || '');
-    if (!adId) {
-        throw new Error('Facebook did not return ad id');
-    }
-
-    const adStoryResult = await fetchAdStoryIdWithRetry(
-        adId,
-        params.accessToken,
-        params.headers,
-    );
-
-    if (!adStoryResult.postId) {
-        console.warn('[publish] Ad did not return story id after retries:', {
-            adId,
-            creativeId: params.creativeId,
-            adData: adStoryResult.raw,
-            seed,
+    let seed =
+        params.seed
+        ?? await loadGhostAdSeed(params.env, params.organizationId, params.pageId, params.adAccountId)
+        ?? await fetchReusableAdSeed({
+            adAccountId: params.adAccountId,
+            accessToken: params.accessToken,
+            pageId: params.pageId,
+            headers: params.headers,
         });
-        throw new Error('Facebook did not return object_story_id for the ad');
+
+    let bootstrapTried = false;
+    let lastError = '';
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+        if (!seed?.adsetId) {
+            seed = await bootstrapGhostAdSeed({
+                env: params.env,
+                organizationId: params.organizationId,
+                pageId: params.pageId,
+                adAccountId: params.adAccountId,
+                accessToken: params.accessToken,
+                headers: params.headers,
+            });
+            bootstrapTried = true;
+        }
+
+        try {
+            const requestParams = new URLSearchParams({
+                access_token: params.accessToken,
+                name: `Pubilo ${Date.now()}`,
+                adset_id: seed.adsetId,
+                creative: JSON.stringify({ creative_id: params.creativeId }),
+                status: 'PAUSED',
+            });
+
+            const createResponse = await fetch(`${FB_API}/${params.adAccountId}/ads`, {
+                method: 'POST',
+                headers: {
+                    ...(params.headers || {}),
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: requestParams.toString(),
+            });
+            const createData = await createResponse.json() as any;
+            if (createData?.error) {
+                throw new Error(createData.error.message || 'Failed to create ad from creative');
+            }
+
+            const adId = String(createData?.id || '');
+            if (!adId) {
+                throw new Error('Facebook did not return ad id');
+            }
+
+            const adStoryResult = await fetchAdStoryIdWithRetry(
+                adId,
+                params.accessToken,
+                params.headers,
+            );
+
+            if (!adStoryResult.postId) {
+                console.warn('[publish] Ad did not return story id after retries:', {
+                    adId,
+                    creativeId: params.creativeId,
+                    adData: adStoryResult.raw,
+                    seed,
+                });
+                throw new Error('Facebook did not return object_story_id for the ad');
+            }
+
+            if (seed.source === 'bootstrap') {
+                await saveGhostAdSeed(params.env, {
+                    organizationId: params.organizationId,
+                    pageId: params.pageId,
+                    adAccountId: params.adAccountId,
+                    campaignId: seed.campaignId,
+                    adsetId: seed.adsetId,
+                    seedAdId: adId,
+                    source: 'bootstrap',
+                    metadata: seed.raw,
+                });
+            }
+
+            return {
+                adId,
+                adsetId: seed.adsetId,
+                campaignId: seed.campaignId,
+                seedAdId: seed.adId || '',
+                postId: adStoryResult.postId,
+                adData: adStoryResult.raw,
+            };
+        } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
+
+            if (!bootstrapTried && seed.source !== 'bootstrap') {
+                console.warn('[publish] Existing ad seed failed, bootstrapping dedicated ghost seed:', {
+                    pageId: params.pageId,
+                    adAccountId: params.adAccountId,
+                    source: seed.source,
+                    error: lastError,
+                });
+                seed = null;
+                continue;
+            }
+
+            if (seed.source === 'stored' || seed.source === 'bootstrap') {
+                await deleteGhostAdSeed(params.env, params.organizationId, params.pageId, params.adAccountId);
+            }
+
+            throw error;
+        }
     }
 
-    return {
-        adId,
-        adsetId: seed.adsetId,
-        campaignId: seed.campaignId,
-        seedAdId: seed.adId,
-        postId: adStoryResult.postId,
-        adData: adStoryResult.raw,
-    };
+    throw new Error(lastError || 'Failed to materialize ad creative');
 }
 
 async function createStandaloneAdCreative(params: {
+    env: Env;
+    organizationId: string;
     pageId: string;
     accessToken: string;
     cookieHeaders?: Record<string, string>;
@@ -822,7 +1262,7 @@ async function createStandaloneAdCreative(params: {
     caption?: string;
     description?: string;
     callToAction?: string;
-    seed?: { adId: string; adsetId: string; campaignId: string; raw: any } | null;
+    seed?: GhostAdSeed | null;
 }): Promise<{ creativeId: string; postId: string; creativeData: any; adId?: string; adsetId?: string; campaignId?: string; seedAdId?: string; materializedBy?: string }> {
     const creativePayload: Record<string, any> = {
         page_id: params.pageId,
@@ -885,7 +1325,33 @@ async function createStandaloneAdCreative(params: {
             materializedBy: 'creative',
         };
     }
-    throw new Error('Facebook did not return object_story_id for ad creative');
+
+    try {
+        const adResult = await materializeCreativeWithAd({
+            env: params.env,
+            organizationId: params.organizationId,
+            adAccountId: params.adAccountId,
+            accessToken: params.accessToken,
+            pageId: params.pageId,
+            creativeId,
+            headers: params.cookieHeaders,
+            seed: params.seed ?? null,
+        });
+
+        return {
+            creativeId,
+            postId: adResult.postId,
+            creativeData: adResult.adData,
+            adId: adResult.adId,
+            adsetId: adResult.adsetId,
+            campaignId: adResult.campaignId,
+            seedAdId: adResult.seedAdId,
+            materializedBy: 'ad',
+        };
+    } catch (materializeError) {
+        const detail = materializeError instanceof Error ? materializeError.message : String(materializeError);
+        throw new Error(`Facebook did not return object_story_id for ad creative; ad materialization failed: ${detail}`);
+    }
 }
 
 // POST /api/publish - Publish to Facebook
@@ -911,8 +1377,6 @@ app.post('/', async (c) => {
             fbDtsg,
             callToAction,
             callToActionLabel,
-            hideFromTimeline,
-            hideToken,
             textFormatPresetId,
             scheduleInSystem,
             internalRun,
@@ -939,21 +1403,19 @@ app.post('/', async (c) => {
 
         const requestedPageToken = typeof pageToken === 'string' ? pageToken.trim() : '';
         let storedPageToken = '';
-        let storedHideToken = '';
+        let storedHideOnPublish = false;
 
         // Always read page_settings token as a durable fallback.
         try {
             const dbResult = await c.env.DB.prepare(
-                'SELECT post_token_encrypted, hide_token_encrypted FROM page_settings WHERE organization_id = ? AND page_id = ? LIMIT 1'
-            ).bind(organizationId, pageId).first<{ post_token_encrypted: string | null; hide_token_encrypted: string | null }>();
+                'SELECT post_token_encrypted, hide_on_publish FROM page_settings WHERE organization_id = ? AND page_id = ? LIMIT 1'
+            ).bind(organizationId, pageId).first<{ post_token_encrypted: string | null; hide_on_publish: number | null }>();
 
             if (dbResult?.post_token_encrypted) {
                 storedPageToken = await decryptSecret(c.env, dbResult.post_token_encrypted) || '';
                 console.log('[publish] Got stored Page Token from D1 page_settings');
             }
-            if (dbResult?.hide_token_encrypted) {
-                storedHideToken = await decryptSecret(c.env, dbResult.hide_token_encrypted) || '';
-            }
+            storedHideOnPublish = Number(dbResult?.hide_on_publish || 0) === 1;
         } catch (dbErr) {
             console.error('[publish] D1 error:', dbErr);
         }
@@ -988,6 +1450,20 @@ app.post('/', async (c) => {
         // Determine post type
         const finalMessage = message || primaryText || '';
         const finalLink = link || linkUrl || '';
+        const blockedTargetReason = finalLink
+            ? getBlockedTargetUrlReason(finalLink, {
+                apiOrigin: c.env.API_ORIGIN,
+                appOrigin: c.env.APP_ORIGIN,
+                requestUrl: c.req.url,
+            })
+            : '';
+        if (blockedTargetReason) {
+            return c.json({
+                success: false,
+                error: blockedTargetReason,
+                errorType: 'InvalidTargetUrl',
+            }, 400);
+        }
         const finalImageUrl = imageUrl || '';
         const isLinkAttachmentPost = !!finalLink && (postMode === 'news' || postMode === 'link');
         const requiresRichLinkCard = isLinkAttachmentPost && (
@@ -1097,9 +1573,8 @@ app.post('/', async (c) => {
             });
         };
 
-        const shouldHideFromTimeline = !!hideFromTimeline && !scheduleTimestamp;
-        const requestHideToken = typeof hideToken === 'string' ? hideToken.trim() : '';
-        const maybeHideAfterPublish = async (postId: string) => {
+        const shouldHideFromTimeline = storedHideOnPublish && !scheduleTimestamp;
+        const maybeHideAfterPublish = async (postId: string, tokenForHide: string) => {
             if (!shouldHideFromTimeline || !postId) {
                 return {
                     attempted: false,
@@ -1109,51 +1584,48 @@ app.post('/', async (c) => {
                 };
             }
 
-            const tokenCandidates = buildAuthCandidates([
-                requestHideToken,
-                storedHideToken,
-                freshPageToken,
-                storedPageToken,
-                requestedPageToken,
-                accessToken,
-            ]);
-            let lastError = '';
+            const authToken = String(tokenForHide || '').trim();
+            if (!authToken) {
+                return {
+                    attempted: true,
+                    hidden: false,
+                    method: '',
+                    error: 'missing_publish_token',
+                };
+            }
 
-            for (const tokenCandidate of tokenCandidates) {
-                const result = await hidePagePostFromTimeline(
-                    postId,
-                    tokenCandidate,
-                    facebookHeaders,
-                );
-                if (result.success) {
-                    try {
-                        await c.env.DB.prepare(`
-                            INSERT OR IGNORE INTO hidden_posts (organization_id, page_id, post_id, hidden_at)
-                            VALUES (?, ?, ?, ?)
-                        `).bind(
-                            organizationId,
-                            pageId,
-                            postId,
-                            new Date().toISOString(),
-                        ).run();
-                    } catch (dbErr) {
-                        console.warn('[publish] Failed to persist hidden_posts row:', dbErr);
-                    }
-                    return {
-                        attempted: true,
-                        hidden: true,
-                        method: result.method || '',
-                        error: '',
-                    };
+            const result = await hidePagePostFromTimeline(
+                postId,
+                authToken,
+                facebookHeaders,
+            );
+            if (result.success) {
+                try {
+                    await c.env.DB.prepare(`
+                        INSERT OR IGNORE INTO hidden_posts (organization_id, page_id, post_id, hidden_at)
+                        VALUES (?, ?, ?, ?)
+                    `).bind(
+                        organizationId,
+                        pageId,
+                        postId,
+                        new Date().toISOString(),
+                    ).run();
+                } catch (dbErr) {
+                    console.warn('[publish] Failed to persist hidden_posts row:', dbErr);
                 }
-                lastError = result.error || lastError;
+                return {
+                    attempted: true,
+                    hidden: true,
+                    method: result.method || '',
+                    error: '',
+                };
             }
 
             return {
                 attempted: true,
                 hidden: false,
                 method: '',
-                error: lastError || 'hide_failed',
+                error: result.error || 'hide_failed',
             };
         };
 
@@ -1322,6 +1794,7 @@ app.post('/', async (c) => {
         const normalizedAdAccountId = normalizeAdAccountId(adAccountId);
         let resolvedAdAccountId = normalizedAdAccountId;
         let accessibleAdAccounts: string[] = [];
+        let adSeedContext: Awaited<ReturnType<typeof resolveAdSeedContext>> | null = null;
 
         if (isLinkAttachmentPost && accessToken && !resolvedAdAccountId) {
             try {
@@ -1331,7 +1804,29 @@ app.post('/', async (c) => {
                 console.warn('[publish] Failed to auto-resolve ad account from access token:', error);
             }
         }
+
+        if (isLinkAttachmentPost && accessToken && resolvedAdAccountId) {
+            try {
+                adSeedContext = await resolveAdSeedContext({
+                    env: c.env,
+                    organizationId,
+                    preferredAdAccountId: resolvedAdAccountId,
+                    accessToken,
+                    pageId,
+                    headers: facebookHeaders,
+                });
+                if (adSeedContext?.adAccountId) {
+                    resolvedAdAccountId = adSeedContext.adAccountId;
+                }
+                if (Array.isArray(adSeedContext?.scannedAccounts) && adSeedContext.scannedAccounts.length) {
+                    accessibleAdAccounts = adSeedContext.scannedAccounts;
+                }
+            } catch (error) {
+                console.warn('[publish] Failed to resolve reusable ad seed context:', error);
+            }
+        }
         const normalizedCallToAction = normalizeCallToActionType(callToAction);
+        const requiresGhostAd = postMode === 'news';
         const canUseAdCreativeFlow = isLinkAttachmentPost && !!accessToken && !!resolvedAdAccountId;
 
         if (isLinkAttachmentPost) {
@@ -1351,24 +1846,43 @@ app.post('/', async (c) => {
                 hasClientAccessToken: !!accessToken,
                 resolvedAdAccountId: resolvedAdAccountId || '(none)',
                 canUseAdCreativeFlow,
+                requiresGhostAd,
                 pageTokenCandidateCount: pageTokenCandidates.length,
+                hasReusableSeed: !!adSeedContext?.seed?.adsetId,
             });
 
             // Primary: ad creative produces rich cards with custom image, title, CTA button.
+            if (requiresGhostAd && !canUseAdCreativeFlow) {
+                return c.json({
+                    success: false,
+                    error: 'ยังสร้าง Ghost Ads ไม่ได้ เพราะไม่มี Ads Token หรือ Ad Account ที่ใช้งานได้สำหรับเพจนี้',
+                    errorType: 'GhostAdsUnavailable',
+                    _debug: {
+                        flow: 'ghost-required',
+                        canUseAdCreativeFlow,
+                        hasClientAccessToken: !!accessToken,
+                        resolvedAdAccountId: resolvedAdAccountId || '',
+                    },
+                }, 400);
+            }
+
             if (canUseAdCreativeFlow) {
                 try {
                     const creativeResult = await createStandaloneAdCreative({
+                        env: c.env,
+                        organizationId,
                         pageId,
                         accessToken,
                         cookieHeaders: facebookHeaders,
                         adAccountId: resolvedAdAccountId,
-                        linkUrl: finalLink || publishLinkUrl,
+                        linkUrl: publishLinkUrl,
                         hostedImageUrl: hostedImageUrl || undefined,
                         message: finalMessage,
                         title: attachmentTitle || undefined,
                         caption: previewSiteName || undefined,
                         description: attachmentDescription || undefined,
                         callToAction: normalizedCallToAction,
+                        seed: adSeedContext?.seed ?? null,
                     });
 
                     if (!scheduleTimestamp && pageTokenForPublish) {
@@ -1381,8 +1895,12 @@ app.post('/', async (c) => {
                         creativeId: creativeResult.creativeId,
                         materializedBy: creativeResult.materializedBy,
                     });
+<<<<<<< HEAD
                     await persistPageTokenIfNeeded(c.env, organizationId, pageId, pageTokenForPublish);
                     const hideResult = await maybeHideAfterPublish(creativeResult.postId);
+=======
+                    const hideResult = await maybeHideAfterPublish(creativeResult.postId, pageTokenForPublish);
+>>>>>>> 4c214be72fb7687acccd2a48103e6d19a0c1a9b0
 
                     return c.json({
                         success: true,
@@ -1404,6 +1922,21 @@ app.post('/', async (c) => {
                     adCreativeError = error instanceof Error ? error.message : String(error);
                     console.warn('[publish] adcreative failed, falling back to feed:', adCreativeError);
                 }
+            }
+
+            if (requiresGhostAd) {
+                return c.json({
+                    success: false,
+                    error: `Ghost Ads ไม่สำเร็จ: ${adCreativeError || 'Facebook ไม่คืน object_story_id ให้ ad creative'}`,
+                    errorType: 'GhostAdsFailed',
+                    _debug: {
+                        flow: 'ghost-required',
+                        adCreativeError,
+                        canUseAdCreativeFlow,
+                        resolvedAdAccountId: resolvedAdAccountId || '',
+                        hasReusableSeed: !!adSeedContext?.seed?.adsetId,
+                    },
+                }, 422);
             }
 
             // Fallback: feed with target URL. Try each page token candidate until one works.
@@ -1430,7 +1963,7 @@ app.post('/', async (c) => {
                         pageToken: candidateToken,
                         headers: facebookHeaders,
                         message: finalMessage,
-                        linkUrl: finalLink || publishLinkUrl,
+                        linkUrl: publishLinkUrl,
                         scheduledTime: scheduleTimestamp || undefined,
                     });
 
@@ -1438,7 +1971,7 @@ app.post('/', async (c) => {
                     await recordPublishedSuccess(feedResult.postId, feedUrl, {
                         flow: adCreativeError ? 'feed-fallback' : 'feed-link',
                     });
-                    const hideResult = await maybeHideAfterPublish(feedResult.postId);
+                    const hideResult = await maybeHideAfterPublish(feedResult.postId, candidateToken);
 
                     return c.json({
                         success: true,
@@ -1620,8 +2153,12 @@ app.post('/', async (c) => {
                 flow: isLinkAttachmentPost ? 'facebook-link-post' : 'facebook-direct-post',
                 postMode: postMode || null,
             });
+<<<<<<< HEAD
             await persistPageTokenIfNeeded(c.env, organizationId, pageId, authToken);
             const hideResult = await maybeHideAfterPublish(postId);
+=======
+            const hideResult = await maybeHideAfterPublish(postId, authToken);
+>>>>>>> 4c214be72fb7687acccd2a48103e6d19a0c1a9b0
             return c.json({
                 success: true,
                 postId,

@@ -6,34 +6,14 @@ const postModeAlternate = document.getElementById("postModeAlternate");
 const pageTokenInputPanel = document.getElementById("pageTokenInputPanel");
 const autoFetchPageTokenBtn = document.getElementById("autoFetchPageTokenBtn");
 const pageTokenAutoStatus = document.getElementById("pageTokenAutoStatus");
-const afterPublishActionSelectPanel = document.getElementById("afterPublishActionSelectPanel");
+const hideOnPublishEnabled = document.getElementById("hideOnPublishEnabled");
+const recurringAutoPostEnabled = false;
+const autoPostSettingsSection = document.getElementById("autoPostSettingsSection");
 let currentPostMode = "image";
 
-const AFTER_PUBLISH_ACTION_STORAGE_PREFIX = "fewfeed_afterPublishAction";
-
-function normalizeAfterPublishActionSetting(value) {
-    const normalized = String(value || "").trim().toLowerCase();
-    if (
-        normalized === "published" ||
-        normalized === "pending" ||
-        normalized === "hide_timeline"
-    ) return normalized;
-    return "stay";
+if (!recurringAutoPostEnabled && autoPostSettingsSection) {
+    autoPostSettingsSection.style.display = "none";
 }
-
-function getAfterPublishActionStorageKeyForSettings(pageId) {
-    const id = String(pageId || "").trim();
-    return `${AFTER_PUBLISH_ACTION_STORAGE_PREFIX}:${id || "_default"}`;
-}
-
-// Auto-Hide elements
-const autoHideEnabled = document.getElementById("autoHideEnabled");
-const hideTokenInputPanel = document.getElementById("hideTokenInputPanel");
-const hideSharedStory = document.getElementById("hideSharedStory");
-const hideMobileStatus = document.getElementById("hideMobileStatus");
-const hideAddedPhotos = document.getElementById("hideAddedPhotos");
-const autoHideNowBtn = document.getElementById("autoHideNowBtn");
-const autoHideNowStatus = document.getElementById("autoHideNowStatus");
 
 // Auto-resize textarea function
 function autoResizeTextarea(textarea) {
@@ -281,6 +261,7 @@ function setAutoPostMode(mode) {
 }
 
 async function loadShareScheduleConflicts(targetPageId) {
+    if (!recurringAutoPostEnabled) return;
     const currentPageId = getCurrentPageId();
     const shareScheduleMinutesGrid = document.getElementById("shareScheduleMinutesGrid");
     if (!shareScheduleMinutesGrid || !targetPageId) return;
@@ -407,6 +388,7 @@ function setShareMode(mode) {
 }
 
 async function loadAutoPostConfig() {
+    if (!recurringAutoPostEnabled) return;
     const pageId = getCurrentPageId();
     console.log("[Auto-Post] loadAutoPostConfig called, pageId:", pageId);
     if (!pageId) return;
@@ -475,6 +457,7 @@ async function loadAutoPostConfig() {
 }
 
 async function saveAutoPostConfig(mode, colorBg, sharePageId, colorBgPresets, shareMode, shareScheduleMinutes, pageColor) {
+    if (!recurringAutoPostEnabled) return;
     const pageId = getCurrentPageId();
     if (!pageId) return;
 
@@ -497,6 +480,7 @@ async function saveAutoPostConfig(mode, colorBg, sharePageId, colorBgPresets, sh
             body: JSON.stringify(body)
         });
         const data = await response.json();
+
         if (data.success) {
             console.log("[Auto-Post] Config saved:", data.settings);
             if (mode !== undefined) setAutoPostMode(mode);
@@ -507,144 +491,6 @@ async function saveAutoPostConfig(mode, colorBg, sharePageId, colorBgPresets, sh
         console.error("[Auto-Post] Failed to save config:", err);
     }
 }
-
-// Auto-Hide Functions
-async function loadAutoHideConfig() {
-    const pageId = getCurrentPageId();
-    console.log("[Auto-Hide] loadAutoHideConfig called, pageId:", pageId);
-    if (!pageId) return;
-
-    try {
-        const response = await fetch(`/api/auto-hide-config?pageId=${pageId}`);
-        const data = await response.json();
-        console.log("[Auto-Hide] API response:", data);
-        if (data.success && data.config) {
-            const enabled = data.config.enabled || false;
-            console.log("[Auto-Hide] Setting checkbox to:", enabled);
-            if (autoHideEnabled) {
-                autoHideEnabled.checked = enabled;
-                console.log("[Auto-Hide] Checkbox now:", autoHideEnabled.checked);
-            } else {
-                console.error("[Auto-Hide] autoHideEnabled element NOT FOUND!");
-            }
-            // Load hide types
-            const types = (data.config.hide_types || 'shared_story,mobile_status_update,added_photos').split(',');
-            if (hideSharedStory) hideSharedStory.checked = types.includes('shared_story');
-            if (hideMobileStatus) hideMobileStatus.checked = types.includes('mobile_status_update');
-            if (hideAddedPhotos) hideAddedPhotos.checked = types.includes('added_photos');
-        }
-    } catch (err) {
-        console.error("[Auto-Hide] Failed to load config:", err);
-    }
-}
-
-function getHideTypes() {
-    const types = [];
-    if (hideSharedStory?.checked) types.push('shared_story');
-    if (hideMobileStatus?.checked) types.push('mobile_status_update');
-    if (hideAddedPhotos?.checked) types.push('added_photos');
-    return types.join(',');
-}
-
-function setAutoHideNowStatus(message, tone = "muted") {
-    if (!autoHideNowStatus) return;
-
-    const toneColors = {
-        muted: "#6b7280",
-        loading: "#2563eb",
-        success: "#047857",
-        error: "#dc2626",
-    };
-
-    autoHideNowStatus.textContent = message || "";
-    autoHideNowStatus.style.color = toneColors[tone] || toneColors.muted;
-}
-
-async function saveAutoHideConfig() {
-    const pageId = getCurrentPageId();
-    if (!pageId) return;
-
-    const enabled = autoHideEnabled.checked;
-    const hideTypes = getHideTypes();
-    const hideToken = hideTokenInputPanel ? hideTokenInputPanel.value.trim() : "";
-
-    try {
-        const response = await fetch('/api/auto-hide-config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pageId, enabled, hideTypes, hideToken })
-        });
-        const data = await response.json();
-        if (data.success) {
-            console.log("[Auto-Hide] Config saved:", data.config);
-        }
-    } catch (err) {
-        console.error("[Auto-Hide] Failed to save config:", err);
-    }
-}
-
-async function triggerAutoHideNow() {
-    const pageId = getCurrentPageId();
-    if (!pageId) {
-        alert("กรุณาเลือกเพจก่อน");
-        return;
-    }
-
-    const originalText = autoHideNowBtn?.textContent || "ซ่อนทันที";
-    if (autoHideNowBtn) {
-        autoHideNowBtn.disabled = true;
-        autoHideNowBtn.textContent = "กำลังซ่อน...";
-    }
-    setAutoHideNowStatus("กำลังซ่อนโพสต์ที่เข้าเงื่อนไข...", "loading");
-
-    try {
-        // Persist the latest toggle/type selection before manual run.
-        await saveAutoHideConfig();
-
-        const response = await fetch('/api/auto-hide', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pageId, maxHidePerRun: 20 }),
-        });
-        const data = await response.json();
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || `HTTP ${response.status}`);
-        }
-
-        const hidden = Number(data.totalHidden || 0);
-        const pending = Number(data.results?.[0]?.pending || 0);
-        const failed = Number(data.results?.[0]?.failed || 0);
-        const failedSample = data.results?.[0]?.failed_samples?.[0]?.reason || "";
-        if (hidden > 0) {
-            const suffix = failed > 0 ? `, ไม่สำเร็จ ${failed}` : "";
-            setAutoHideNowStatus(`ซ่อนแล้ว ${hidden} โพสต์ (ค้าง ${pending}${suffix})`, "success");
-        } else if (failed > 0) {
-            setAutoHideNowStatus(`ซ่อนไม่สำเร็จ ${failed} โพสต์`, "error");
-            if (failedSample) {
-                alert(`ซ่อนไม่สำเร็จ: ${failedSample}`);
-            }
-        } else {
-            setAutoHideNowStatus("ไม่พบโพสต์ใหม่ที่เข้าเงื่อนไขซ่อน", "muted");
-        }
-    } catch (error) {
-        console.error("[Auto-Hide] Manual run failed:", error);
-        const message = error instanceof Error ? error.message : "ซ่อนทันทีไม่สำเร็จ";
-        setAutoHideNowStatus(message, "error");
-        alert(`ซ่อนทันทีไม่สำเร็จ: ${message}`);
-    } finally {
-        if (autoHideNowBtn) {
-            autoHideNowBtn.disabled = false;
-            autoHideNowBtn.textContent = originalText;
-        }
-    }
-}
-
-// Auto-hide checkbox change handlers
-autoHideEnabled.addEventListener("change", saveAutoHideConfig);
-if (hideSharedStory) hideSharedStory.addEventListener("change", saveAutoHideConfig);
-if (hideMobileStatus) hideMobileStatus.addEventListener("change", saveAutoHideConfig);
-if (hideAddedPhotos) hideAddedPhotos.addEventListener("change", saveAutoHideConfig);
-if (autoHideNowBtn) autoHideNowBtn.addEventListener("click", triggerAutoHideNow);
 
 // Post mode button handlers - toggle on/off
 postModeImage.addEventListener("click", () => {
@@ -770,6 +616,7 @@ if (shareScheduleMinutesGrid) {
 
 // Populate share page dropdown from database
 async function populateSharePageDropdown() {
+    if (!recurringAutoPostEnabled) return;
     const currentPageId = getCurrentPageId();
     sharePageSelect.innerHTML = '<option value="">-- เลือกเพจที่จะแชร์ไป --</option>';
 
@@ -804,7 +651,7 @@ async function loadSettingsPanel() {
         console.log("[LOAD] No page selected");
         const tokenInput = document.getElementById("pageTokenInputPanel");
         if (tokenInput) tokenInput.value = "";
-        if (hideTokenInputPanel) hideTokenInputPanel.value = "";
+        if (hideOnPublishEnabled) hideOnPublishEnabled.checked = false;
         autoScheduleEnabledPanel.checked = false;
         scheduleMinutesPanel.value = "00, 15, 30, 45";
         if (workingHoursStart) workingHoursStart.value = 6;
@@ -812,9 +659,6 @@ async function loadSettingsPanel() {
         imageSourceSelectPanel.value = "ai";
         ogBackgroundUrlPanel.value = "";
         ogFontSelectPanel.value = "noto-sans-thai";
-        if (afterPublishActionSelectPanel) {
-            afterPublishActionSelectPanel.value = "stay";
-        }
         setPageTokenAutoStatus("เลือกเพจหลักก่อน แล้วค่อยจัดการ token และการตั้งค่า", "muted");
         return;
     }
@@ -831,6 +675,7 @@ async function loadSettingsPanel() {
 
             // Apply ALL settings to form
             autoScheduleEnabledPanel.checked = s.auto_schedule || false;
+            if (hideOnPublishEnabled) hideOnPublishEnabled.checked = !!s.hide_on_publish;
             scheduleMinutesPanel.value = s.schedule_minutes || "00, 15, 30, 45";
             if (workingHoursStart) workingHoursStart.value = s.working_hours_start ?? 6;
             if (workingHoursEnd) workingHoursEnd.value = s.working_hours_end ?? 24;
@@ -851,15 +696,11 @@ async function loadSettingsPanel() {
                 );
             }
 
-            // Load hide token into input
-            if (hideTokenInputPanel) {
-                hideTokenInputPanel.value = s.hide_token || "";
-            }
-
             // Update cache
             cachedPageSettings = {
                 pageId,
                 autoSchedule: s.auto_schedule,
+                hideOnPublish: s.hide_on_publish,
                 scheduleMinutes: s.schedule_minutes,
                 postToken: s.post_token,
                 workingHoursStart: s.working_hours_start,
@@ -879,6 +720,7 @@ async function loadSettingsPanel() {
         } else {
             // No settings yet, use defaults
             autoScheduleEnabledPanel.checked = false;
+            if (hideOnPublishEnabled) hideOnPublishEnabled.checked = false;
             scheduleMinutesPanel.value = "00, 15, 30, 45";
             if (workingHoursStart) workingHoursStart.value = 6;
             if (workingHoursEnd) workingHoursEnd.value = 24;
@@ -892,12 +734,6 @@ async function loadSettingsPanel() {
         }
     } catch (err) {
         console.error("[LOAD] Failed to load settings:", err);
-    }
-
-    if (afterPublishActionSelectPanel) {
-        const savedAction = localStorage.getItem(getAfterPublishActionStorageKeyForSettings(pageId));
-        const fallbackAction = localStorage.getItem(AFTER_PUBLISH_ACTION_STORAGE_PREFIX);
-        afterPublishActionSelectPanel.value = normalizeAfterPublishActionSetting(savedAction || fallbackAction || "stay");
     }
 
     if (!pageTokenInputPanel?.value?.trim()) {
@@ -972,9 +808,6 @@ async function loadSettingsPanel() {
     // Load Auto-Post Alternating config
     await loadAutoPostConfig();
 
-    // Load Auto-Hide config
-    await loadAutoHideConfig();
-
     if (typeof renderTextComposerUi === "function") {
         renderTextComposerUi();
     }
@@ -1018,12 +851,6 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
         return;
     }
 
-    const afterPublishAction = normalizeAfterPublishActionSetting(
-        afterPublishActionSelectPanel?.value || "stay",
-    );
-    localStorage.setItem(getAfterPublishActionStorageKeyForSettings(pageId), afterPublishAction);
-    localStorage.setItem(AFTER_PUBLISH_ACTION_STORAGE_PREFIX, afterPublishAction);
-
     // Show loading state with spinner
     const originalText = saveSettingsPanelBtn.textContent;
     saveSettingsPanelBtn.innerHTML = '<span class="spinner"></span>กำลังบันทึก...';
@@ -1057,22 +884,20 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
     const ogBgUrl = ogBackgroundUrlPanel.value || "";
     const ogFont = ogFontSelectPanel.value || "noto-sans-thai";
 
-    // Get auto-post mode config
-    const colorBgEnabled = document.getElementById("colorBgEnabled");
-    const postModeButtons = document.querySelectorAll('.post-mode-btn.active');
-    const currentPostMode = postModeButtons[0]?.dataset?.mode || 'image';
-    const sharePageSelect = document.getElementById("sharePageSelect");
-    const shareEnabled = document.getElementById("shareEnabled");
-    const pageColorPicker = document.getElementById("pageColorPicker");
+    // Legacy recurring auto-post controls are retired.
+    const recurringPostMode = recurringAutoPostEnabled
+        ? (document.querySelectorAll('.post-mode-btn.active')[0]?.dataset?.mode || 'image')
+        : null;
+    const colorBgEnabled = recurringAutoPostEnabled ? document.getElementById("colorBgEnabled") : null;
+    const sharePageSelect = recurringAutoPostEnabled ? document.getElementById("sharePageSelect") : null;
+    const shareEnabled = recurringAutoPostEnabled ? document.getElementById("shareEnabled") : null;
+    const pageColorPicker = recurringAutoPostEnabled ? document.getElementById("pageColorPicker") : null;
 
     // Build ONE complete request with ALL settings including token
-    // Get hide token (separate from post token)
-    const hideToken = hideTokenInputPanel ? hideTokenInputPanel.value.trim() : "";
-
     const requestBody = {
         pageId,
         postToken: durablePostToken,
-        hideToken,  // Separate token for auto-hide (optional)
+        hideOnPublish: !!hideOnPublishEnabled?.checked,
         autoSchedule,
         scheduleMinutes: mins,
         workingHoursStart: workingStart,
@@ -1088,14 +913,16 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
         imageSource,
         ogBackgroundUrl: ogBgUrl,
         ogFont,
-        // Include auto-post config in same request
-        postMode: currentPostMode,
-        colorBg: colorBgEnabled?.checked || false,
-        sharePageId: (shareEnabled?.checked && sharePageSelect?.value) ? sharePageSelect.value : null,
-        colorBgPresets: currentPresets.join(','),
-        shareMode: getShareMode(),
-        pageColor: pageColorPicker?.value || '#1a1a1a'
     };
+
+    if (recurringAutoPostEnabled) {
+        requestBody.postMode = recurringPostMode;
+        requestBody.colorBg = colorBgEnabled?.checked || false;
+        requestBody.sharePageId = (shareEnabled?.checked && sharePageSelect?.value) ? sharePageSelect.value : null;
+        requestBody.colorBgPresets = currentPresets.join(',');
+        requestBody.shareMode = getShareMode();
+        requestBody.pageColor = pageColorPicker?.value || '#1a1a1a';
+    }
 
     // Only send pageName if it's a real name (not ID or empty)
     const pageNameElement = document.querySelector('.page-selector-name');
@@ -1105,7 +932,7 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
     }
 
     // Get share schedule minutes
-    const shareScheduleGrid = document.getElementById("shareScheduleMinutesGrid");
+    const shareScheduleGrid = recurringAutoPostEnabled ? document.getElementById("shareScheduleMinutesGrid") : null;
     if (shareScheduleGrid) {
         const selected = Array.from(shareScheduleGrid.querySelectorAll('input:checked')).map(cb => cb.value);
         requestBody.shareScheduleMinutes = selected.join(', ');
@@ -1140,14 +967,12 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
             });
         }
 
-        // Save Auto-Hide config (uses different table)
-        await saveAutoHideConfig();
-
         if (data.success) {
             cachedPageSettings = {
                 ...cachedPageSettings,
                 pageId,
                 autoSchedule,
+                hideOnPublish: !!hideOnPublishEnabled?.checked,
                 scheduleMinutes: mins,
                 postToken: durablePostToken,
                 workingHoursStart: workingStart,
@@ -1166,7 +991,7 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
             }
 
             // Update UI mode
-            if (currentPostMode) setAutoPostMode(currentPostMode);
+            if (recurringAutoPostEnabled && recurringPostMode) setAutoPostMode(recurringPostMode);
             if (typeof renderTextComposerUi === "function") {
                 renderTextComposerUi();
             }

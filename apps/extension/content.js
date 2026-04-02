@@ -4,6 +4,35 @@
 
 console.log("[Pubilo Content] Script loaded on", window.location.href);
 globalThis.__PUBILO_CONTENT_SCRIPT_ACTIVE__ = true;
+const PAGE_CACHE_USER_ID_STORAGE_KEY = "fewfeed_pageCacheUserId";
+const PAGE_SUMMARY_STORAGE_KEY = "fewfeed_pageSummaryMap";
+const PAGE_RELATED_STORAGE_KEYS = [
+  "fewfeed_pageTokenMap",
+  PAGE_SUMMARY_STORAGE_KEY,
+  "fewfeed_selectedPageId",
+  "fewfeed_selectedPageName",
+  "fewfeed_selectedPagePicture",
+  "fewfeed_selectedPageToken",
+  "fewfeed_targetPageIds",
+  PAGE_CACHE_USER_ID_STORAGE_KEY,
+];
+
+function normalizeUserId(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function hasAccountChanged(previousUserId, nextUserId) {
+  const previous = normalizeUserId(previousUserId);
+  const next = normalizeUserId(nextUserId);
+  return !!previous && !!next && previous !== next;
+}
+
+function clearPageScopedLocalCache(reason = "") {
+  PAGE_RELATED_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+  if (reason) {
+    console.warn("[Pubilo Content] Cleared page-scoped cache:", reason);
+  }
+}
 
 async function safeSendMessage(msg, retries = 3) {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -81,6 +110,8 @@ async function initializeTokens() {
       }
     }
 
+    const accountChanged = hasAccountChanged(existingUserId, finalUserId);
+
     console.log("[Pubilo Content] Data:", {
       hasAdsToken: !!finalToken,
       hasFbDtsg: !!finalFbDtsg,
@@ -89,6 +120,10 @@ async function initializeTokens() {
       fromFetch: !!(data?.fewfeed_accessToken || data?.accessToken),
       fromStorage: !!existingToken
     });
+
+    if (accountChanged) {
+      clearPageScopedLocalCache(`facebook account switched ${existingUserId} -> ${finalUserId}`);
+    }
 
     // Always overwrite localStorage — clear stale tokens when extension returns empty.
     localStorage.setItem("fewfeed_accessToken", finalToken);
@@ -120,6 +155,15 @@ async function initializeTokens() {
         }
         if (Object.keys(simpleMap).length > 0) {
           localStorage.setItem("fewfeed_pageTokenMap", JSON.stringify(simpleMap));
+          const summaryMap = {};
+          for (const [pageId, entry] of Object.entries(pageTokenMap)) {
+            summaryMap[pageId] = {
+              name: typeof entry === "object" ? entry?.name || "" : "",
+              picture: typeof entry === "object" ? entry?.picture || "" : "",
+            };
+          }
+          localStorage.setItem(PAGE_SUMMARY_STORAGE_KEY, JSON.stringify(summaryMap));
+          localStorage.setItem(PAGE_CACHE_USER_ID_STORAGE_KEY, normalizeUserId(finalUserId));
           const firstPageId = Object.keys(simpleMap)[0];
           if (!localStorage.getItem("fewfeed_selectedPageToken")) {
             localStorage.setItem("fewfeed_selectedPageToken", simpleMap[firstPageId]);
@@ -303,6 +347,22 @@ function setAutoTokenStatus(message, tone = "muted") {
 }
 
 async function fetchPageTokenFromExtension(pageId) {
+  const currentUserId = normalizeUserId(localStorage.getItem("fewfeed_userId"));
+  const ownerUserId = normalizeUserId(localStorage.getItem(PAGE_CACHE_USER_ID_STORAGE_KEY));
+  if (!ownerUserId || !currentUserId || ownerUserId === currentUserId) {
+    try {
+      const rawMap = JSON.parse(localStorage.getItem("fewfeed_pageTokenMap") || "{}");
+      const cachedToken = typeof rawMap?.[String(pageId)] === "string"
+        ? rawMap[String(pageId)].trim()
+        : "";
+      if (cachedToken) {
+        return cachedToken;
+      }
+    } catch (_) {
+      // Ignore malformed cache and continue to extension fetch.
+    }
+  }
+
   const accessToken = localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
   const cookie = localStorage.getItem("fewfeed_cookie");
 
@@ -566,6 +626,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log("[Pubilo Content] Token updated notification received!");
     // Re-initialize to get the new tokens
     initializeTokens();
+    window.postMessage({
+      type: "FEWFEED_EXTENSION_SESSION_REFRESHED",
+      reason: request.reason || "token_updated"
+    }, "*");
     sendResponse({ success: true });
     return true;
   }

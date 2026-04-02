@@ -269,6 +269,7 @@ async function migratePageSettings(env: Env) {
                 comment_token_encrypted TEXT,
                 auto_schedule INTEGER NOT NULL DEFAULT 0,
                 auto_hide INTEGER NOT NULL DEFAULT 0,
+                hide_on_publish INTEGER NOT NULL DEFAULT 0,
                 schedule_minutes TEXT DEFAULT '00,15,30,45',
                 working_hours_start INTEGER DEFAULT 6,
                 working_hours_end INTEGER DEFAULT 24,
@@ -312,6 +313,7 @@ async function migratePageSettings(env: Env) {
                 comment_token_encrypted TEXT,
                 auto_schedule INTEGER NOT NULL DEFAULT 0,
                 auto_hide INTEGER NOT NULL DEFAULT 0,
+                hide_on_publish INTEGER NOT NULL DEFAULT 0,
                 schedule_minutes TEXT DEFAULT '00,15,30,45',
                 working_hours_start INTEGER DEFAULT 6,
                 working_hours_end INTEGER DEFAULT 24,
@@ -344,12 +346,13 @@ async function migratePageSettings(env: Env) {
         const legacyHasPostToken = await columnExists(env, 'page_settings_legacy', 'post_token');
         const legacyHasHideToken = await columnExists(env, 'page_settings_legacy', 'hide_token');
         const legacyHasCommentToken = await columnExists(env, 'page_settings_legacy', 'comment_token');
+        const legacyHasHideOnPublish = await columnExists(env, 'page_settings_legacy', 'hide_on_publish');
 
         await env.DB.prepare(`
             INSERT INTO page_settings (
                 organization_id, page_id, page_name, page_color, picture_url,
                 post_token_encrypted, hide_token_encrypted, comment_token_encrypted,
-                auto_schedule, auto_hide, schedule_minutes, working_hours_start, working_hours_end,
+                auto_schedule, auto_hide, hide_on_publish, schedule_minutes, working_hours_start, working_hours_end,
                 post_mode, last_post_type, color_bg, color_bg_presets, color_bg_index,
                 share_page_id, share_mode, share_schedule_minutes, image_source,
                 og_background_url, og_font, ai_model, ai_resolution, link_image_size,
@@ -361,7 +364,7 @@ async function migratePageSettings(env: Env) {
                 ${legacyHasPostToken ? 'post_token' : 'NULL'},
                 ${legacyHasHideToken ? 'hide_token' : 'NULL'},
                 ${legacyHasCommentToken ? 'comment_token' : 'NULL'},
-                COALESCE(auto_schedule, 0), COALESCE(auto_hide, 0), schedule_minutes,
+                COALESCE(auto_schedule, 0), COALESCE(auto_hide, 0), ${legacyHasHideOnPublish ? 'COALESCE(hide_on_publish, 0)' : '0'}, schedule_minutes,
                 working_hours_start, working_hours_end, post_mode, last_post_type,
                 COALESCE(color_bg, 0), color_bg_presets, COALESCE(color_bg_index, 0),
                 share_page_id, COALESCE(share_mode, 'both'), share_schedule_minutes,

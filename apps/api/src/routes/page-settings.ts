@@ -19,6 +19,7 @@ app.get('/', async (c) => {
         const defaultSettings = {
             page_id: pageId,
             auto_schedule: 0,
+            hide_on_publish: 0,
             schedule_minutes: '00, 15, 30, 45',
             ai_model: 'gemini-2.0-flash-exp',
             ai_resolution: '2K',
@@ -62,6 +63,7 @@ app.post('/', async (c) => {
         };
 
         if (body.autoSchedule !== undefined) fields.auto_schedule = body.autoSchedule ? 1 : 0;
+        if (body.hideOnPublish !== undefined) fields.hide_on_publish = body.hideOnPublish ? 1 : 0;
         if (body.scheduleMinutes !== undefined) fields.schedule_minutes = body.scheduleMinutes;
         if (body.workingHoursStart !== undefined) fields.working_hours_start = body.workingHoursStart;
         if (body.workingHoursEnd !== undefined) fields.working_hours_end = body.workingHoursEnd;
@@ -90,6 +92,12 @@ app.post('/', async (c) => {
         if (body.newsImageSize !== undefined) fields.news_image_size = body.newsImageSize;
         if (body.newsVariationCount !== undefined) fields.news_variation_count = body.newsVariationCount;
         if (body.hideTypes !== undefined) fields.hide_types = body.hideTypes;
+
+        // Retire the legacy auto-hide worker flow whenever settings are saved through the new UI.
+        if (body.hideOnPublish !== undefined) {
+            fields.auto_hide = 0;
+            fields.hide_types = null;
+        }
 
         const columns = Object.keys(fields);
         const placeholders = columns.map(() => '?').join(', ');

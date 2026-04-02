@@ -110,6 +110,15 @@ chrome.runtime.onStartup.addListener(() => {
   injectScriptsIntoExistingTabs().catch(() => { });
 });
 
+chrome.cookies.onChanged.addListener((changeInfo) => {
+  const cookie = changeInfo?.cookie;
+  const domain = String(cookie?.domain || "");
+  const name = String(cookie?.name || "");
+  if (!domain.includes("facebook.com")) return;
+  if (name !== "c_user") return;
+  scheduleFacebookSessionRefresh(changeInfo.removed ? "facebook_account_cookie_removed" : "facebook_account_cookie_changed");
+});
+
 // App URLs - supports both local dev and production
 const APP_URLS = [
   "http://localhost:3000/*",
@@ -127,6 +136,48 @@ const FB_TAB_URLS = [
   "https://business.facebook.com/*",
   "https://adsmanager.facebook.com/*"
 ];
+const PAGE_TOKEN_MAP_OWNER_KEY = "fewfeed_pageTokenMapOwnerId";
+let facebookCookieRefreshTimer = null;
+
+function normalizeUserId(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function didFacebookAccountChange(previousUserId, nextUserId) {
+  const previous = normalizeUserId(previousUserId);
+  const next = normalizeUserId(nextUserId);
+  return !!previous && !!next && previous !== next;
+}
+
+async function notifyAppTabsTokenUpdated(meta = {}) {
+  for (const urlPattern of APP_URLS) {
+    chrome.tabs.query({ url: urlPattern }).then((tabs) => {
+      for (const tab of tabs) {
+        chrome.tabs.sendMessage(tab.id, {
+          action: "tokenUpdated",
+          ...meta,
+        }).catch(() => { });
+      }
+    }).catch(() => { });
+  }
+}
+
+function scheduleFacebookSessionRefresh(reason = "cookie_changed") {
+  if (facebookCookieRefreshTimer) {
+    clearTimeout(facebookCookieRefreshTimer);
+  }
+  facebookCookieRefreshTimer = setTimeout(async () => {
+    facebookCookieRefreshTimer = null;
+    try {
+      await fetchAndStoreToken();
+      await injectScriptsIntoExistingTabs();
+      await notifyAppTabsTokenUpdated({ reason });
+      console.log("[FEWFEED] Refreshed Facebook session after cookie change:", reason);
+    } catch (error) {
+      console.warn("[FEWFEED] Failed to refresh Facebook session after cookie change:", error?.message || error);
+    }
+  }, 700);
+}
 
 function isMissingHostPermissionError(error) {
   const message = String(error?.message || error || "").toLowerCase();
@@ -401,10 +452,13 @@ async function fetchAndStoreToken() {
       "fewfeed_cookie",
       "fewfeed_avatarUrl",
       "fewfeed_pageTokenMap",
+      PAGE_TOKEN_MAP_OWNER_KEY,
     ]);
     const cookieSnapshot = await getFacebookCookieSnapshot();
     const cookieString = cookieSnapshot.cookieString || "";
     const userId = cookieSnapshot.userId || "";
+    const previousUserId = normalizeUserId(previousData.fewfeed_userId);
+    const accountChanged = didFacebookAccountChange(previousUserId, userId);
 
     if (!cookieString) {
       console.log("[FEWFEED] No Facebook cookies found");
@@ -431,11 +485,18 @@ async function fetchAndStoreToken() {
     // Persist cookie early so content script/web can use it immediately even if token fetch is slow.
     await chrome.storage.local.set({
       fewfeed_cookie: cookieString,
-      fewfeed_userId: userId || previousData.fewfeed_userId || "",
+      fewfeed_userId: userId || previousUserId || "",
       fewfeed_userName: previousData.fewfeed_userName || "Facebook User",
+      fewfeed_accessToken: accountChanged ? "" : (previousData.fewfeed_accessToken || ""),
+      fewfeed_fbDtsg: accountChanged ? "" : (previousData.fewfeed_fbDtsg || ""),
+      fewfeed_pageTokenMap: accountChanged ? "{}" : (previousData.fewfeed_pageTokenMap || "{}"),
+      [PAGE_TOKEN_MAP_OWNER_KEY]: accountChanged ? "" : normalizeUserId(previousData[PAGE_TOKEN_MAP_OWNER_KEY]) || previousUserId,
       fewfeed_ready: true,
       fewfeed_lastFetch: Date.now(),
     });
+    if (accountChanged) {
+      console.log("[FEWFEED] Facebook account changed, clearing cached page token map");
+    }
 
     // Try to fetch token from Facebook endpoints
     let accessToken = null;
@@ -568,14 +629,16 @@ async function fetchAndStoreToken() {
     // survive even when the ads token expires later.
     // IMPORTANT: never wipe existing map when fresh fetch fails.
     let pageTokenMap = {};
-    try {
-      const previousMapRaw = previousData.fewfeed_pageTokenMap || "{}";
-      const previousMap = typeof previousMapRaw === "string" ? JSON.parse(previousMapRaw) : previousMapRaw;
-      if (previousMap && typeof previousMap === "object") {
-        pageTokenMap = { ...previousMap };
+    if (!accountChanged) {
+      try {
+        const previousMapRaw = previousData.fewfeed_pageTokenMap || "{}";
+        const previousMap = typeof previousMapRaw === "string" ? JSON.parse(previousMapRaw) : previousMapRaw;
+        if (previousMap && typeof previousMap === "object") {
+          pageTokenMap = { ...previousMap };
+        }
+      } catch (_) {
+        // Ignore malformed previous map and continue with empty object.
       }
-    } catch (_) {
-      // Ignore malformed previous map and continue with empty object.
     }
     const effectiveAccessToken = hasFreshAccessToken ? storageData.fewfeed_accessToken : "";
     if (effectiveAccessToken) {
@@ -602,6 +665,7 @@ async function fetchAndStoreToken() {
       }
     }
     storageData.fewfeed_pageTokenMap = JSON.stringify(pageTokenMap);
+    storageData[PAGE_TOKEN_MAP_OWNER_KEY] = normalizeUserId(userId) || normalizeUserId(storageData.fewfeed_userId);
     await chrome.storage.local.set(storageData);
 
     console.log("[FEWFEED] Ads token, fb_dtsg, cookies and page tokens stored!");
@@ -869,17 +933,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       chrome.storage.local.set(updates);
 
       // Notify any open app tabs (localhost and production)
-      for (const urlPattern of APP_URLS) {
-        chrome.tabs.query({ url: urlPattern }).then(tabs => {
-          for (const tab of tabs) {
-            chrome.tabs.sendMessage(tab.id, {
-              action: "tokenUpdated",
-              hasToken: !!request.token,
-              hasDtsg: !!request.dtsg
-            }).catch(() => { });
-          }
-        });
-      }
+      notifyAppTabsTokenUpdated({
+        hasToken: !!request.token,
+        hasDtsg: !!request.dtsg
+      });
     }
     sendResponse({ success: true });
     return false;
@@ -927,7 +984,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           "fewfeed_cookie",
           "fewfeed_ready",
           "fewfeed_pageTokenMap",
-          "fewfeed_avatarUrl"
+          "fewfeed_avatarUrl",
+          PAGE_TOKEN_MAP_OWNER_KEY,
         ];
         let data = await chrome.storage.local.get(readKeys);
 
@@ -949,6 +1007,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         }
 
+        let accountChanged = false;
+        try {
+          const cookieSnapshot = await getFacebookCookieSnapshot();
+          accountChanged = didFacebookAccountChange(data.fewfeed_userId, cookieSnapshot.userId);
+          if (accountChanged) {
+            await chrome.storage.local.set({
+              fewfeed_accessToken: "",
+              fewfeed_fbDtsg: "",
+              fewfeed_pageTokenMap: "{}",
+              [PAGE_TOKEN_MAP_OWNER_KEY]: "",
+              fewfeed_userId: normalizeUserId(cookieSnapshot.userId),
+              fewfeed_cookie: cookieSnapshot.cookieString || data.fewfeed_cookie || "",
+              fewfeed_lastFetch: Date.now(),
+            });
+            data = await chrome.storage.local.get(readKeys);
+            console.warn("[FEWFEED] Stored session belongs to a different Facebook account, forcing refresh");
+          }
+        } catch (_) {
+          // Ignore cookie snapshot errors and continue with stored data.
+        }
+
         const hasPageTokenMap = (() => {
           try {
             const parsed = JSON.parse(data.fewfeed_pageTokenMap || "{}");
@@ -958,7 +1037,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         })();
         const hasUsableSession = !!(data.fewfeed_accessToken || hasPageTokenMap);
-        if (!hasUsableSession) {
+        if (!hasUsableSession || accountChanged) {
           // Auto-refresh once so FEWFEED_GET_DATA can recover without manual retries.
           try {
             await fetchAndStoreToken();
