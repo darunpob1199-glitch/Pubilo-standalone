@@ -119,6 +119,30 @@ if (billingNavBtn) {
 }
 
 // showBillingPanel function
+function showSettingsPanel() {
+    document.querySelectorAll(".mode-container").forEach((c) => {
+        c.classList.remove("active");
+        c.style.display = "none";
+    });
+    pendingPanel.style.display = "none";
+    publishedPanel.style.display = "none";
+    if (typeof quotesPanel !== "undefined" && quotesPanel) quotesPanel.style.display = "none";
+    if (typeof earningsPanel !== "undefined" && earningsPanel) earningsPanel.style.display = "none";
+    const bp = document.getElementById("billingPanel");
+    if (bp) bp.style.display = "none";
+    const tp = document.getElementById("textPanel");
+    if (tp) tp.style.display = "none";
+    const textModePanel = document.getElementById("textModePanel");
+    if (textModePanel) textModePanel.style.display = "none";
+    settingsPanel.style.display = "flex";
+    appLayout.classList.add("pending-mode");
+    document.body.style.overflow = "";
+    if (typeof loadSettingsPanel === "function") {
+        loadSettingsPanel();
+    }
+}
+
+// showBillingPanel function
 function showBillingPanel() {
     document.querySelectorAll(".mode-container").forEach((c) => {
         c.classList.remove("active");
