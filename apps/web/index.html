@@ -1920,47 +1920,85 @@
 
                     <!-- Plan Selection Cards -->
                     <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1rem;">เลือกแพ็กเกจ</h3>
-                    <div id="billingPlanCards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                    <div id="billingPlanCards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-bottom: 2rem; align-items: stretch; justify-content: center;">
                         <!-- Monthly -->
-                        <div class="billing-plan-card" data-plan="monthly_500" style="border: 2px solid var(--border-color); border-radius: 12px; padding: 1.5rem; cursor: pointer; transition: all 0.2s ease; background: #fff;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                                <span style="font-weight: 700; font-size: 1.1rem; color: var(--text-main);">รายเดือน</span>
-                                <span style="background: #f2f4f7; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">MONTHLY</span>
+                        <div class="billing-plan-card" data-plan="monthly_500" style="background: #fff; border-radius: 20px; padding: 2.5rem 2.25rem; box-shadow: 0 10px 40px rgba(0,0,0,0.06); cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; position: relative; border: 1px solid transparent; display: flex; flex-direction: column;">
+                            <div style="font-size: 1.75rem; font-weight: 800; color: #1a1a1a; margin-bottom: 1rem; letter-spacing: -0.02em;">รายเดือน</div>
+                            
+                            <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 2rem;">
+                                <span style="font-size: 3.5rem; font-weight: 800; color: #1a1a1a; line-height: 1; letter-spacing: -0.03em;">฿500</span>
+                                <div style="display: flex; flex-direction: column; line-height: 1.2;">
+                                    <span style="color: #6b7280; font-size: 0.85rem; font-weight: 500;">/ บัญชี</span>
+                                    <span style="color: #6b7280; font-size: 0.85rem; font-weight: 500;">ต่อเดือน</span>
+                                </div>
                             </div>
-                            <div style="margin-bottom: 1rem;">
-                                <span style="font-size: 2rem; font-weight: 800; color: var(--text-main);">฿500</span>
-                                <span style="color: var(--text-muted); font-size: 0.9rem;"> / เดือน</span>
-                            </div>
-                            <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-muted); font-size: 0.9rem;">
-                                <li style="padding: 0.3rem 0;">✓ โพสต์ไม่จำกัด</li>
-                                <li style="padding: 0.3rem 0;">✓ ตั้งเวลาอัตโนมัติ</li>
-                                <li style="padding: 0.3rem 0;">✓ Auto Hide Posts</li>
-                                <li style="padding: 0.3rem 0;">✓ รองรับหลายเพจ</li>
+                            
+                            <div style="font-size: 0.95rem; font-weight: 600; color: #374151; margin-bottom: 1.5rem;">สิ่งที่ท่านจะได้รับ:</div>
+                            
+                            <ul style="list-style: none; padding: 0; margin: 0 0 2rem 0; color: #4b5563; font-size: 1rem; flex: 1;">
+                                <li style="display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1.25rem;">
+                                    <svg style="width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; margin-top: 3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    <span><strong style="color: #1a1a1a;">โพสต์</strong> ไม่จำกัด</span>
+                                </li>
+                                <li style="display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1.25rem;">
+                                    <svg style="width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; margin-top: 3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    <span><strong style="color: #1a1a1a;">ตั้งเวลา</strong> อัตโนมัติ</span>
+                                </li>
+                                <li style="display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1.25rem;">
+                                    <svg style="width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; margin-top: 3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    <span><strong style="color: #1a1a1a;">Auto Hide</strong> Posts</span>
+                                </li>
+                                <li style="display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 0;">
+                                    <svg style="width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; margin-top: 3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    <span>รองรับ <strong style="color: #1a1a1a;">หลายเพจ</strong></span>
+                                </li>
                             </ul>
-                            <button class="btn-save billing-select-plan-btn" data-plan="monthly_500" style="width: 100%; margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-weight: 600;">
+                            
+                            <button class="btn-save billing-select-plan-btn" data-plan="monthly_500" style="width: 100%; padding: 1rem; border-radius: 999px; font-weight: 600; font-size: 1.05rem; background: var(--primary); color: #fff; border: none; outline: none; margin-bottom: 1rem; cursor: pointer; transition: opacity 0.2s ease;">
                                 เลือกแพ็กเกจนี้
                             </button>
+                            
+                            <div style="text-align: center; color: #9ca3af; font-size: 0.8rem;">ยกเลิกได้ตลอดเวลา</div>
                         </div>
+
                         <!-- Yearly -->
-                        <div class="billing-plan-card" data-plan="yearly_4499" style="border: 2px solid var(--primary); border-radius: 12px; padding: 1.5rem; cursor: pointer; transition: all 0.2s ease; background: #fff; position: relative;">
-                            <div style="position: absolute; top: -12px; right: 16px; background: var(--primary); color: white; padding: 0.2rem 0.8rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700;">ประหยัด 25%</div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                                <span style="font-weight: 700; font-size: 1.1rem; color: var(--text-main);">รายปี</span>
-                                <span style="background: #f9f5ff; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: var(--primary);">YEARLY</span>
+                        <div class="billing-plan-card" data-plan="yearly_4499" style="background: #fff; border-radius: 20px; padding: 2.5rem 2.25rem; box-shadow: 0 10px 40px rgba(0,0,0,0.06); cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; position: relative; border: 1px solid transparent; display: flex; flex-direction: column;">
+                            <div style="font-size: 1.75rem; font-weight: 800; color: #1a1a1a; margin-bottom: 1rem; letter-spacing: -0.02em;">รายปี</div>
+                            
+                            <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 2rem;">
+                                <span style="font-size: 3.5rem; font-weight: 800; color: #1a1a1a; line-height: 1; letter-spacing: -0.03em;">฿4,499</span>
+                                <div style="display: flex; flex-direction: column; line-height: 1.2;">
+                                    <span style="color: #6b7280; font-size: 0.85rem; font-weight: 500;">/ บัญชี</span>
+                                    <span style="color: #6b7280; font-size: 0.85rem; font-weight: 500;">ต่อปี</span>
+                                </div>
                             </div>
-                            <div style="margin-bottom: 1rem;">
-                                <span style="font-size: 2rem; font-weight: 800; color: var(--text-main);">฿4,499</span>
-                                <span style="color: var(--text-muted); font-size: 0.9rem;"> / ปี</span>
-                            </div>
-                            <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-muted); font-size: 0.9rem;">
-                                <li style="padding: 0.3rem 0;">✓ ทุกอย่างใน Monthly</li>
-                                <li style="padding: 0.3rem 0;">✓ ประหยัด ฿1,501 ต่อปี</li>
-                                <li style="padding: 0.3rem 0;">✓ Priority Support</li>
-                                <li style="padding: 0.3rem 0;">✓ Early Access ฟีเจอร์ใหม่</li>
+                            
+                            <div style="font-size: 0.95rem; font-weight: 600; color: #374151; margin-bottom: 1.5rem;">สิ่งที่ท่านจะได้รับเหมือนรายเดือน และ:</div>
+                            
+                            <ul style="list-style: none; padding: 0; margin: 0 0 2rem 0; color: #4b5563; font-size: 1rem; flex: 1;">
+                                <li style="display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1.25rem;">
+                                    <svg style="width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; margin-top: 3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    <span><strong style="color: #1a1a1a;">ทุกอย่าง</strong> ใน Monthly</span>
+                                </li>
+                                <li style="display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1.25rem;">
+                                    <svg style="width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; margin-top: 3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    <span>ประหยัด <strong style="color: #1a1a1a;">฿1,501</strong> ต่อปี</span>
+                                </li>
+                                <li style="display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1.25rem;">
+                                    <svg style="width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; margin-top: 3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    <span><strong style="color: #1a1a1a;">Priority</strong> Support</span>
+                                </li>
+                                <li style="display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 0;">
+                                    <svg style="width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; margin-top: 3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    <span><strong style="color: #1a1a1a;">Early Access</strong> ฟีเจอร์ใหม่</span>
+                                </li>
                             </ul>
-                            <button class="btn-save billing-select-plan-btn" data-plan="yearly_4499" style="width: 100%; margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-weight: 600; background: var(--primary); color: #fff;">
+                            
+                            <button class="btn-save billing-select-plan-btn" data-plan="yearly_4499" style="width: 100%; padding: 1rem; border-radius: 999px; font-weight: 600; font-size: 1.05rem; background: var(--primary); color: #fff; border: none; outline: none; margin-bottom: 1rem; cursor: pointer; transition: opacity 0.2s ease;">
                                 เลือกแพ็กเกจนี้
                             </button>
+                            
+                            <div style="text-align: center; color: #9ca3af; font-size: 0.8rem;">คุ้มค่าที่สุด ประหยัด 25%</div>
                         </div>
                     </div>
 
