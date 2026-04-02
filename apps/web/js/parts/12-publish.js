@@ -1728,6 +1728,8 @@ let selectedPageIndex = 0;
 let selectedTargetPageIds = [];
 let targetPageSearchQuery = "";
 const TARGET_PAGE_STORAGE_KEY = "fewfeed_targetPageIds";
+const PAGE_CACHE_USER_ID_STORAGE_KEY = "fewfeed_pageCacheUserId";
+const PAGE_SUMMARY_STORAGE_KEY = "fewfeed_pageSummaryMap";
 const PRIMARY_PAGE_PLACEHOLDER_NAME = "เลือกเพจหลัก";
 const PRIMARY_PAGE_PLACEHOLDER_ID = "ยังไม่ได้เลือก";
 
@@ -1741,6 +1743,74 @@ const multiPageSearchInput = document.getElementById("multiPageSearchInput");
 const multiPageSelectedStrip = document.getElementById("multiPageSelectedStrip");
 const multiPageList = document.getElementById("multiPageList");
 
+function normalizeUserId(value) {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function hasAccountChanged(previousUserId, nextUserId) {
+    const previous = normalizeUserId(previousUserId);
+    const next = normalizeUserId(nextUserId);
+    return !!previous && !!next && previous !== next;
+}
+
+function setPageCacheOwner(userId) {
+    const normalized = normalizeUserId(userId);
+    if (normalized) {
+        localStorage.setItem(PAGE_CACHE_USER_ID_STORAGE_KEY, normalized);
+    } else {
+        localStorage.removeItem(PAGE_CACHE_USER_ID_STORAGE_KEY);
+    }
+}
+
+function getPageCacheOwner() {
+    return normalizeUserId(localStorage.getItem(PAGE_CACHE_USER_ID_STORAGE_KEY));
+}
+
+function isPageCacheScopedToCurrentUser() {
+    const ownerUserId = getPageCacheOwner();
+    const currentUserId = normalizeUserId(localStorage.getItem("fewfeed_userId"));
+    if (!ownerUserId || !currentUserId) {
+        return !ownerUserId && !currentUserId;
+    }
+    return ownerUserId === currentUserId;
+}
+
+function getScopedPageTokenMap() {
+    if (!isPageCacheScopedToCurrentUser()) {
+        return {};
+    }
+    try {
+        const parsed = JSON.parse(localStorage.getItem("fewfeed_pageTokenMap") || "{}");
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function getScopedPageSummaryMap() {
+    if (!isPageCacheScopedToCurrentUser()) {
+        return {};
+    }
+    try {
+        const parsed = JSON.parse(localStorage.getItem(PAGE_SUMMARY_STORAGE_KEY) || "{}");
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function buildPagesFromScopedCache() {
+    const tokenMap = getScopedPageTokenMap();
+    const summaryMap = getScopedPageSummaryMap();
+    return Object.entries(tokenMap).map(([pageId, token]) => ({
+        id: pageId,
+        name: summaryMap?.[pageId]?.name || `Page ${pageId}`,
+        picture: { data: { url: summaryMap?.[pageId]?.picture || `https://graph.facebook.com/${pageId}/picture?type=small` } },
+        color: "#f59e0b",
+        access_token: typeof token === "string" ? token : "",
+    }));
+}
+
 function getPageAvatarUrl(page) {
     return (
         page.picture?.data?.url ||
@@ -1749,6 +1819,13 @@ function getPageAvatarUrl(page) {
 }
 
 function loadStoredTargetPageIds() {
+    const ownerUserId = normalizeUserId(localStorage.getItem(PAGE_CACHE_USER_ID_STORAGE_KEY));
+    const currentUserId = normalizeUserId(localStorage.getItem("fewfeed_userId"));
+    if (ownerUserId && currentUserId && ownerUserId !== currentUserId) {
+        localStorage.removeItem(TARGET_PAGE_STORAGE_KEY);
+        return [];
+    }
+
     try {
         const parsed = JSON.parse(
             localStorage.getItem(TARGET_PAGE_STORAGE_KEY) || "[]",
@@ -1766,6 +1843,42 @@ function persistTargetPageIds() {
         TARGET_PAGE_STORAGE_KEY,
         JSON.stringify(selectedTargetPageIds),
     );
+}
+
+function clearPageScopedLocalState(reason = "") {
+    [
+        "fewfeed_pageTokenMap",
+        PAGE_SUMMARY_STORAGE_KEY,
+        "fewfeed_selectedPageId",
+        "fewfeed_selectedPageName",
+        "fewfeed_selectedPagePicture",
+        "fewfeed_selectedPageToken",
+        "fewfeed_selectedAdAccountId",
+        TARGET_PAGE_STORAGE_KEY,
+        PAGE_CACHE_USER_ID_STORAGE_KEY,
+    ].forEach((key) => localStorage.removeItem(key));
+
+    selectedTargetPageIds = [];
+    targetPageSearchQuery = "";
+    allPages = [];
+    fbPostToken = null;
+
+    const pageTokenInput = document.getElementById("pageTokenInputPanel");
+    if (pageTokenInput) {
+        pageTokenInput.value = "";
+    }
+    const adAccountInput = document.getElementById("adAccountSelect");
+    if (adAccountInput) {
+        adAccountInput.value = "";
+    }
+    if (multiPageSearchInput) {
+        multiPageSearchInput.value = "";
+    }
+
+    renderPagesDropdown([]);
+    if (reason) {
+        console.warn("[FEWFEED] Cleared page-scoped cache:", reason);
+    }
 }
 
 function getCurrentSelectedPageId() {
@@ -1887,6 +2000,7 @@ function clearPrimaryPageSelection() {
 
     localStorage.removeItem("fewfeed_selectedPageId");
     localStorage.removeItem("fewfeed_selectedPageName");
+    localStorage.removeItem("fewfeed_selectedPagePicture");
     localStorage.removeItem("fewfeed_selectedPageToken");
     document.getElementById("pageSelect").value = "";
     selectedPageIndex = -1;
@@ -2255,6 +2369,7 @@ function selectPage(index) {
     console.log("[FEWFEED] Selected page:", page.name, "id:", page.id);
 
     // Save selected page ID and name to localStorage for persistence across refreshes
+    setPageCacheOwner(localStorage.getItem("fewfeed_userId") || "");
     localStorage.setItem("fewfeed_selectedPageId", page.id);
     localStorage.setItem("fewfeed_selectedPageName", page.name || "Page");
     const selectedPageToken = typeof page.access_token === "string" ? page.access_token.trim() : "";
@@ -2357,6 +2472,12 @@ function selectPage(index) {
 }
 
 function hydratePageFromLocalStorageFallback() {
+    const ownerUserId = normalizeUserId(localStorage.getItem(PAGE_CACHE_USER_ID_STORAGE_KEY));
+    const currentUserId = normalizeUserId(localStorage.getItem("fewfeed_userId"));
+    if (ownerUserId && currentUserId && ownerUserId !== currentUserId) {
+        return false;
+    }
+
     const savedPageId = localStorage.getItem("fewfeed_selectedPageId") || "";
     if (!savedPageId) return false;
 
@@ -2534,7 +2655,15 @@ async function fetchAdAccounts(accessToken) {
 }
 
 async function getFreshPageTokenFromExtension(pageId, accessToken) {
-    if (!pageId || !accessToken) return "";
+    if (!pageId) return "";
+
+    const cachedToken = typeof getScopedPageTokenMap()?.[String(pageId)] === "string"
+        ? getScopedPageTokenMap()[String(pageId)].trim()
+        : "";
+    if (cachedToken) {
+        return cachedToken;
+    }
+    if (!accessToken) return "";
 
     try {
         const pages = await requestPagesFromExtension(accessToken);
@@ -2553,6 +2682,13 @@ async function getFreshPageTokenFromExtension(pageId, accessToken) {
 
         tokenMap[String(pageId)] = nextToken;
         localStorage.setItem("fewfeed_pageTokenMap", JSON.stringify(tokenMap));
+        setPageCacheOwner(localStorage.getItem("fewfeed_userId") || "");
+        const summaryMap = getScopedPageSummaryMap();
+        summaryMap[String(pageId)] = {
+            name: matchedPage?.name || summaryMap[String(pageId)]?.name || "",
+            picture: matchedPage?.picture?.data?.url || summaryMap[String(pageId)]?.picture || "",
+        };
+        localStorage.setItem(PAGE_SUMMARY_STORAGE_KEY, JSON.stringify(summaryMap));
         localStorage.setItem("fewfeed_selectedPageToken", nextToken);
 
         const tokenInput = document.getElementById("pageTokenInputPanel");
@@ -2868,6 +3004,7 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
         return false;
     }
 
+    const previousUserId = localStorage.getItem("fewfeed_userId") || "";
     const previousAdsToken =
         localStorage.getItem("fewfeed_accessToken") ||
         localStorage.getItem("fewfeed_token") ||
@@ -2877,8 +3014,13 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
         localStorage.getItem("fewfeed_postToken") ||
         fbPostToken ||
         "";
+    const accountChanged = hasAccountChanged(previousUserId, session.userId);
 
     persistWorkspaceFacebookSessionSnapshot(session);
+
+    if (accountChanged) {
+        clearPageScopedLocalState(`facebook account switched ${previousUserId} -> ${session.userId}`);
+    }
 
     // Always overwrite — clear stale tokens so code-190 loops stop.
     localStorage.setItem("fewfeed_accessToken", session.adsToken || "");
@@ -2911,17 +3053,31 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
             const raw = typeof session.pageTokenMap === "string" ? JSON.parse(session.pageTokenMap) : session.pageTokenMap;
             if (raw && typeof raw === "object" && Object.keys(raw).length > 0) {
                 const simpleMap = {};
+                const summaryMap = {};
                 for (const [pid, entry] of Object.entries(raw)) {
                     const tok = typeof entry === "string" ? entry : entry?.token;
                     if (tok) simpleMap[pid] = tok;
+                    summaryMap[pid] = {
+                        name: typeof entry === "object" ? entry?.name || "" : "",
+                        picture: typeof entry === "object" ? entry?.picture || "" : "",
+                    };
                 }
                 if (Object.keys(simpleMap).length > 0) {
                     localStorage.setItem("fewfeed_pageTokenMap", JSON.stringify(simpleMap));
+                    localStorage.setItem(PAGE_SUMMARY_STORAGE_KEY, JSON.stringify(summaryMap));
+                    setPageCacheOwner(session.userId || localStorage.getItem("fewfeed_userId") || "");
                     const currentPageId = typeof getCurrentPageId === "function" ? getCurrentPageId() : "";
                     if (currentPageId && simpleMap[currentPageId]) {
                         localStorage.setItem("fewfeed_selectedPageToken", simpleMap[currentPageId]);
                     }
                     console.log("[FEWFEED] Page token map updated from extension:", Object.keys(simpleMap).length, "pages");
+
+                    if (allPages.length === 0 || accountChanged) {
+                        const cachedPages = buildPagesFromScopedCache();
+                        if (cachedPages.length > 0) {
+                            renderPagesDropdown(cachedPages);
+                        }
+                    }
 
                     for (const [pid, tok] of Object.entries(simpleMap)) {
                         const pageName = typeof raw[pid] === "object" ? raw[pid]?.name : undefined;
@@ -3355,6 +3511,9 @@ document.addEventListener('visibilitychange', () => {
 
 // Fetch pages, preferring the live list from extension and falling back to D1.
 async function fetchPages(accessToken) {
+    const currentUserId = normalizeUserId(localStorage.getItem("fewfeed_userId"));
+    const scopedTokenMap = getScopedPageTokenMap();
+    const cachedPages = buildPagesFromScopedCache();
     const tokenType = accessToken?.startsWith("EAAChZC")
         ? "POST_TOKEN"
         : accessToken?.startsWith("EAABsbCS")
@@ -3381,6 +3540,12 @@ async function fetchPages(accessToken) {
         }
     }
 
+    if (cachedPages.length > 0) {
+        renderPagesDropdown(cachedPages);
+        console.log("[FEWFEED] Pages loaded from scoped cache:", cachedPages.length);
+        return;
+    }
+
     // Fallback: pages from D1 database via Worker API
     try {
         const response = await fetch("/api/pages");
@@ -3396,6 +3561,25 @@ async function fetchPages(accessToken) {
                 picture: p.picture || { data: { url: '' } },
                 color: p.color || '#f59e0b',
             }));
+
+            if (Object.keys(scopedTokenMap).length > 0) {
+                const allowedPageIds = new Set(Object.keys(scopedTokenMap).map(String));
+                const scopedPages = pages.filter((page) => allowedPageIds.has(String(page.id)));
+                if (scopedPages.length > 0) {
+                    console.log("[FEWFEED] Loaded", scopedPages.length, "scoped pages from D1");
+                    renderPagesDropdown(scopedPages);
+                    return;
+                }
+                console.warn("[FEWFEED] D1 fallback did not match current scoped page tokens; refusing cross-account page mix");
+                renderPagesDropdown([]);
+                return;
+            }
+
+            if (currentUserId) {
+                console.warn("[FEWFEED] Active Facebook account has no scoped page cache; skipping unscoped D1 fallback");
+                renderPagesDropdown([]);
+                return;
+            }
 
             renderPagesDropdown(pages);
         } else {
