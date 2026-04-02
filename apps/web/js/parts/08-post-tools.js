@@ -1,4 +1,13 @@
 const postToolConfigs = {
+    hide: {
+        key: "hide",
+        action: "hide",
+        navId: "hidePostsNavItem",
+        panelId: "hidePostsPanel",
+        prefix: "hidePosts",
+        empty: "ยังไม่ได้โหลดโพสต์จากเพจ",
+        confirm: (count) => confirm(`ต้องการซ่อน ${count} โพสต์ที่เลือกใช่ไหม`),
+    },
     delete: {
         key: "delete",
         action: "delete",
@@ -11,6 +20,7 @@ const postToolConfigs = {
 };
 
 const postToolStates = {
+    hide: createPostToolState(),
     delete: createPostToolState(),
 };
 
@@ -1350,7 +1360,7 @@ function showPostToolPanel(toolKey) {
     const dom = getPostToolDom(toolKey);
     if (dom.panel) dom.panel.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "";
+    document.body.style.overflow = "hidden";
 
     bindPostToolEvents(toolKey);
     if (toolKey === "delete") {
@@ -1358,6 +1368,10 @@ function showPostToolPanel(toolKey) {
     }
     loadPostToolPosts(toolKey);
     loadPostToolJobs(toolKey);
+}
+
+function showHidePostsPanel() {
+    showPostToolPanel("hide");
 }
 
 function showDeletePostsPanel() {

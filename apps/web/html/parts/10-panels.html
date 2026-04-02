@@ -128,7 +128,6 @@
                     </div>
                 </div>
 
-<<<<<<< HEAD
                 <div class="pending-panel post-tool-panel" id="hidePostsPanel" style="display: none">
                     <div class="pending-panel-header">
                         <h2>Hide Posts</h2>
@@ -137,33 +136,25 @@
                             <button class="tool-primary-btn tool-primary-btn-hide" id="hidePostsRunBtn" type="button">ซ่อนที่เลือก</button>
                         </div>
                     </div>
-                    <div class="post-tool-auto-hide-card" style="background: var(--card-bg, #f8fafc); border: 1px solid var(--border, #e2e8f0); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 0.75rem;">
-                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                <input type="checkbox" id="hideAfterPublishToggle" style="width: 18px; height: 18px;" />
-                                <span style="font-weight: 600; font-size: 0.95rem;">ซ่อนทันทีหลังโพสต์</span>
+                    <div class="post-tool-note is-hide">
+                        ซ่อนโพสต์จำนวนมากโดยไม่ลบออกจากเพจ เหมาะกับการเคลียร์หน้าเพจก่อน แล้วค่อยย้อนดู history งานย้อนหลังได้
+                    </div>
+                    <div class="post-tool-guard-card">
+                        <div class="post-tool-guard-grid">
+                            <label class="post-tool-guard-option">
+                                <input type="checkbox" id="hidePostsKeepLatestToggle" checked />
+                                <span>กันโพสต์ล่าสุดไว้</span>
+                                <input class="post-tool-number-input" id="hidePostsKeepLatestInput" type="number" min="0" step="1" value="10" />
+                                <span>รายการ</span>
                             </label>
-                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                <input type="checkbox" id="autoHideEnabled" style="width: 18px; height: 18px;" />
-                                <span style="font-weight: 600; font-size: 0.95rem;">Cron ซ่อนย้อนหลัง (ทุกนาที)</span>
-                                <span id="autoHideNowStatus" style="font-size: 0.82rem; color: #6b7280;"></span>
+                            <label class="post-tool-guard-option">
+                                <input type="checkbox" id="hidePostsMinAgeToggle" checked />
+                                <span>ซ่อนเฉพาะโพสต์ที่เก่ากว่า</span>
+                                <input class="post-tool-number-input" id="hidePostsMinAgeInput" type="number" min="0" step="1" value="7" />
+                                <span>วัน</span>
                             </label>
-                            <div style="display: flex; align-items: center; gap: 1rem; margin-left: 1.5rem; flex-wrap: wrap;">
-                                <span style="font-size: 0.85rem; color: var(--text-muted, #6b7280);">ประเภทที่ซ่อน:</span>
-                                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-                                    <input type="checkbox" id="hideSharedStory" checked style="width: 16px; height: 16px;">
-                                    <span style="font-size: 0.85rem;">แชร์โพสต์</span>
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-                                    <input type="checkbox" id="hideMobileStatus" checked style="width: 16px; height: 16px;">
-                                    <span style="font-size: 0.85rem;">สถานะ</span>
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-                                    <input type="checkbox" id="hideAddedPhotos" checked style="width: 16px; height: 16px;">
-                                    <span style="font-size: 0.85rem;">เพิ่มรูป</span>
-                                </label>
-                            </div>
                         </div>
+                        <div class="post-tool-guard-meta" id="hidePostsSafeguardMeta"></div>
                     </div>
                     <div class="pending-summary-bar" id="hidePostsSummaryBar"></div>
                     <div class="pending-filter-bar post-tool-filter-bar">
@@ -212,8 +203,6 @@
                     </div>
                 </div>
 
-=======
->>>>>>> 4c214be72fb7687acccd2a48103e6d19a0c1a9b0
                 <div class="pending-panel post-tool-panel" id="deletePostsPanel" style="display: none">
                     <div class="pending-panel-header">
                         <h2>Delete Posts</h2>

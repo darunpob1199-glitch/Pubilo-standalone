@@ -875,11 +875,36 @@ if (newsPublishBtn) {
             return;
         }
         if (newsPublishBtn.disabled) return;
-        
+
+        const baseLabel = typeof getPrimaryPublishLabel === "function"
+            ? getPrimaryPublishLabel("news")
+            : "POST NOW";
+        const resetNewsButtonIdle = () => {
+            newsPublishBtn.textContent = baseLabel;
+            newsPublishBtn.disabled = false;
+            newsPublishBtn.classList.remove("published");
+            validateNewsMode();
+        };
+        const withTimeout = async (promise, ms, fallbackValue = null) => {
+            let timeoutId;
+            const timeoutPromise = new Promise((resolve) => {
+                timeoutId = setTimeout(() => resolve(fallbackValue), ms);
+            });
+            try {
+                return await Promise.race([promise, timeoutPromise]);
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        };
+
+        // Show immediate feedback so click is never silent.
+        newsPublishBtn.disabled = true;
+        newsPublishBtn.innerHTML = '<span class="loading"></span><span>กำลังเตรียมโพสต์...</span>';
+
         const pageId = getCurrentPageId();
         const adsToken = fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
         const freshPageToken = typeof getFreshPageTokenFromExtension === "function"
-            ? await getFreshPageTokenFromExtension(pageId, adsToken)
+            ? await withTimeout(getFreshPageTokenFromExtension(pageId, adsToken), 9000, "")
             : "";
         const pageToken = freshPageToken || getPageToken() || document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
         const cookie = fbCookie || localStorage.getItem("fewfeed_cookie");
@@ -894,19 +919,25 @@ if (newsPublishBtn) {
         const newsPreviewDescEl = document.getElementById("newsPreviewDescription");
         const newsPreviewCaptionEl = document.getElementById("newsPreviewCaption");
         const ctaConfig = getCurrentCtaConfig("news");
+        const hideFromTimelineAfterPublish =
+            typeof window.getAfterPublishActionForCurrentPage === "function"
+                ? window.getAfterPublishActionForCurrentPage() === "hide_timeline"
+                : false;
         
         if (!pageId) {
             alert("กรุณาเลือกเพจก่อน");
+            resetNewsButtonIdle();
             return;
         }
 
         if (!pageToken && !adsToken) {
             alert("ไม่มี token สำหรับโพสต์ กรุณา login extension ใหม่ หรือใส่ Page Token ใน Settings");
+            resetNewsButtonIdle();
             return;
         }
 
         if (!adAccountId && adsToken && typeof fetchAdAccounts === "function") {
-            adAccountId = await fetchAdAccounts(adsToken);
+            adAccountId = await withTimeout(fetchAdAccounts(adsToken), 9000, "");
         }
 
         if (!adAccountId) {
@@ -917,21 +948,14 @@ if (newsPublishBtn) {
         }
         
         const linkUrlValue = newsUrlInputEl?.value?.trim();
-        const blockedUrlReason = typeof window.getBlockedPublishUrlReason === "function"
-            ? window.getBlockedPublishUrlReason(linkUrlValue)
-            : "";
         const descriptionText = newsDescriptionInput?.value?.trim() || newsPreviewDescEl?.textContent?.trim() || "";
         const captionText = newsPreviewCaptionEl?.textContent?.trim() || "S.LAZADA.CO.TH";
         const primaryText = newsPrimaryTextEl?.value?.trim() || "";
         let imageData = newsGeneratedImages[newsSelectedIndex];
         
-        if (blockedUrlReason) {
-            alert(blockedUrlReason);
-            return;
-        }
-
         if (!linkUrlValue || !descriptionText || !imageData) {
             alert("กรุณากรอกข้อมูลให้ครบ");
+            resetNewsButtonIdle();
             return;
         }
         
@@ -949,14 +973,22 @@ if (newsPublishBtn) {
                 imageData = await compressImage(imageData, 1200, 0.8);
             }
             
-            const { scheduledTime, scheduleSource } = await resolveScheduledTimeForMode("news", pageId);
+            const scheduleResult = await withTimeout(
+                resolveScheduledTimeForMode("news", pageId),
+                8000,
+                { scheduledTime: null, scheduleSource: "immediate" },
+            );
+            const { scheduledTime, scheduleSource } = scheduleResult || {
+                scheduledTime: null,
+                scheduleSource: "immediate",
+            };
             console.log("[News] Schedule source:", scheduleSource, scheduledTime?.toISOString?.() || null);
             
             const buildPublishRequest = async () => {
                 const latestAdsToken = fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
                 const latestCookie = fbCookie || localStorage.getItem("fewfeed_cookie");
                 const latestPageToken = typeof getFreshPageTokenFromExtension === "function"
-                    ? await getFreshPageTokenFromExtension(pageId, latestAdsToken)
+                    ? await withTimeout(getFreshPageTokenFromExtension(pageId, latestAdsToken), 9000, "")
                     : "";
                 const cachedPageToken =
                     localStorage.getItem("fewfeed_selectedPageToken") ||
@@ -983,6 +1015,7 @@ if (newsPublishBtn) {
                     callToAction: ctaConfig.type,
                     callToActionLabel: ctaConfig.label,
                     scheduleInSystem: scheduleSource === "manual",
+                    hideFromTimeline: hideFromTimelineAfterPublish,
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
                         : null,
@@ -990,14 +1023,30 @@ if (newsPublishBtn) {
             };
 
             const sendPublishRequest = async () => {
-                const response = await fetch("/api/publish", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(await buildPublishRequest()),
-                });
-                return { response, data: await response.json() };
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 35000);
+                try {
+                    const response = await fetch("/api/publish", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify(await buildPublishRequest()),
+                        signal: controller.signal,
+                    });
+                    const data = await response.json().catch(() => ({
+                        success: false,
+                        error: `Publish API returned non-JSON response (status ${response.status})`,
+                    }));
+                    return { response, data };
+                } catch (error) {
+                    if (error?.name === "AbortError") {
+                        throw new Error("คำขอโพสต์ใช้เวลานานเกิน 35 วินาที ระบบยกเลิกให้แล้ว ลองกดโพสต์ใหม่");
+                    }
+                    throw error;
+                } finally {
+                    clearTimeout(timeout);
+                }
             };
 
             let { response, data } = await sendPublishRequest();

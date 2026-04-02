@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/styles.css?v=7.0" />
+    <link rel="stylesheet" href="/css/styles.css?v=6.8" />
     <link rel="stylesheet" href="/css/premium-theme.css?v=7.0" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
@@ -330,6 +330,15 @@
                             <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                         </svg>
                         Earnings
+                    </a>
+                    <a href="#hide-posts" class="nav-item" id="hidePostsNavItem">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20C7 20 2.73 16.89 1 12c.92-2.6 2.65-4.77 4.94-6.25" />
+                            <path d="M10.58 10.58A2 2 0 0 0 10 12a2 2 0 0 0 2 2c.52 0 1-.2 1.36-.52" />
+                            <path d="M9.88 4.24A10.94 10.94 0 0 1 12 4c5 0 9.27 3.11 11 8a11.8 11.8 0 0 1-1.88 3.18" />
+                            <line x1="1" y1="1" x2="23" y2="23" />
+                        </svg>
+                        Hide Posts
                     </a>
                     <a href="#delete-posts" class="nav-item" id="deletePostsNavItem">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -933,7 +942,6 @@
                 </div>
             </div>
 
-<<<<<<< HEAD
             <div class="pending-panel post-tool-panel" id="hidePostsPanel" style="display: none">
                 <div class="pending-panel-header">
                     <h2>Hide Posts</h2>
@@ -942,33 +950,25 @@
                         <button class="tool-primary-btn tool-primary-btn-hide" id="hidePostsRunBtn" type="button">ซ่อนที่เลือก</button>
                     </div>
                 </div>
-                <div class="post-tool-auto-hide-card" style="background: var(--card-bg, #f8fafc); border: 1px solid var(--border, #e2e8f0); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 0.75rem;">
-                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                            <input type="checkbox" id="hideAfterPublishToggle" style="width: 18px; height: 18px;" />
-                            <span style="font-weight: 600; font-size: 0.95rem;">ซ่อนทันทีหลังโพสต์</span>
+                <div class="post-tool-note is-hide">
+                    ซ่อนโพสต์จำนวนมากโดยไม่ลบออกจากเพจ เหมาะกับการเคลียร์หน้าเพจก่อน แล้วค่อยย้อนดู history งานย้อนหลังได้
+                </div>
+                <div class="post-tool-guard-card">
+                    <div class="post-tool-guard-grid">
+                        <label class="post-tool-guard-option">
+                            <input type="checkbox" id="hidePostsKeepLatestToggle" checked />
+                            <span>กันโพสต์ล่าสุดไว้</span>
+                            <input class="post-tool-number-input" id="hidePostsKeepLatestInput" type="number" min="0" step="1" value="10" />
+                            <span>รายการ</span>
                         </label>
-                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                            <input type="checkbox" id="autoHideEnabled" style="width: 18px; height: 18px;" />
-                            <span style="font-weight: 600; font-size: 0.95rem;">Cron ซ่อนย้อนหลัง (ทุกนาที)</span>
-                            <span id="autoHideNowStatus" style="font-size: 0.82rem; color: #6b7280;"></span>
+                        <label class="post-tool-guard-option">
+                            <input type="checkbox" id="hidePostsMinAgeToggle" checked />
+                            <span>ซ่อนเฉพาะโพสต์ที่เก่ากว่า</span>
+                            <input class="post-tool-number-input" id="hidePostsMinAgeInput" type="number" min="0" step="1" value="7" />
+                            <span>วัน</span>
                         </label>
-                        <div style="display: flex; align-items: center; gap: 1rem; margin-left: 1.5rem; flex-wrap: wrap;">
-                            <span style="font-size: 0.85rem; color: var(--text-muted, #6b7280);">ประเภทที่ซ่อน:</span>
-                            <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-                                <input type="checkbox" id="hideSharedStory" checked style="width: 16px; height: 16px;">
-                                <span style="font-size: 0.85rem;">แชร์โพสต์</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-                                <input type="checkbox" id="hideMobileStatus" checked style="width: 16px; height: 16px;">
-                                <span style="font-size: 0.85rem;">สถานะ</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-                                <input type="checkbox" id="hideAddedPhotos" checked style="width: 16px; height: 16px;">
-                                <span style="font-size: 0.85rem;">เพิ่มรูป</span>
-                            </label>
-                        </div>
                     </div>
+                    <div class="post-tool-guard-meta" id="hidePostsSafeguardMeta"></div>
                 </div>
                 <div class="pending-summary-bar" id="hidePostsSummaryBar"></div>
                 <div class="pending-filter-bar post-tool-filter-bar">
@@ -1018,8 +1018,6 @@
                 </div>
             </div>
 
-=======
->>>>>>> 4c214be72fb7687acccd2a48103e6d19a0c1a9b0
             <div class="pending-panel post-tool-panel" id="deletePostsPanel" style="display: none">
                 <div class="pending-panel-header">
                     <h2>Delete Posts</h2>
@@ -1191,23 +1189,32 @@
                                     ใช้สำหรับโพสต์และแชร์
                                 </p>
                             </div>
+                            <div class="setting-group" id="hideTokenSettingGroup" style="margin-top: 1rem;">
+                                <label class="form-label">🙈 Token สำหรับ Hide</label>
+                                <input type="text" id="hideTokenInputPanel" class="form-input"
+                                    placeholder="EAAxxxxxxx... (ถ้าไม่ใส่ จะใช้ Token โพสต์แทน)"
+                                    style="font-family: monospace; font-size: 0.85rem;" />
+                                <p class="setting-desc">
+                                    ใช้สำหรับ Auto Hide โพสต์ (ถ้าไม่ใส่จะใช้ Token โพสต์)
+                                </p>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Schedule Settings -->
                     <div class="settings-section collapsible" id="autoScheduleSettingsSection">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
-                            ⏰ ตั้งเวลาโพสต์อัตโนมัติ
+                            ⏰ ตั้งเวลาโพสต์
                             <span class="collapse-icon">›</span>
                         </h3>
                         <div class="settings-section-content">
                             <div class="setting-group">
                                 <label class="setting-label">
                                     <input type="checkbox" id="autoScheduleEnabledPanel" />
-                                    <span>ใช้คิวเวลาถัดไปอัตโนมัติ</span>
+                                    <span>Auto Schedule Posts</span>
                                 </label>
                                 <p class="setting-desc">
-                                    ถ้าไม่ได้เลือกวันเวลาเอง ระบบจะเลือก slot ถัดไปจากรายการนี้แล้วส่งเข้าคิวโพสต์
+                                    โพสต์จะถูกตั้งเวลาอัตโนมัติตามนาทีที่กำหนด
                                 </p>
                             </div>
                             <div class="setting-group" id="scheduleIntervalGroupPanel" style="display: none">
@@ -1417,7 +1424,7 @@
                                     <option value="og">OG Image Generator (ประหยัด API)</option>
                                 </select>
                                 <p class="setting-desc">
-                                    เลือกวิธีสร้างรูปภาพเมื่อระบบเข้าคิวโพสต์ให้อัตโนมัติ
+                                    เลือกวิธีสร้างรูปภาพสำหรับ Auto Post
                                 </p>
                             </div>
                             <div class="setting-group" id="ogBackgroundGroupPanel" style="display: none">
@@ -1451,10 +1458,9 @@
                         </div>
                     </div>
 
-                    <!-- Legacy recurring auto-post section (retired) -->
-                    <div class="settings-section collapsible" id="autoPostSettingsSection" style="display: none">
+                    <!-- Publish Experience -->
+                    <div class="settings-section collapsible" id="publishExperienceSection">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
-<<<<<<< HEAD
                             ✅ หลังโพสต์สำเร็จ
                             <span class="collapse-icon">›</span>
                         </h3>
@@ -1465,6 +1471,7 @@
                                     <option value="stay" selected>อยู่หน้าเดิม (โพสต์ต่อได้ทันที)</option>
                                     <option value="published">ไปหน้า Published</option>
                                     <option value="pending">ไปหน้า Pending</option>
+                                    <option value="hide_timeline">โพสต์แล้วซ่อนจากหน้าเพจทันที</option>
                                 </select>
                                 <p class="setting-desc">
                                     ใช้กับโพสต์ทันทีเท่านั้น (ถ้าตั้งเวลา ระบบยังไปหน้า Pending ตามเดิม)
@@ -1477,9 +1484,6 @@
                     <div class="settings-section collapsible" id="autoPostSettingsSection" style="display: none;">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                             🔄 Auto-Post Mode
-=======
-                            🔄 Auto Post
->>>>>>> 4c214be72fb7687acccd2a48103e6d19a0c1a9b0
                             <span class="collapse-icon">›</span>
                         </h3>
                         <div class="settings-section-content">
@@ -1687,27 +1691,52 @@
                         </div>
                     </div>
 
-<<<<<<< HEAD
-=======
-                    <div class="settings-section collapsible" id="hideOnPublishSettingsSection">
+                    <!-- Auto Hide Posts Section -->
+                    <div class="settings-section collapsible" id="autoHideSettingsSection">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
-                            🙈 ซ่อนหลังโพสต์สำเร็จ
+                            🙈 Auto Hide Posts
                             <span class="collapse-icon">›</span>
                         </h3>
                         <div class="settings-section-content">
                             <div class="setting-group">
                                 <label class="setting-label">
-                                    <input type="checkbox" id="hideOnPublishEnabled" />
-                                    <span>ซ่อนโพสต์จาก Timeline ทันทีหลังโพสต์</span>
+                                    <input type="checkbox" id="autoHideEnabled" />
+                                    <span>ซ่อนโพสต์อัตโนมัติ</span>
                                 </label>
-                                <p class="setting-desc">
-                                    ใช้ token เดียวกับตอนโพสต์จริง ไม่ต้องซ่อนย้อนหลัง และไม่ใช้ worker cron เก่าแล้ว
-                                </p>
+                                <p class="setting-desc">ซ่อนโพสต์ประเภทที่เลือกจาก Timeline</p>
+                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap;">
+                                    <button type="button" id="autoHideNowBtn" class="btn"
+                                        style="padding: 0.4rem 0.75rem; font-size: 0.85rem;">
+                                        ซ่อนทันที
+                                    </button>
+                                    <span id="autoHideNowStatus" style="font-size: 0.82rem; color: #6b7280;"></span>
+                                </div>
+                                <div id="hideTypesGroup" style="margin-top: 0.75rem; margin-left: 1.5rem;">
+                                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                        <label
+                                            style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                            <input type="checkbox" id="hideSharedStory" checked
+                                                style="width: 16px; height: 16px;">
+                                            <span style="font-size: 0.9rem;">shared_story (แชร์โพสต์)</span>
+                                        </label>
+                                        <label
+                                            style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                            <input type="checkbox" id="hideMobileStatus" checked
+                                                style="width: 16px; height: 16px;">
+                                            <span style="font-size: 0.9rem;">mobile_status_update (สถานะ)</span>
+                                        </label>
+                                        <label
+                                            style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                            <input type="checkbox" id="hideAddedPhotos" checked
+                                                style="width: 16px; height: 16px;">
+                                            <span style="font-size: 0.9rem;">added_photos (เพิ่มรูป)</span>
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
 
->>>>>>> 4c214be72fb7687acccd2a48103e6d19a0c1a9b0
                     <!-- Link Post Prompt Section -->
                     <div class="settings-section collapsible" style="display: none">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
@@ -1855,96 +1884,104 @@
 
             <!-- Billing Panel -->
             <div class="pending-panel" id="billingPanel" style="display: none">
-                <div class="pending-panel-header" style="align-items: baseline; gap: 0.5rem;">
-                    <h2 style="margin: 0; line-height: 1; font-size: 1.35rem;">Billing</h2>
-                    <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">จัดการแพ็กเกจและการชำระเงิน</p>
+                <div class="pending-panel-header" style="align-items: baseline;">
+                    <h2 style="margin: 0; line-height: 1;">Billing</h2>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">จัดการแพ็กเกจและการชำระเงิน</p>
                 </div>
-                <div class="settings-content billing-content">
+                <div class="settings-content" style="padding: 1.5rem;">
 
                     <!-- Current Plan Status Card -->
-                    <div id="billingCurrentPlan" class="billing-current-plan">
-                        <div class="billing-plan-header">
+                    <div id="billingCurrentPlan" class="settings-section" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
                             <div>
-                                <p class="billing-label">แพ็กเกจปัจจุบัน</p>
-                                <h3 id="billingPlanName" class="billing-plan-name">-</h3>
-                                <p id="billingPlanPrice" class="billing-plan-price">-</p>
+                                <p style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 0.5rem;">แพ็กเกจปัจจุบัน</p>
+                                <h3 id="billingPlanName" style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin: 0;">-</h3>
+                                <p id="billingPlanPrice" style="color: var(--primary); font-weight: 700; font-size: 1.1rem; margin-top: 0.25rem;">-</p>
                             </div>
-                            <div id="billingStatusBadge" class="billing-status-badge">-</div>
+                            <div id="billingStatusBadge" style="padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600;">
+                                -
+                            </div>
                         </div>
-                        <div class="billing-plan-meta">
+                        <div style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color); display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem;">
                             <div>
-                                <p class="billing-meta-label">เริ่มใช้งาน</p>
-                                <p id="billingStartDate" class="billing-meta-value">-</p>
+                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">เริ่มใช้งาน</p>
+                                <p id="billingStartDate" style="font-weight: 600; color: var(--text-main);">-</p>
                             </div>
                             <div>
-                                <p class="billing-meta-label">หมดอายุ</p>
-                                <p id="billingEndDate" class="billing-meta-value">-</p>
+                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">หมดอายุ</p>
+                                <p id="billingEndDate" style="font-weight: 600; color: var(--text-main);">-</p>
                             </div>
                             <div>
-                                <p class="billing-meta-label">รอบบิล</p>
-                                <p id="billingInterval" class="billing-meta-value">-</p>
+                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">รอบบิล</p>
+                                <p id="billingInterval" style="font-weight: 600; color: var(--text-main);">-</p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Plan Selection Cards -->
-                    <h3 class="billing-section-title">เลือกแพ็กเกจ</h3>
-                    <div id="billingPlanCards" class="billing-cards-grid">
+                    <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1rem;">เลือกแพ็กเกจ</h3>
+                    <div id="billingPlanCards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
                         <!-- Monthly -->
-                        <div class="billing-card billing-plan-card" data-plan="monthly_500">
-                            <div class="billing-card-top">
-                                <span class="billing-card-name">รายเดือน</span>
-                                <span class="billing-card-badge">MONTHLY</span>
+                        <div class="billing-plan-card" data-plan="monthly_500" style="border: 2px solid var(--border-color); border-radius: 12px; padding: 1.5rem; cursor: pointer; transition: all 0.2s ease; background: #fff;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <span style="font-weight: 700; font-size: 1.1rem; color: var(--text-main);">รายเดือน</span>
+                                <span style="background: #f2f4f7; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">MONTHLY</span>
                             </div>
-                            <div class="billing-card-price">
-                                <span class="billing-card-amount">฿500</span>
-                                <span class="billing-card-period">/ เดือน</span>
+                            <div style="margin-bottom: 1rem;">
+                                <span style="font-size: 2rem; font-weight: 800; color: var(--text-main);">฿500</span>
+                                <span style="color: var(--text-muted); font-size: 0.9rem;"> / เดือน</span>
                             </div>
-                            <ul class="billing-card-features">
-                                <li>โพสต์ไม่จำกัด</li>
-                                <li>ตั้งเวลาอัตโนมัติ</li>
-                                <li>จัดการคิวโพสต์</li>
-                                <li>รองรับหลายเพจ</li>
+                            <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-muted); font-size: 0.9rem;">
+                                <li style="padding: 0.3rem 0;">✓ โพสต์ไม่จำกัด</li>
+                                <li style="padding: 0.3rem 0;">✓ ตั้งเวลาอัตโนมัติ</li>
+                                <li style="padding: 0.3rem 0;">✓ Auto Hide Posts</li>
+                                <li style="padding: 0.3rem 0;">✓ รองรับหลายเพจ</li>
                             </ul>
-                            <button class="billing-card-btn billing-select-plan-btn" data-plan="monthly_500">เลือกแพ็กเกจนี้</button>
+                            <button class="btn-save billing-select-plan-btn" data-plan="monthly_500" style="width: 100%; margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-weight: 600;">
+                                เลือกแพ็กเกจนี้
+                            </button>
                         </div>
                         <!-- Yearly -->
-                        <div class="billing-card billing-card--featured billing-plan-card" data-plan="yearly_4499">
-                            <div class="billing-card-ribbon">ประหยัด 25%</div>
-                            <div class="billing-card-top">
-                                <span class="billing-card-name">รายปี</span>
-                                <span class="billing-card-badge billing-card-badge--primary">YEARLY</span>
+                        <div class="billing-plan-card" data-plan="yearly_4499" style="border: 2px solid var(--primary); border-radius: 12px; padding: 1.5rem; cursor: pointer; transition: all 0.2s ease; background: #fff; position: relative;">
+                            <div style="position: absolute; top: -12px; right: 16px; background: var(--primary); color: white; padding: 0.2rem 0.8rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700;">ประหยัด 25%</div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <span style="font-weight: 700; font-size: 1.1rem; color: var(--text-main);">รายปี</span>
+                                <span style="background: #f9f5ff; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: var(--primary);">YEARLY</span>
                             </div>
-                            <div class="billing-card-price">
-                                <span class="billing-card-amount">฿4,499</span>
-                                <span class="billing-card-period">/ ปี</span>
+                            <div style="margin-bottom: 1rem;">
+                                <span style="font-size: 2rem; font-weight: 800; color: var(--text-main);">฿4,499</span>
+                                <span style="color: var(--text-muted); font-size: 0.9rem;"> / ปี</span>
                             </div>
-                            <ul class="billing-card-features">
-                                <li>ทุกอย่างใน Monthly</li>
-                                <li>ประหยัด ฿1,501 ต่อปี</li>
-                                <li>Priority Support</li>
-                                <li>Early Access ฟีเจอร์ใหม่</li>
+                            <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-muted); font-size: 0.9rem;">
+                                <li style="padding: 0.3rem 0;">✓ ทุกอย่างใน Monthly</li>
+                                <li style="padding: 0.3rem 0;">✓ ประหยัด ฿1,501 ต่อปี</li>
+                                <li style="padding: 0.3rem 0;">✓ Priority Support</li>
+                                <li style="padding: 0.3rem 0;">✓ Early Access ฟีเจอร์ใหม่</li>
                             </ul>
-                            <button class="billing-card-btn billing-card-btn--primary billing-select-plan-btn" data-plan="yearly_4499">เลือกแพ็กเกจนี้</button>
+                            <button class="btn-save billing-select-plan-btn" data-plan="yearly_4499" style="width: 100%; margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-weight: 600; background: var(--primary); color: #fff;">
+                                เลือกแพ็กเกจนี้
+                            </button>
                         </div>
                     </div>
 
                     <!-- Payment History -->
-                    <div class="billing-history-section">
-                        <h3 class="billing-history-toggle" onclick="this.parentElement.classList.toggle('open')">
-                            ประวัติการชำระเงิน
+                    <div class="settings-section collapsible" style="border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 1rem;">
+                        <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')" style="padding: 1.25rem 1.5rem; margin: 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                            📋 ประวัติการชำระเงิน
                             <span class="collapse-icon">›</span>
                         </h3>
-                        <div class="billing-history-body">
+                        <div class="settings-section-content" style="padding: 1.5rem;">
                             <div id="billingPaymentHistory">
-                                <p class="billing-empty-state">ยังไม่มีประวัติการชำระเงิน</p>
+                                <p style="color: var(--text-muted); text-align: center; padding: 2rem 0;">ยังไม่มีประวัติการชำระเงิน</p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Cancel Subscription -->
-                    <div class="billing-cancel-row">
-                        <button id="billingCancelBtn" class="billing-cancel-btn">ยกเลิกแพ็กเกจ</button>
+                    <div style="text-align: center; margin-top: 1.5rem;">
+                        <button id="billingCancelBtn" style="background: none; border: none; color: #d92d20; font-size: 0.85rem; cursor: pointer; padding: 0.5rem 1rem; border-radius: 8px; transition: background 0.2s ease;">
+                            ยกเลิกแพ็กเกจ
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1967,10 +2004,10 @@
                 <div class="setting-group">
                     <label class="setting-label">
                         <input type="checkbox" id="autoScheduleEnabled" />
-                        <span>ใช้คิวเวลาถัดไปอัตโนมัติ</span>
+                        <span>Auto Schedule Posts</span>
                     </label>
                     <p class="setting-desc">
-                        ถ้าไม่ได้เลือกวันเวลาเอง ระบบจะใช้เวลาถัดไปจากรอบที่กำหนดแล้วส่งเข้าคิวโพสต์
+                        โพสต์จะถูกตั้งเวลาอัตโนมัติตามนาทีที่กำหนด
                     </p>
                 </div>
                 <div class="setting-group" id="scheduleIntervalGroup" style="display: none">
@@ -2050,7 +2087,7 @@
                         <option value="og">OG Image Generator (ประหยัด API)</option>
                     </select>
                     <p class="setting-desc">
-                        เลือกวิธีสร้างรูปภาพเมื่อระบบเข้าคิวโพสต์ให้อัตโนมัติ
+                        เลือกวิธีสร้างรูปภาพสำหรับ Auto Post
                     </p>
                 </div>
                 <div class="setting-group" id="ogBackgroundGroup" style="display: none">
@@ -2080,20 +2117,20 @@
     <img class="thumb-preview-popup" id="thumbPreviewPopup" src="" alt="" />
 
     <script src="/js/config.js?v=6.3"></script>
-    <script src="/js/auth-bootstrap.js?v=2.0"></script>
+    <script src="/js/auth-bootstrap.js?v=1.5"></script>
     <script src="/js/parts/01-thumb-preview.js?v=6.1"></script>
     <script src="/js/parts/02-dom-elements.js?v=6.3"></script>
-    <script src="/js/parts/03-validation.js?v=6.7"></script>
+    <script src="/js/parts/03-validation.js?v=6.8"></script>
     <script src="/js/parts/04-settings.js?v=7.1"></script>
     <script src="/js/parts/05-auto-post.js?v=7.0"></script>
     <script src="/js/parts/06-billing.js?v=1.0"></script>
-    <script src="/js/parts/06-pending-posts.js?v=6.8"></script>
-    <script src="/js/parts/07-earnings.js?v=6.7"></script>
+    <script src="/js/parts/06-pending-posts.js?v=6.7"></script>
+    <script src="/js/parts/07-earnings.js?v=6.6"></script>
     <script src="/js/parts/08-quotes.js?v=6.1"></script>
     <script src="/js/parts/08-post-tools.js?v=1.2"></script>
-    <script src="/js/parts/09-navigation.js?v=7.1"></script>
+    <script src="/js/parts/09-navigation.js?v=7.0"></script>
     <script src="/js/parts/10-lazada.js?v=6.3"></script>
-    <script src="/js/parts/11-image-generation.js?v=8.8"></script>
+    <script src="/js/parts/11-image-generation.js?v=9.2"></script>
     <script src="/js/parts/12-publish.js?v=11.2"></script>
 
     <!-- Lightbox Modal -->

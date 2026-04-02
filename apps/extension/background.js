@@ -110,15 +110,6 @@ chrome.runtime.onStartup.addListener(() => {
   injectScriptsIntoExistingTabs().catch(() => { });
 });
 
-chrome.cookies.onChanged.addListener((changeInfo) => {
-  const cookie = changeInfo?.cookie;
-  const domain = String(cookie?.domain || "");
-  const name = String(cookie?.name || "");
-  if (!domain.includes("facebook.com")) return;
-  if (name !== "c_user") return;
-  scheduleFacebookSessionRefresh(changeInfo.removed ? "facebook_account_cookie_removed" : "facebook_account_cookie_changed");
-});
-
 // App URLs - supports both local dev and production
 const APP_URLS = [
   "http://localhost:3000/*",
@@ -136,48 +127,6 @@ const FB_TAB_URLS = [
   "https://business.facebook.com/*",
   "https://adsmanager.facebook.com/*"
 ];
-const PAGE_TOKEN_MAP_OWNER_KEY = "fewfeed_pageTokenMapOwnerId";
-let facebookCookieRefreshTimer = null;
-
-function normalizeUserId(value) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function didFacebookAccountChange(previousUserId, nextUserId) {
-  const previous = normalizeUserId(previousUserId);
-  const next = normalizeUserId(nextUserId);
-  return !!previous && !!next && previous !== next;
-}
-
-async function notifyAppTabsTokenUpdated(meta = {}) {
-  for (const urlPattern of APP_URLS) {
-    chrome.tabs.query({ url: urlPattern }).then((tabs) => {
-      for (const tab of tabs) {
-        chrome.tabs.sendMessage(tab.id, {
-          action: "tokenUpdated",
-          ...meta,
-        }).catch(() => { });
-      }
-    }).catch(() => { });
-  }
-}
-
-function scheduleFacebookSessionRefresh(reason = "cookie_changed") {
-  if (facebookCookieRefreshTimer) {
-    clearTimeout(facebookCookieRefreshTimer);
-  }
-  facebookCookieRefreshTimer = setTimeout(async () => {
-    facebookCookieRefreshTimer = null;
-    try {
-      await fetchAndStoreToken();
-      await injectScriptsIntoExistingTabs();
-      await notifyAppTabsTokenUpdated({ reason });
-      console.log("[FEWFEED] Refreshed Facebook session after cookie change:", reason);
-    } catch (error) {
-      console.warn("[FEWFEED] Failed to refresh Facebook session after cookie change:", error?.message || error);
-    }
-  }, 700);
-}
 
 function isMissingHostPermissionError(error) {
   const message = String(error?.message || error || "").toLowerCase();
@@ -321,58 +270,6 @@ async function fetchAllTokensInBackground() {
 }
 
 // Extract token from existing Facebook tabs using script injection
-async function extractTokenFromTabId(tabId) {
-  try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => {
-        const html = document.documentElement.outerHTML;
-
-        const tokenPatterns = [
-          /__accessToken\s*=\s*"(EA[A-Za-z0-9]+)"/,
-          /"__accessToken"\s*:\s*"(EA[A-Za-z0-9]+)"/,
-          /__window\.__accessToken="(EA[A-Za-z0-9]+)"/,
-          /"accessToken":"(EA[A-Za-z0-9]+)"/,
-          /"access_token":"(EA[A-Za-z0-9]+)"/
-        ];
-
-        let token = null;
-        for (const pattern of tokenPatterns) {
-          const match = html.match(pattern);
-          if (match) {
-            token = match[1];
-            break;
-          }
-        }
-
-        if (!token && typeof window.__accessToken === 'string') {
-          token = window.__accessToken;
-        }
-
-        const dtsgPatterns = [
-          /"DTSGInitialData"[^}]*"token":"([^"]+)"/,
-          /name="fb_dtsg"\s+value="([^"]+)"/,
-          /"fb_dtsg":"([^"]+)"/
-        ];
-
-        let dtsg = null;
-        for (const pattern of dtsgPatterns) {
-          const match = html.match(pattern);
-          if (match) {
-            dtsg = match[1];
-            break;
-          }
-        }
-
-        return { token, dtsg };
-      }
-    });
-    return results?.[0]?.result || null;
-  } catch (e) {
-    return null;
-  }
-}
-
 async function extractTokenFromExistingTabs() {
   console.log("[FEWFEED] Trying to extract token from existing tabs...");
 
@@ -390,11 +287,61 @@ async function extractTokenFromExistingTabs() {
     console.log("[FEWFEED] Found tab:", tabs[0].url);
 
     try {
-      const extracted = await extractTokenFromTabId(tabs[0].id);
-      const { token, dtsg } = extracted || {};
-      if (token) {
-        console.log("[FEWFEED] Extracted token from tab:", token.substring(0, 15) + "...");
-        return { token, dtsg };
+      // Inject script to extract token from the page
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tabs[0].id },
+        func: () => {
+          const html = document.documentElement.outerHTML;
+
+          // Extract access token
+          const tokenPatterns = [
+            /__accessToken\s*=\s*"(EA[A-Za-z0-9]+)"/,
+            /"__accessToken"\s*:\s*"(EA[A-Za-z0-9]+)"/,
+            /__window\.__accessToken="(EA[A-Za-z0-9]+)"/,
+            /"accessToken":"(EA[A-Za-z0-9]+)"/,
+            /"access_token":"(EA[A-Za-z0-9]+)"/
+          ];
+
+          let token = null;
+          for (const pattern of tokenPatterns) {
+            const match = html.match(pattern);
+            if (match) {
+              token = match[1];
+              break;
+            }
+          }
+
+          // Also try window.__accessToken directly
+          if (!token && typeof window.__accessToken === 'string') {
+            token = window.__accessToken;
+          }
+
+          // Extract fb_dtsg
+          const dtsgPatterns = [
+            /"DTSGInitialData"[^}]*"token":"([^"]+)"/,
+            /name="fb_dtsg"\s+value="([^"]+)"/,
+            /"fb_dtsg":"([^"]+)"/
+          ];
+
+          let dtsg = null;
+          for (const pattern of dtsgPatterns) {
+            const match = html.match(pattern);
+            if (match) {
+              dtsg = match[1];
+              break;
+            }
+          }
+
+          return { token, dtsg };
+        }
+      });
+
+      if (results && results[0] && results[0].result) {
+        const { token, dtsg } = results[0].result;
+        if (token) {
+          console.log("[FEWFEED] Extracted token from tab:", token.substring(0, 15) + "...");
+          return { token, dtsg };
+        }
       }
     } catch (e) {
       console.log("[FEWFEED] Script injection failed for", urlPattern, ":", e.message);
@@ -403,42 +350,6 @@ async function extractTokenFromExistingTabs() {
 
   console.log("[FEWFEED] No token found in existing tabs");
   return null;
-}
-
-async function extractTokenFromTemporaryTab() {
-  let tempTabId = null;
-  try {
-    const tab = await chrome.tabs.create({
-      url: "https://www.facebook.com/",
-      active: false,
-    });
-    tempTabId = tab?.id || null;
-    if (!tempTabId) return null;
-
-    await new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        chrome.tabs.onUpdated.removeListener(listener);
-        resolve();
-      }, 8000);
-      const listener = (tabId, changeInfo) => {
-        if (tabId === tempTabId && changeInfo.status === "complete") {
-          clearTimeout(timeout);
-          chrome.tabs.onUpdated.removeListener(listener);
-          resolve();
-        }
-      };
-      chrome.tabs.onUpdated.addListener(listener);
-    });
-
-    const extracted = await extractTokenFromTabId(tempTabId);
-    return extracted?.token ? extracted : null;
-  } catch (_) {
-    return null;
-  } finally {
-    if (tempTabId) {
-      chrome.tabs.remove(tempTabId).catch(() => { });
-    }
-  }
 }
 
 // Main function to fetch ads token from Facebook using cookies
@@ -452,13 +363,10 @@ async function fetchAndStoreToken() {
       "fewfeed_cookie",
       "fewfeed_avatarUrl",
       "fewfeed_pageTokenMap",
-      PAGE_TOKEN_MAP_OWNER_KEY,
     ]);
     const cookieSnapshot = await getFacebookCookieSnapshot();
     const cookieString = cookieSnapshot.cookieString || "";
     const userId = cookieSnapshot.userId || "";
-    const previousUserId = normalizeUserId(previousData.fewfeed_userId);
-    const accountChanged = didFacebookAccountChange(previousUserId, userId);
 
     if (!cookieString) {
       console.log("[FEWFEED] No Facebook cookies found");
@@ -485,18 +393,11 @@ async function fetchAndStoreToken() {
     // Persist cookie early so content script/web can use it immediately even if token fetch is slow.
     await chrome.storage.local.set({
       fewfeed_cookie: cookieString,
-      fewfeed_userId: userId || previousUserId || "",
+      fewfeed_userId: userId || previousData.fewfeed_userId || "",
       fewfeed_userName: previousData.fewfeed_userName || "Facebook User",
-      fewfeed_accessToken: accountChanged ? "" : (previousData.fewfeed_accessToken || ""),
-      fewfeed_fbDtsg: accountChanged ? "" : (previousData.fewfeed_fbDtsg || ""),
-      fewfeed_pageTokenMap: accountChanged ? "{}" : (previousData.fewfeed_pageTokenMap || "{}"),
-      [PAGE_TOKEN_MAP_OWNER_KEY]: accountChanged ? "" : normalizeUserId(previousData[PAGE_TOKEN_MAP_OWNER_KEY]) || previousUserId,
       fewfeed_ready: true,
       fewfeed_lastFetch: Date.now(),
     });
-    if (accountChanged) {
-      console.log("[FEWFEED] Facebook account changed, clearing cached page token map");
-    }
 
     // Try to fetch token from Facebook endpoints
     let accessToken = null;
@@ -549,19 +450,37 @@ async function fetchAndStoreToken() {
       accessToken = await fetchTokenFromInternalAPI(cookieString);
     }
 
-    // Method 5: Open temporary Facebook tab and extract token from live DOM.
-    if (!accessToken) {
-      const tempTabResult = await extractTokenFromTemporaryTab();
-      if (tempTabResult?.token) {
-        accessToken = tempTabResult.token;
-        fbDtsg = fbDtsg || tempTabResult.dtsg || null;
-        console.log("[FEWFEED] Got token from temporary tab fallback");
-      }
-    }
-
     // If still no fb_dtsg, try fetching from business.facebook.com specifically
     if (!fbDtsg) {
       fbDtsg = await fetchDtsgFromBusiness(cookieString);
+    }
+
+    // Validate token before storing. Some extraction patterns can return stale/invalid EA strings.
+    if (accessToken) {
+      try {
+        const validateResp = await fetch(
+          `https://graph.facebook.com/v21.0/me?fields=id&access_token=${encodeURIComponent(accessToken)}`,
+          cookieString
+            ? {
+              headers: {
+                Cookie: cookieString,
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              },
+            }
+            : undefined
+        );
+        const validateData = await validateResp.json();
+        const idMismatch = userId && validateData?.id && String(validateData.id) !== String(userId);
+        if (!validateData?.id || validateData?.error || idMismatch) {
+          console.warn("[FEWFEED] Discarding invalid access token", validateData?.error?.message || "token_invalid");
+          accessToken = null;
+          fbDtsg = null;
+        }
+      } catch (validateErr) {
+        console.warn("[FEWFEED] Token validation failed, discarding token:", validateErr?.message || validateErr);
+        accessToken = null;
+        fbDtsg = null;
+      }
     }
 
     // Fetch user name and avatar from Graph API if we have access token
@@ -594,14 +513,6 @@ async function fetchAndStoreToken() {
 
     const hasFreshAccessToken = !!accessToken;
     const hasFreshDtsg = !!fbDtsg;
-    const hasPreviousPageTokenMap = (() => {
-      try {
-        const parsed = JSON.parse(previousData.fewfeed_pageTokenMap || "{}");
-        return !!parsed && typeof parsed === "object" && Object.keys(parsed).length > 0;
-      } catch (_) {
-        return false;
-      }
-    })();
 
     // Store for content script.
     // Important: do not keep stale access token/dtsg when fresh fetch fails,
@@ -615,7 +526,7 @@ async function fetchAndStoreToken() {
           ? userName
           : (previousData.fewfeed_userName || "Facebook User"),
       fewfeed_cookie: cookieString || previousData.fewfeed_cookie || "",
-      fewfeed_ready: !!(cookieString || hasFreshAccessToken || hasPreviousPageTokenMap),
+      fewfeed_ready: !!(cookieString || hasFreshAccessToken),
       fewfeed_lastFetch: Date.now()
     };
     if (avatarUrl) {
@@ -627,45 +538,47 @@ async function fetchAndStoreToken() {
 
     // After storing ads token, also fetch and store page tokens so they
     // survive even when the ads token expires later.
-    // IMPORTANT: never wipe existing map when fresh fetch fails.
     let pageTokenMap = {};
-    if (!accountChanged) {
+    const previousPageTokenMap = (() => {
       try {
-        const previousMapRaw = previousData.fewfeed_pageTokenMap || "{}";
-        const previousMap = typeof previousMapRaw === "string" ? JSON.parse(previousMapRaw) : previousMapRaw;
-        if (previousMap && typeof previousMap === "object") {
-          pageTokenMap = { ...previousMap };
-        }
+        const parsed = JSON.parse(previousData.fewfeed_pageTokenMap || "{}");
+        return parsed && typeof parsed === "object" ? parsed : {};
       } catch (_) {
-        // Ignore malformed previous map and continue with empty object.
+        return {};
       }
-    }
+    })();
     const effectiveAccessToken = hasFreshAccessToken ? storageData.fewfeed_accessToken : "";
     if (effectiveAccessToken) {
       try {
         const pagesResult = await fetchFacebookPages(effectiveAccessToken, cookieString);
         if (pagesResult?.success && Array.isArray(pagesResult.pages)) {
-          const nextMap = {};
           for (const page of pagesResult.pages) {
             if (page.id && page.access_token) {
-              nextMap[String(page.id)] = {
+              pageTokenMap[String(page.id)] = {
                 token: page.access_token,
                 name: page.name || "",
                 picture: page.picture?.data?.url || "",
               };
             }
           }
-          if (Object.keys(nextMap).length > 0) {
-            pageTokenMap = nextMap;
-          }
           console.log("[FEWFEED] Stored page tokens for", Object.keys(pageTokenMap).length, "pages");
+          if (Object.keys(pageTokenMap).length === 0 && Object.keys(previousPageTokenMap).length > 0) {
+            pageTokenMap = previousPageTokenMap;
+            console.log("[FEWFEED] Kept previous page token map because refresh returned empty");
+          }
         }
       } catch (pageErr) {
         console.warn("[FEWFEED] Failed to fetch page tokens:", pageErr?.message || pageErr);
+        if (Object.keys(previousPageTokenMap).length > 0) {
+          pageTokenMap = previousPageTokenMap;
+          console.log("[FEWFEED] Kept previous page token map due to fetch error");
+        }
       }
+    } else if (Object.keys(previousPageTokenMap).length > 0) {
+      pageTokenMap = previousPageTokenMap;
+      console.log("[FEWFEED] No valid ads token, using previous page token map");
     }
     storageData.fewfeed_pageTokenMap = JSON.stringify(pageTokenMap);
-    storageData[PAGE_TOKEN_MAP_OWNER_KEY] = normalizeUserId(userId) || normalizeUserId(storageData.fewfeed_userId);
     await chrome.storage.local.set(storageData);
 
     console.log("[FEWFEED] Ads token, fb_dtsg, cookies and page tokens stored!");
@@ -877,27 +790,6 @@ function extractDtsgFromHTML(html) {
   return null;
 }
 
-async function isAccessTokenValid(accessToken, cookieString = "") {
-  if (!accessToken) return false;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const headers = {
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    };
-    if (cookieString) headers["Cookie"] = cookieString;
-    const response = await fetch(
-      `https://graph.facebook.com/v21.0/me?fields=id&access_token=${encodeURIComponent(accessToken)}`,
-      { headers, signal: controller.signal }
-    );
-    clearTimeout(timeoutId);
-    const data = await response.json();
-    return !!(data?.id && !data?.error);
-  } catch (_) {
-    return false;
-  }
-}
-
 // Listen for messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const replyError = (error, extra = {}) => {
@@ -933,10 +825,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       chrome.storage.local.set(updates);
 
       // Notify any open app tabs (localhost and production)
-      notifyAppTabsTokenUpdated({
-        hasToken: !!request.token,
-        hasDtsg: !!request.dtsg
-      });
+      for (const urlPattern of APP_URLS) {
+        chrome.tabs.query({ url: urlPattern }).then(tabs => {
+          for (const tab of tabs) {
+            chrome.tabs.sendMessage(tab.id, {
+              action: "tokenUpdated",
+              hasToken: !!request.token,
+              hasDtsg: !!request.dtsg
+            }).catch(() => { });
+          }
+        });
+      }
     }
     sendResponse({ success: true });
     return false;
@@ -984,49 +883,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           "fewfeed_cookie",
           "fewfeed_ready",
           "fewfeed_pageTokenMap",
-          "fewfeed_avatarUrl",
-          PAGE_TOKEN_MAP_OWNER_KEY,
+          "fewfeed_avatarUrl"
         ];
         let data = await chrome.storage.local.get(readKeys);
-
-        // Prevent stale/invalid ads token loops (code 190).
-        if (data.fewfeed_accessToken) {
-          const stillValid = await isAccessTokenValid(
-            data.fewfeed_accessToken,
-            data.fewfeed_cookie || ""
-          );
-          if (!stillValid) {
-            await chrome.storage.local.set({
-              fewfeed_accessToken: "",
-              fewfeed_fbDtsg: "",
-              fewfeed_lastFetch: Date.now(),
-            });
-            data.fewfeed_accessToken = "";
-            data.fewfeed_fbDtsg = "";
-            console.warn("[FEWFEED] Cleared invalid cached access token");
-          }
-        }
-
-        let accountChanged = false;
-        try {
-          const cookieSnapshot = await getFacebookCookieSnapshot();
-          accountChanged = didFacebookAccountChange(data.fewfeed_userId, cookieSnapshot.userId);
-          if (accountChanged) {
-            await chrome.storage.local.set({
-              fewfeed_accessToken: "",
-              fewfeed_fbDtsg: "",
-              fewfeed_pageTokenMap: "{}",
-              [PAGE_TOKEN_MAP_OWNER_KEY]: "",
-              fewfeed_userId: normalizeUserId(cookieSnapshot.userId),
-              fewfeed_cookie: cookieSnapshot.cookieString || data.fewfeed_cookie || "",
-              fewfeed_lastFetch: Date.now(),
-            });
-            data = await chrome.storage.local.get(readKeys);
-            console.warn("[FEWFEED] Stored session belongs to a different Facebook account, forcing refresh");
-          }
-        } catch (_) {
-          // Ignore cookie snapshot errors and continue with stored data.
-        }
 
         const hasPageTokenMap = (() => {
           try {
@@ -1037,7 +896,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         })();
         const hasUsableSession = !!(data.fewfeed_accessToken || hasPageTokenMap);
-        if (!hasUsableSession || accountChanged) {
+        if (!hasUsableSession) {
           // Auto-refresh once so FEWFEED_GET_DATA can recover without manual retries.
           try {
             await fetchAndStoreToken();

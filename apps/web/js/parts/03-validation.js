@@ -5,47 +5,6 @@ let newsModeImageReady = false;
 let reelsModeVideoReady = false;
 let textModeReady = false;
 
-function getBlockedPublishUrlReason(rawUrl) {
-    const value = String(rawUrl || "").trim();
-    if (!value) return "";
-
-    let parsed;
-    try {
-        parsed = new URL(value);
-    } catch {
-        return "ลิงก์ไม่ถูกต้อง";
-    }
-
-    const host = parsed.hostname.toLowerCase();
-    const path = `${parsed.pathname}${parsed.search}${parsed.hash}`.toLowerCase();
-    const blockedHosts = new Set([
-        "pubilo-api-prod.lungnuek.workers.dev",
-        "pubilo-web-prod.pages.dev",
-    ]);
-
-    if (blockedHosts.has(host)) {
-        return "ห้ามใช้ลิงก์ภายใน Pubilo เป็นปลายทาง";
-    }
-
-    if (
-        host.includes("facebook.com")
-        && /(\/login|\/checkpoint|\/dialog|\/oauth|\/auth|\/recover)/.test(path)
-    ) {
-        return "ห้ามใช้ลิงก์ล็อกอินหรือยืนยันตัวตนของ Facebook";
-    }
-
-    if (
-        host.includes("postcron.com")
-        && (path.includes("/auth/") || path.includes("/callback") || path.includes("access_token"))
-    ) {
-        return "ห้ามใช้ลิงก์ callback/login ของ Postcron เป็นปลายทาง";
-    }
-
-    return "";
-}
-
-window.getBlockedPublishUrlReason = getBlockedPublishUrlReason;
-
 function applyPublishingStateIfNeeded(mode, buttonEl) {
     if (!buttonEl) return false;
     const inFlight = typeof window.isAnyPublishInFlight === "function"
@@ -143,27 +102,25 @@ function validateNewsMode() {
     const newsDescriptionInput = document.getElementById("newsDescriptionInput");
     const newsPreviewDesc = document.getElementById("newsPreviewDescription");
     const newsPublishBtn = document.getElementById("newsPublishBtn");
-    const newsStatus = document.getElementById("newsLazadaStatus");
+    const newsFullImageView = document.getElementById("newsFullImageView");
+    const hasVisibleNewsImageInDom = (() => {
+        if (!newsFullImageView) return false;
+        const displayStyle = window.getComputedStyle(newsFullImageView).display;
+        if (displayStyle === "none") return false;
+        const img = newsFullImageView.querySelector("img");
+        const canvas = newsFullImageView.querySelector("canvas");
+        return !!((img && img.src) || canvas);
+    })();
     
     const hasUrl = newsUrlInput && newsUrlInput.value.trim().length > 0;
-    const blockedUrlReason = hasUrl
-        ? getBlockedPublishUrlReason(newsUrlInput.value.trim())
-        : "";
     const descriptionValue = newsDescriptionInput?.value?.trim() || newsPreviewDesc?.textContent?.trim() || "";
     const hasDescription = descriptionValue.length > 0;
-    const hasImage = newsModeImageReady;
-    
-    const isValid = hasUrl && !blockedUrlReason && hasDescription && hasImage;
-
-    if (newsStatus) {
-        if (blockedUrlReason) {
-            newsStatus.textContent = `🚫 ${blockedUrlReason}`;
-            newsStatus.style.color = "#ef4444";
-        } else if (newsStatus.textContent?.startsWith("🚫 ")) {
-            newsStatus.textContent = "";
-            newsStatus.style.color = "#888";
-        }
+    const hasImage = newsModeImageReady || hasVisibleNewsImageInDom;
+    if (hasImage && !newsModeImageReady) {
+        newsModeImageReady = true;
     }
+    
+    const isValid = hasUrl && hasDescription && hasImage;
     
     if (newsPublishBtn) {
         if (applyPublishingStateIfNeeded("news", newsPublishBtn)) {

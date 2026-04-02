@@ -137,14 +137,12 @@
                 min-height: 0;
             }
 
-            /* Pending/Tool mode - allow natural scrolling */
+            /* Pending mode - allow content to grow with table */
             .app-layout.pending-mode {
-                display: block;
-                min-height: calc(100vh - 60px);
+                align-items: stretch;
             }
             .app-layout.pending-mode > .main-content {
                 height: auto;
-                min-height: calc(100vh - 140px);
             }
 
             /* Sidebar */
@@ -515,6 +513,7 @@
                 gap: 0.5rem;
                 align-items: stretch;
                 min-height: 0;
+                height: min(850px, calc(100vh - 140px));
             }
 
             /* Preview Panel - Center */
@@ -2264,14 +2263,13 @@
                 overflow-y: auto;
                 flex: 1;
                 width: 100%;
-                min-height: 400px;
             }
 
             #pendingPanel {
                 display: flex;
                 flex-direction: column;
-                min-height: 0;
-                overflow: visible;
+                height: calc(100vh - 60px - 1rem);
+                overflow: hidden;
             }
 
             #pendingPanel .pending-panel-header {
@@ -2410,8 +2408,8 @@
             #publishedPanel {
                 display: flex;
                 flex-direction: column;
-                min-height: 0;
-                overflow: visible;
+                height: calc(100vh - 60px - 1rem);
+                overflow: hidden;
             }
 
             #publishedPanel .pending-panel-header {
@@ -2421,7 +2419,6 @@
             #publishedPanel .pending-table-container {
                 overflow-y: auto;
                 flex: 1;
-                min-height: 400px;
             }
 
             #publishedPanel .pending-summary-bar,
@@ -2551,8 +2548,8 @@
             .post-tool-panel {
                 display: flex;
                 flex-direction: column;
-                min-height: 0;
-                overflow: visible;
+                height: calc(100vh - 60px - 1rem);
+                overflow: hidden;
             }
 
             .post-tool-note {
@@ -3094,8 +3091,8 @@
             #quotesPanel {
                 display: flex;
                 flex-direction: column;
-                min-height: 0;
-                overflow-y: auto;
+                height: calc(100vh - 60px - 1rem);
+                overflow: hidden;
             }
 
             #quotesPanel .pending-panel-header,
@@ -3106,8 +3103,8 @@
             #settingsPanel {
                 display: flex;
                 flex-direction: column;
-                min-height: 0;
-                overflow-y: auto;
+                height: calc(100vh - 60px - 1rem);
+                overflow: hidden;
                 flex: 1;
             }
 
@@ -3118,8 +3115,8 @@
             #billingPanel {
                 display: flex;
                 flex-direction: column;
-                min-height: 0;
-                overflow-y: auto;
+                height: calc(100vh - 60px - 1rem);
+                overflow: hidden;
                 flex: 1;
             }
 
@@ -3127,300 +3124,11 @@
                 flex-shrink: 0;
             }
 
-            .billing-content {
-                padding: 1.25rem 1.5rem 1.5rem;
-            }
-
-            .billing-current-plan {
-                border: 1px solid var(--border-color);
-                border-radius: 14px;
-                padding: 1.25rem 1.35rem;
-                margin-bottom: 1.25rem;
-                background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
-                box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-            }
-
-            .billing-plan-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                gap: 1rem;
-                flex-wrap: wrap;
-            }
-
-            .billing-label {
-                color: var(--text-muted);
-                font-size: 0.78rem;
-                text-transform: uppercase;
-                letter-spacing: 0.04em;
-                font-weight: 700;
-                margin: 0 0 0.4rem;
-            }
-
-            .billing-plan-name {
-                font-size: 1.45rem;
-                font-weight: 800;
-                color: var(--text-main);
-                margin: 0;
-                line-height: 1.2;
-            }
-
-            .billing-plan-price {
-                color: var(--primary);
-                font-weight: 700;
-                font-size: 1.05rem;
-                margin: 0.3rem 0 0;
-            }
-
-            .billing-status-badge {
-                padding: 0.38rem 0.95rem;
-                border-radius: 999px;
-                font-size: 0.78rem;
-                font-weight: 700;
-                line-height: 1;
-                border: 1px solid transparent;
-            }
-
-            .billing-plan-meta {
-                margin-top: 1.05rem;
-                padding-top: 1.05rem;
-                border-top: 1px dashed var(--border-color);
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-                gap: 0.85rem;
-            }
-
-            .billing-meta-label {
-                color: var(--text-muted);
-                font-size: 0.78rem;
-                margin: 0 0 0.2rem;
-            }
-
-            .billing-meta-value {
-                font-weight: 700;
-                color: var(--text-main);
-                margin: 0;
-            }
-
-            .billing-section-title {
-                font-size: 1rem;
-                font-weight: 700;
-                color: var(--text-main);
-                margin: 0 0 0.85rem;
-            }
-
-            .billing-cards-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-                gap: 1rem;
-                margin-bottom: 1.2rem;
-            }
-
-            .billing-card {
-                border: 1px solid #e4e7ec;
-                border-radius: 14px;
-                padding: 1.1rem;
-                background: #fff;
-                position: relative;
-                transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-                box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-            }
-
-            .billing-card:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 8px 16px rgba(16, 24, 40, 0.08);
-                border-color: #d0d5dd;
-            }
-
-            .billing-card--featured {
-                border-color: color-mix(in srgb, var(--primary) 55%, #ffffff);
-                box-shadow: 0 10px 24px rgba(127, 86, 217, 0.16);
-            }
-
-            .billing-card-ribbon {
-                position: absolute;
-                top: -10px;
-                right: 14px;
-                background: var(--primary);
-                color: #fff;
-                padding: 0.18rem 0.72rem;
-                border-radius: 999px;
-                font-size: 0.72rem;
-                font-weight: 800;
-                box-shadow: 0 4px 10px rgba(127, 86, 217, 0.25);
-            }
-
-            .billing-card-top {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 0.85rem;
-            }
-
-            .billing-card-name {
-                font-weight: 800;
-                font-size: 1.05rem;
-                color: var(--text-main);
-            }
-
-            .billing-card-badge {
-                background: #f2f4f7;
-                padding: 0.18rem 0.58rem;
-                border-radius: 999px;
-                font-size: 0.72rem;
-                font-weight: 700;
-                color: var(--text-muted);
-            }
-
-            .billing-card-badge--primary {
-                background: #f4ebff;
-                color: var(--primary);
-            }
-
-            .billing-card-price {
-                margin-bottom: 0.75rem;
-            }
-
-            .billing-card-amount {
-                font-size: 1.95rem;
-                font-weight: 800;
-                color: var(--text-main);
-                line-height: 1;
-            }
-
-            .billing-card-period {
-                color: var(--text-muted);
-                font-size: 0.9rem;
-                margin-left: 0.25rem;
-            }
-
-            .billing-card-features {
-                list-style: none;
-                padding: 0;
-                margin: 0;
-                color: var(--text-muted);
-                font-size: 0.88rem;
-            }
-
-            .billing-card-features li {
-                padding: 0.28rem 0;
-                position: relative;
-                padding-left: 1rem;
-            }
-
-            .billing-card-features li::before {
-                content: "✓";
-                position: absolute;
-                left: 0;
-                color: #12b76a;
-                font-weight: 800;
-            }
-
-            .billing-card-btn {
-                width: 100%;
-                margin-top: 0.9rem;
-                padding: 0.7rem 0.85rem;
-                border: 1px solid #101828;
-                background: #101828;
-                color: #fff;
-                border-radius: 10px;
-                font-weight: 700;
-                cursor: pointer;
-            }
-
-            .billing-card-btn--primary {
-                border-color: var(--primary);
-                background: var(--primary);
-            }
-
-            .billing-history-section {
-                border: 1px solid var(--border-color);
-                border-radius: 12px;
-                margin-bottom: 1rem;
-                overflow: hidden;
-                background: #fff;
-            }
-
-            .billing-history-toggle {
-                padding: 1rem 1.1rem;
-                margin: 0;
-                cursor: pointer;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                font-size: 0.95rem;
-                font-weight: 700;
-                color: var(--text-main);
-                user-select: none;
-                background: #fcfcfd;
-            }
-
-            .billing-history-section .collapse-icon {
-                font-size: 1.2rem;
-                color: #98a2b3;
-                transition: transform 0.2s ease;
-            }
-
-            .billing-history-body {
-                display: none;
-                padding: 1rem 1.1rem 1.15rem;
-                border-top: 1px solid var(--border-color);
-            }
-
-            .billing-history-section.open .billing-history-body {
-                display: block;
-            }
-
-            .billing-history-section.open .collapse-icon {
-                transform: rotate(90deg);
-            }
-
-            .billing-empty-state {
-                color: var(--text-muted);
-                text-align: center;
-                padding: 1.6rem 0;
-                margin: 0;
-            }
-
-            .billing-cancel-row {
-                text-align: center;
-                margin-top: 1rem;
-            }
-
-            .billing-cancel-btn {
-                background: #fff;
-                border: 1px solid #fecaca;
-                color: #b42318;
-                font-size: 0.83rem;
-                cursor: pointer;
-                padding: 0.45rem 0.95rem;
-                border-radius: 999px;
-                transition: all 0.2s ease;
-            }
-
-            .billing-cancel-btn:hover {
-                background: #fef3f2;
-            }
-
-            @media (max-width: 900px) {
-                .billing-content {
-                    padding: 1rem;
-                }
-
-                .billing-card {
-                    padding: 1rem;
-                }
-
-                .billing-card-amount {
-                    font-size: 1.75rem;
-                }
-            }
-
             #textPanel {
                 display: flex;
                 flex-direction: column;
-                min-height: 0;
-                overflow-y: auto;
+                height: calc(100vh - 60px - 1rem);
+                overflow: hidden;
             }
 
             #textPanel .pending-panel-header {
@@ -3430,8 +3138,8 @@
             #earningsPanel {
                 display: flex;
                 flex-direction: column;
-                min-height: 0;
-                overflow-y: auto;
+                height: calc(100vh - 60px - 1rem);
+                overflow: hidden;
             }
 
             #earningsPanel .pending-panel-header {

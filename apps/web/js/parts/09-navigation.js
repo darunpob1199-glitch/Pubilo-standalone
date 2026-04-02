@@ -4,7 +4,7 @@ function getAllowedHash(rawHash) {
     const fallbackMap = {
         quotes: "pending",
         earnings: "news",
-        "hide-posts": "settings",
+        "hide-posts": "news",
         "delete-posts": "news",
     };
 
@@ -43,8 +43,8 @@ function handleNavigation() {
         publishedNavItem.classList.add("active");
         showPublishedPanel();
     } else if (hash === "hide-posts") {
-        document.getElementById("settingsNavBtn").classList.add("active");
-        showSettingsPanel();
+        if (hidePostsNavItem) hidePostsNavItem.classList.add("active");
+        showHidePostsPanel();
     } else if (hash === "delete-posts") {
         if (deletePostsNavItem) deletePostsNavItem.classList.add("active");
         showDeletePostsPanel();
@@ -108,6 +108,13 @@ publishedNavItem.addEventListener("click", (e) => {
     navigateTo("published");
 });
 
+if (hidePostsNavItem) {
+    hidePostsNavItem.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo("hide-posts");
+    });
+}
+
 if (deletePostsNavItem) {
     deletePostsNavItem.addEventListener("click", (e) => {
         e.preventDefault();
@@ -156,7 +163,7 @@ function showBillingPanel() {
     const bp = document.getElementById("billingPanel");
     if (bp) bp.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "";
+    document.body.style.overflow = "hidden";
 }
 
 // News nav item click
