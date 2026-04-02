@@ -28,6 +28,25 @@ function normalizeSiteName(siteName: string, targetUrl: string): string {
     }
 }
 
+function isPreviewCrawler(userAgent: string): boolean {
+    const ua = String(userAgent || '').toLowerCase();
+    if (!ua) return false;
+
+    return [
+        'facebookexternalhit',
+        'facebot',
+        'meta-externalagent',
+        'meta-externalfetcher',
+        'twitterbot',
+        'slackbot',
+        'linkedinbot',
+        'discordbot',
+        'telegrambot',
+        'whatsapp',
+        'skypeuripreview',
+    ].some((needle) => ua.includes(needle));
+}
+
 app.get('/', (c) => {
     const target = sanitizeText(c.req.query('target'));
     if (!isHttpUrl(target)) {
@@ -38,9 +57,16 @@ app.get('/', (c) => {
     const description = sanitizeText(c.req.query('description'), 'แตะเพื่อดูรายละเอียดสินค้าใน Lazada');
     const image = sanitizeText(c.req.query('image'));
     const siteName = normalizeSiteName(c.req.query('site') || '', target);
+    const userAgent = c.req.header('user-agent') || '';
+    const shouldServePreviewHtml = isPreviewCrawler(userAgent);
+
+    if (!shouldServePreviewHtml) {
+        return c.redirect(target, 302);
+    }
 
     const requestUrl = new URL(c.req.url);
     const previewUrl = requestUrl.toString();
+    const canonicalUrl = target;
 
     return c.html(html`<!doctype html>
         <html lang="th">
@@ -49,26 +75,37 @@ app.get('/', (c) => {
                 <title>${title}</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
                 <meta name="robots" content="noindex, nofollow" />
+                <meta http-equiv="refresh" content=${`0;url=${target}`} />
                 <meta property="og:type" content="website" />
-                <meta property="og:url" content=${previewUrl} />
+                <meta property="og:url" content=${canonicalUrl} />
                 <meta property="og:title" content=${title} />
                 <meta property="og:description" content=${description} />
                 <meta property="og:site_name" content=${siteName} />
-                <link rel="canonical" href=${previewUrl} />
+                <meta name="twitter:title" content=${title} />
+                <meta name="twitter:description" content=${description} />
+                <meta name="twitter:url" content=${canonicalUrl} />
+                <link rel="canonical" href=${canonicalUrl} />
                 ${image
                     ? html`
                         <meta property="og:image" content=${image} />
                         <meta property="og:image:secure_url" content=${image} />
                         <meta property="og:image:width" content="800" />
                         <meta property="og:image:height" content="1200" />
+                        <meta property="og:image:alt" content=${title} />
                         <meta name="twitter:card" content="summary_large_image" />
                         <meta name="twitter:image" content=${image} />
                     `
                     : html`<meta name="twitter:card" content="summary" />`}
             </head>
-            <body>
+            <body style="margin:0;background:#fff;">
                 <script>window.location.replace(${JSON.stringify(target)});</script>
-                <p><a href=${target}>${title}</a></p>
+                <noscript><meta http-equiv="refresh" content=${`0;url=${target}`} /></noscript>
+                <p style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;">
+                    <a href=${target}>${title}</a>
+                </p>
+                <small style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;">
+                    Preview: ${previewUrl}
+                </small>
             </body>
         </html>`);
 });

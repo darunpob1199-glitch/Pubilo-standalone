@@ -274,6 +274,54 @@ function deriveSiteName(inputCaption?: string, targetUrl?: string): string {
     return 'PUBILO';
 }
 
+function getBlockedTargetUrlReason(
+    rawUrl: string,
+    options?: { apiOrigin?: string; appOrigin?: string; requestUrl?: string },
+): string {
+    const value = String(rawUrl || '').trim();
+    if (!value) return '';
+
+    let parsed: URL;
+    try {
+        parsed = new URL(value);
+    } catch {
+        return 'ลิงก์ปลายทางไม่ถูกต้อง';
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    const path = `${parsed.pathname}${parsed.search}${parsed.hash}`.toLowerCase();
+    const blockedHosts = new Set<string>();
+
+    for (const candidate of [options?.apiOrigin, options?.appOrigin, options?.requestUrl]) {
+        if (!candidate) continue;
+        try {
+            blockedHosts.add(new URL(candidate).hostname.toLowerCase());
+        } catch {
+            // Ignore parse errors.
+        }
+    }
+
+    if (blockedHosts.has(host)) {
+        return 'ห้ามใช้ลิงก์ภายใน Pubilo เป็นปลายทาง';
+    }
+
+    if (
+        host.includes('facebook.com')
+        && /(\/login|\/checkpoint|\/dialog|\/oauth|\/auth|\/recover)/.test(path)
+    ) {
+        return 'ห้ามใช้ลิงก์ล็อกอินหรือยืนยันตัวตนของ Facebook เป็นปลายทาง';
+    }
+
+    if (
+        host.includes('postcron.com')
+        && (path.includes('/auth/') || path.includes('/callback') || path.includes('access_token'))
+    ) {
+        return 'ห้ามใช้ลิงก์ callback/login ของ Postcron เป็นปลายทาง';
+    }
+
+    return '';
+}
+
 function normalizeTargetPageIds(input: unknown, currentPageId: string): string[] {
     if (!Array.isArray(input)) return [];
 
@@ -989,6 +1037,20 @@ app.post('/', async (c) => {
         // Determine post type
         const finalMessage = message || primaryText || '';
         const finalLink = link || linkUrl || '';
+        const blockedTargetReason = finalLink
+            ? getBlockedTargetUrlReason(finalLink, {
+                apiOrigin: c.env.API_ORIGIN,
+                appOrigin: c.env.APP_ORIGIN,
+                requestUrl: c.req.url,
+            })
+            : '';
+        if (blockedTargetReason) {
+            return c.json({
+                success: false,
+                error: blockedTargetReason,
+                errorType: 'InvalidTargetUrl',
+            }, 400);
+        }
         const finalImageUrl = imageUrl || '';
         const isLinkAttachmentPost = !!finalLink && (postMode === 'news' || postMode === 'link');
         const requiresRichLinkCard = isLinkAttachmentPost && (
