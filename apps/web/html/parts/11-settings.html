@@ -1,15 +1,15 @@
                             <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
-                                ⏰ ตั้งเวลาโพสต์
+                                ⏰ ตั้งเวลาโพสต์อัตโนมัติ
                                 <span class="collapse-icon">›</span>
                             </h3>
                             <div class="settings-section-content">
                             <div class="setting-group">
                                 <label class="setting-label">
                                     <input type="checkbox" id="autoScheduleEnabledPanel" />
-                                    <span>Auto Schedule Posts</span>
+                                    <span>ใช้คิวเวลาถัดไปอัตโนมัติ</span>
                                 </label>
                                 <p class="setting-desc">
-                                    โพสต์จะถูกตั้งเวลาอัตโนมัติตามนาทีที่กำหนด
+                                    ถ้าไม่ได้เลือกวันเวลาเอง ระบบจะเลือก slot ถัดไปจากรายการนี้แล้วส่งเข้าคิวโพสต์
                                 </p>
                             </div>
                             <div
@@ -176,7 +176,7 @@
                                     <option value="og">OG Image Generator (ประหยัด API)</option>
                                 </select>
                                 <p class="setting-desc">
-                                    เลือกวิธีสร้างรูปภาพสำหรับ Auto Post
+                                    เลือกวิธีสร้างรูปภาพเมื่อระบบเข้าคิวโพสต์ให้อัตโนมัติ
                                 </p>
                             </div>
                             <div
@@ -222,8 +222,8 @@
                             </div>
                         </div>
 
-                        <!-- Auto-Post Alternating Section -->
-                        <div class="settings-section collapsible">
+                        <!-- Legacy recurring auto-post section (retired) -->
+                        <div class="settings-section collapsible" id="autoPostSettingsSection" style="display: none">
                             <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
                                 🔄 Auto Post
                                 <span class="collapse-icon">›</span>
@@ -354,41 +354,19 @@
                             </div>
                         </div>
 
-                        <!-- Auto Hide Posts Section -->
-                        <div class="settings-section collapsible" id="autoHideSettingsSection">
+                        <!-- Hide On Publish Section -->
+                        <div class="settings-section collapsible" id="hideOnPublishSettingsSection">
                             <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
-                                🙈 Auto Hide Posts
+                                🙈 ซ่อนหลังโพสต์สำเร็จ
                                 <span class="collapse-icon">›</span>
                             </h3>
                             <div class="settings-section-content">
                             <div class="setting-group">
                                 <label class="setting-label">
-                                    <input type="checkbox" id="autoHideEnabled" />
-                                    <span>ซ่อนโพสต์อัตโนมัติ</span>
+                                    <input type="checkbox" id="hideOnPublishEnabled" />
+                                    <span>ซ่อนโพสต์จาก Timeline ทันทีหลังโพสต์</span>
                                 </label>
-                                <p class="setting-desc">เปิดให้ worker ไล่ซ่อนโพสต์ที่เข้าเงื่อนไขจากหน้าเพจโดยอัตโนมัติ</p>
-                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap;">
-                                    <button type="button" id="autoHideNowBtn" class="btn" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;">
-                                        รันตอนนี้
-                                    </button>
-                                    <span id="autoHideNowStatus" style="font-size: 0.82rem; color: #6b7280;"></span>
-                                </div>
-                                <div id="hideTypesGroup" style="margin-top: 0.75rem; margin-left: 1.5rem;">
-                                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                            <input type="checkbox" id="hideSharedStory" checked style="width: 16px; height: 16px;">
-                                            <span style="font-size: 0.9rem;">shared_story (แชร์โพสต์)</span>
-                                        </label>
-                                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                            <input type="checkbox" id="hideMobileStatus" checked style="width: 16px; height: 16px;">
-                                            <span style="font-size: 0.9rem;">mobile_status_update (สถานะ)</span>
-                                        </label>
-                                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                            <input type="checkbox" id="hideAddedPhotos" checked style="width: 16px; height: 16px;">
-                                            <span style="font-size: 0.9rem;">added_photos (เพิ่มรูป)</span>
-                                        </label>
-                                    </div>
-                                </div>
+                                <p class="setting-desc">ใช้ token เดียวกับตอนโพสต์จริง ไม่ต้องซ่อนย้อนหลัง และไม่ใช้ worker cron เก่าแล้ว</p>
                             </div>
                             </div>
                         </div>
@@ -559,10 +537,10 @@
                     <div class="setting-group">
                         <label class="setting-label">
                             <input type="checkbox" id="autoScheduleEnabled" />
-                            <span>Auto Schedule Posts</span>
+                            <span>ใช้คิวเวลาถัดไปอัตโนมัติ</span>
                         </label>
                         <p class="setting-desc">
-                            โพสต์จะถูกตั้งเวลาอัตโนมัติตามนาทีที่กำหนด
+                            ถ้าไม่ได้เลือกวันเวลาเอง ระบบจะใช้เวลาถัดไปจากรอบที่กำหนดแล้วส่งเข้าคิวโพสต์
                         </p>
                     </div>
                     <div
@@ -650,7 +628,7 @@
                             <option value="og">OG Image Generator (ประหยัด API)</option>
                         </select>
                         <p class="setting-desc">
-                            เลือกวิธีสร้างรูปภาพสำหรับ Auto Post
+                            เลือกวิธีสร้างรูปภาพเมื่อระบบเข้าคิวโพสต์ให้อัตโนมัติ
                         </p>
                     </div>
                     <div

@@ -12,8 +12,6 @@ import { publishRouter } from './routes/publish';
 import { scheduledPostsRouter } from './routes/scheduled-posts';
 import { deletePostRouter } from './routes/delete-post';
 import { earningsRouter } from './routes/earnings';
-import { autoPostConfigRouter } from './routes/auto-post-config';
-import { autoHideConfigRouter } from './routes/auto-hide-config';
 import { uploadImageRouter } from './routes/upload-image';
 import { logsRouter } from './routes/logs';
 import { publishedPostsRouter } from './routes/published-posts';
@@ -21,9 +19,7 @@ import { postActionJobsRouter } from './routes/post-action-jobs';
 import { migrateRouter } from './routes/migrate';
 import { processPendingPostActionJobs } from './lib/post-action-jobs';
 // Cron routes
-import { cronAutoPostRouter } from './routes/cron-auto-post';
 import { cronEarningsRouter } from './routes/cron-earnings';
-import { autoHideRouter } from './routes/auto-hide';
 import { cronHealthCheckRouter } from './routes/cron-health-check';
 import { cronCleanupReelsRouter } from './routes/cron-cleanup-reels';
 // Additional routes
@@ -250,9 +246,6 @@ const subscriptionProtectedPaths = [
     '/api/scheduled-posts',
     '/api/delete-post',
     '/api/earnings',
-    '/api/auto-post-config',
-    '/api/auto-hide',
-    '/api/auto-hide-config',
     '/api/upload-image',
     '/api/auto-post-logs',
     '/api/view-logs',
@@ -293,9 +286,6 @@ app.route('/api/publish-reel', publishReelRouter);
 app.route('/api/scheduled-posts', scheduledPostsRouter);
 app.route('/api/delete-post', deletePostRouter);
 app.route('/api/earnings', earningsRouter);
-app.route('/api/auto-post-config', autoPostConfigRouter);
-app.route('/api/auto-hide', autoHideRouter);
-app.route('/api/auto-hide-config', autoHideConfigRouter);
 app.route('/api/upload-image', uploadImageRouter);
 app.route('/api/auto-post-logs', logsRouter);
 app.route('/api/view-logs', logsRouter);
@@ -312,8 +302,6 @@ app.route('/api/check-risky-quotes', checkRiskyQuotesRouter);
 app.route('/api/line-webhook', lineWebhookRouter);
 app.route('/api/token-health', tokenHealthRouter);
 
-app.route('/api/cron/auto-post', cronAutoPostRouter);
-app.route('/api/cron/auto-hide', autoHideRouter);
 app.route('/api/cron/earnings', cronEarningsRouter);
 app.route('/api/cron/health-check', cronHealthCheckRouter);
 app.route('/api/cron/cleanup-reels', cronCleanupReelsRouter);
@@ -332,7 +320,7 @@ export default {
         console.log('[scheduled] Cron trigger fired at', triggerTime.toISOString(), 'cron:', cron);
         const internalHeaders = { 'x-internal-secret': env.INTERNAL_API_SECRET || '' };
 
-        // Every minute: Run auto-post and auto-hide
+        // Every minute: Run scheduled publish queue and post action jobs
         if (cron === '* * * * *') {
             console.log('[scheduled] Every minute - Processing scheduled publish queue');
             try {
@@ -347,41 +335,10 @@ export default {
             } catch (err) {
                 console.error('[scheduled] post action jobs error:', err);
             }
-
-            console.log('[scheduled] Every minute - Running auto-post');
-            try {
-                const autoPostReq = new Request('https://internal/api/cron/auto-post', { headers: internalHeaders });
-                const autoPostRes = await app.fetch(autoPostReq, env, ctx);
-                const autoPostData = await autoPostRes.json();
-                console.log('[scheduled] auto-post result:', autoPostData);
-            } catch (err) {
-                console.error('[scheduled] auto-post error:', err);
-            }
-
-            // Run auto-hide
-            console.log('[scheduled] Every minute - Running auto-hide');
-            try {
-                const autoHideReq = new Request('https://internal/api/cron/auto-hide', { headers: internalHeaders });
-                const autoHideRes = await app.fetch(autoHideReq, env, ctx);
-                const autoHideData = await autoHideRes.json();
-                console.log('[scheduled] auto-hide result:', autoHideData);
-            } catch (err) {
-                console.error('[scheduled] auto-hide error:', err);
-            }
         }
 
-        // Every hour: Run health check (only alert if something is wrong)
+        // Every hour: clean up stale reel uploads
         if (cron === '0 * * * *') {
-            console.log('[scheduled] Every hour - Running health check');
-            try {
-                const healthReq = new Request('https://internal/api/cron/health-check', { headers: internalHeaders });
-                const healthRes = await app.fetch(healthReq, env, ctx);
-                const healthData = await healthRes.json();
-                console.log('[scheduled] health-check result:', healthData);
-            } catch (err) {
-                console.error('[scheduled] health-check error:', err);
-            }
-
             console.log('[scheduled] Every hour - Cleaning up stale reel uploads');
             try {
                 const cleanupReq = new Request('https://internal/api/cron/cleanup-reels', { headers: internalHeaders });

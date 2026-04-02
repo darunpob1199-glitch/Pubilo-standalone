@@ -892,8 +892,6 @@ app.post('/', async (c) => {
             fbDtsg,
             callToAction,
             callToActionLabel,
-            hideFromTimeline,
-            hideToken,
             textFormatPresetId,
             scheduleInSystem,
             internalRun,
@@ -920,21 +918,19 @@ app.post('/', async (c) => {
 
         const requestedPageToken = typeof pageToken === 'string' ? pageToken.trim() : '';
         let storedPageToken = '';
-        let storedHideToken = '';
+        let storedHideOnPublish = false;
 
         // Always read page_settings token as a durable fallback.
         try {
             const dbResult = await c.env.DB.prepare(
-                'SELECT post_token_encrypted, hide_token_encrypted FROM page_settings WHERE organization_id = ? AND page_id = ? LIMIT 1'
-            ).bind(organizationId, pageId).first<{ post_token_encrypted: string | null; hide_token_encrypted: string | null }>();
+                'SELECT post_token_encrypted, hide_on_publish FROM page_settings WHERE organization_id = ? AND page_id = ? LIMIT 1'
+            ).bind(organizationId, pageId).first<{ post_token_encrypted: string | null; hide_on_publish: number | null }>();
 
             if (dbResult?.post_token_encrypted) {
                 storedPageToken = await decryptSecret(c.env, dbResult.post_token_encrypted) || '';
                 console.log('[publish] Got stored Page Token from D1 page_settings');
             }
-            if (dbResult?.hide_token_encrypted) {
-                storedHideToken = await decryptSecret(c.env, dbResult.hide_token_encrypted) || '';
-            }
+            storedHideOnPublish = Number(dbResult?.hide_on_publish || 0) === 1;
         } catch (dbErr) {
             console.error('[publish] D1 error:', dbErr);
         }
@@ -1078,9 +1074,8 @@ app.post('/', async (c) => {
             });
         };
 
-        const shouldHideFromTimeline = !!hideFromTimeline && !scheduleTimestamp;
-        const requestHideToken = typeof hideToken === 'string' ? hideToken.trim() : '';
-        const maybeHideAfterPublish = async (postId: string) => {
+        const shouldHideFromTimeline = storedHideOnPublish && !scheduleTimestamp;
+        const maybeHideAfterPublish = async (postId: string, tokenForHide: string) => {
             if (!shouldHideFromTimeline || !postId) {
                 return {
                     attempted: false,
@@ -1090,51 +1085,48 @@ app.post('/', async (c) => {
                 };
             }
 
-            const tokenCandidates = buildAuthCandidates([
-                requestHideToken,
-                storedHideToken,
-                freshPageToken,
-                storedPageToken,
-                requestedPageToken,
-                accessToken,
-            ]);
-            let lastError = '';
+            const authToken = String(tokenForHide || '').trim();
+            if (!authToken) {
+                return {
+                    attempted: true,
+                    hidden: false,
+                    method: '',
+                    error: 'missing_publish_token',
+                };
+            }
 
-            for (const tokenCandidate of tokenCandidates) {
-                const result = await hidePagePostFromTimeline(
-                    postId,
-                    tokenCandidate,
-                    facebookHeaders,
-                );
-                if (result.success) {
-                    try {
-                        await c.env.DB.prepare(`
-                            INSERT OR IGNORE INTO hidden_posts (organization_id, page_id, post_id, hidden_at)
-                            VALUES (?, ?, ?, ?)
-                        `).bind(
-                            organizationId,
-                            pageId,
-                            postId,
-                            new Date().toISOString(),
-                        ).run();
-                    } catch (dbErr) {
-                        console.warn('[publish] Failed to persist hidden_posts row:', dbErr);
-                    }
-                    return {
-                        attempted: true,
-                        hidden: true,
-                        method: result.method || '',
-                        error: '',
-                    };
+            const result = await hidePagePostFromTimeline(
+                postId,
+                authToken,
+                facebookHeaders,
+            );
+            if (result.success) {
+                try {
+                    await c.env.DB.prepare(`
+                        INSERT OR IGNORE INTO hidden_posts (organization_id, page_id, post_id, hidden_at)
+                        VALUES (?, ?, ?, ?)
+                    `).bind(
+                        organizationId,
+                        pageId,
+                        postId,
+                        new Date().toISOString(),
+                    ).run();
+                } catch (dbErr) {
+                    console.warn('[publish] Failed to persist hidden_posts row:', dbErr);
                 }
-                lastError = result.error || lastError;
+                return {
+                    attempted: true,
+                    hidden: true,
+                    method: result.method || '',
+                    error: '',
+                };
             }
 
             return {
                 attempted: true,
                 hidden: false,
                 method: '',
-                error: lastError || 'hide_failed',
+                error: result.error || 'hide_failed',
             };
         };
 
@@ -1362,7 +1354,7 @@ app.post('/', async (c) => {
                         creativeId: creativeResult.creativeId,
                         materializedBy: creativeResult.materializedBy,
                     });
-                    const hideResult = await maybeHideAfterPublish(creativeResult.postId);
+                    const hideResult = await maybeHideAfterPublish(creativeResult.postId, pageTokenForPublish);
 
                     return c.json({
                         success: true,
@@ -1418,7 +1410,7 @@ app.post('/', async (c) => {
                     await recordPublishedSuccess(feedResult.postId, feedUrl, {
                         flow: adCreativeError ? 'feed-fallback' : 'feed-link',
                     });
-                    const hideResult = await maybeHideAfterPublish(feedResult.postId);
+                    const hideResult = await maybeHideAfterPublish(feedResult.postId, candidateToken);
 
                     return c.json({
                         success: true,
@@ -1600,7 +1592,7 @@ app.post('/', async (c) => {
                 flow: isLinkAttachmentPost ? 'facebook-link-post' : 'facebook-direct-post',
                 postMode: postMode || null,
             });
-            const hideResult = await maybeHideAfterPublish(postId);
+            const hideResult = await maybeHideAfterPublish(postId, authToken);
             return c.json({
                 success: true,
                 postId,
