@@ -168,6 +168,38 @@ async function publishViaFeedCookieOnly(params: {
     return { postId };
 }
 
+async function publishPhotoCookieOnly(params: {
+    pageId: string;
+    cookieHeaders: Record<string, string>;
+    imageUrl?: string;
+    caption?: string;
+    scheduledTime?: number | null;
+}): Promise<{ postId: string }> {
+    const body = new URLSearchParams();
+    if (params.imageUrl) body.set('url', params.imageUrl);
+    if (params.caption) body.set('caption', params.caption);
+    if (params.scheduledTime) {
+        body.set('published', 'false');
+        body.set('scheduled_publish_time', String(params.scheduledTime));
+    }
+
+    const response = await fetch(`${FB_API}/${params.pageId}/photos`, {
+        method: 'POST',
+        headers: {
+            ...params.cookieHeaders,
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+    });
+    const data = await response.json() as any;
+    if (data?.error) {
+        throw new Error(data.error.message || 'Cookie-only photo post failed');
+    }
+    const postId = String(data?.post_id || data?.id || '');
+    if (!postId) throw new Error('Facebook did not return post id for cookie-only photo');
+    return { postId };
+}
+
 async function fetchFreshPageTokenFromWorkspaceCredentials(
     env: Env,
     organizationId: string,
@@ -229,6 +261,34 @@ async function recoverAdsTokenFromWorkspaceCredentials(
         console.warn('[publish] ads token recovery from workspace credentials failed:', error);
     }
     return '';
+}
+
+async function getWorkspaceCookieCandidates(
+    env: Env,
+    organizationId: string,
+): Promise<string[]> {
+    try {
+        const rows = await env.DB.prepare(`
+            SELECT cookie_encrypted
+            FROM facebook_credentials
+            WHERE workspace_id = ?
+            ORDER BY updated_at DESC
+            LIMIT 5
+        `).bind(organizationId).all<{ cookie_encrypted?: string | null }>();
+
+        const seen = new Set<string>();
+        const cookies: string[] = [];
+        for (const row of rows.results || []) {
+            const cookie = String(await decryptSecret(env, row?.cookie_encrypted) || '').trim();
+            if (!cookie || seen.has(cookie)) continue;
+            seen.add(cookie);
+            cookies.push(cookie);
+        }
+        return cookies;
+    } catch (error) {
+        console.warn('[publish] workspace cookie candidates fetch failed:', error);
+        return [];
+    }
 }
 
 function buildAuthCandidates(tokens: Array<string | null | undefined>): string[] {
@@ -984,6 +1044,19 @@ app.post('/', async (c) => {
         }
 
         const facebookHeaders = buildFacebookHeaders(cookieData);
+        const workspaceCookieCandidates = await getWorkspaceCookieCandidates(c.env, organizationId);
+        const cookieHeaderCandidates: Array<Record<string, string>> = [];
+        const seenCookies = new Set<string>();
+        const addCookieHeaderCandidate = (rawCookie?: string) => {
+            const normalized = String(rawCookie || '').trim();
+            if (!normalized || seenCookies.has(normalized)) return;
+            const headers = buildFacebookHeaders(normalized);
+            if (!headers) return;
+            seenCookies.add(normalized);
+            cookieHeaderCandidates.push(headers);
+        };
+        addCookieHeaderCandidate(cookieData);
+        workspaceCookieCandidates.forEach((cookie) => addCookieHeaderCandidate(cookie));
         let freshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
         if (!freshPageToken) {
             const workspaceFreshPageToken = await fetchFreshPageTokenFromWorkspaceCredentials(
@@ -1482,39 +1555,42 @@ app.post('/', async (c) => {
             }
 
             // Last resort: cookie-only feed post (no access_token at all, just Cookie header).
-            if (facebookHeaders) {
-                try {
-                    console.log('[publish] Attempting cookie-only feed post as last resort');
-                    const cookieResult = await publishViaFeedCookieOnly({
-                        pageId,
-                        cookieHeaders: facebookHeaders,
-                        message: finalMessage,
-                        linkUrl: finalLink || publishLinkUrl,
-                    });
+            if (cookieHeaderCandidates.length > 0) {
+                for (let i = 0; i < cookieHeaderCandidates.length; i += 1) {
+                    try {
+                        console.log(`[publish] Attempting cookie-only feed post as last resort (${i + 1}/${cookieHeaderCandidates.length})`);
+                        const cookieResult = await publishViaFeedCookieOnly({
+                            pageId,
+                            cookieHeaders: cookieHeaderCandidates[i],
+                            message: finalMessage,
+                            linkUrl: finalLink || publishLinkUrl,
+                        });
 
-                    const cookieUrl = buildFacebookPostUrl(cookieResult.postId, pageId);
-                    await recordPublishedSuccess(cookieResult.postId, cookieUrl, {
-                        flow: 'cookie-only-feed',
-                    });
-                    const hideResult = await maybeHideAfterPublish(cookieResult.postId, pageTokenCandidates[0] || '');
-
-                    return c.json({
-                        success: true,
-                        postId: cookieResult.postId,
-                        url: cookieUrl,
-                        timelineHidden: hideResult.hidden,
-                        warning: 'โพสต์ผ่าน cookie-only mode (ไม่มี Ads Token)',
-                        needsScheduling: !!scheduleTimestamp,
-                        ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
-                        _debug: {
+                        const cookieUrl = buildFacebookPostUrl(cookieResult.postId, pageId);
+                        await recordPublishedSuccess(cookieResult.postId, cookieUrl, {
                             flow: 'cookie-only-feed',
-                            adCreativeError,
-                            tokenFeedError: lastFeedError,
-                        },
-                    });
-                } catch (cookieError) {
-                    const cookieMsg = cookieError instanceof Error ? cookieError.message : String(cookieError);
-                    console.warn('[publish] cookie-only feed also failed:', cookieMsg);
+                        });
+                        const hideResult = await maybeHideAfterPublish(cookieResult.postId, pageTokenCandidates[0] || '');
+
+                        return c.json({
+                            success: true,
+                            postId: cookieResult.postId,
+                            url: cookieUrl,
+                            timelineHidden: hideResult.hidden,
+                            warning: 'โพสต์ผ่าน cookie-only mode (ไม่มี Ads Token)',
+                            needsScheduling: !!scheduleTimestamp,
+                            ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                            _debug: {
+                                flow: 'cookie-only-feed',
+                                adCreativeError,
+                                tokenFeedError: lastFeedError,
+                                cookieCandidateIndex: i + 1,
+                            },
+                        });
+                    } catch (cookieError) {
+                        const cookieMsg = cookieError instanceof Error ? cookieError.message : String(cookieError);
+                        console.warn('[publish] cookie-only feed candidate failed:', cookieMsg);
+                    }
                 }
             }
 
@@ -1690,6 +1766,45 @@ app.post('/', async (c) => {
                     hide: hideResult,
                 },
             });
+        }
+
+        // Last resort for image mode: cookie-only /photos post (no access_token).
+        if (!isLinkAttachmentPost && cookieHeaderCandidates.length > 0 && finalImageUrl) {
+            for (let i = 0; i < cookieHeaderCandidates.length; i += 1) {
+                try {
+                    console.log(`[publish] Attempting cookie-only photo post as last resort (${i + 1}/${cookieHeaderCandidates.length})`);
+                    const cookiePhotoResult = await publishPhotoCookieOnly({
+                        pageId,
+                        cookieHeaders: cookieHeaderCandidates[i],
+                        imageUrl: finalImageUrl,
+                        caption: finalCaption,
+                        scheduledTime: scheduleTimestamp || null,
+                    });
+                    const cookiePhotoUrl = buildFacebookPostUrl(cookiePhotoResult.postId, pageId);
+                    await recordPublishedSuccess(cookiePhotoResult.postId, cookiePhotoUrl, {
+                        flow: 'cookie-only-photo',
+                        postMode: postMode || null,
+                    });
+                    const hideResult = await maybeHideAfterPublish(cookiePhotoResult.postId, authCandidates[0] || '');
+                    return c.json({
+                        success: true,
+                        postId: cookiePhotoResult.postId,
+                        url: cookiePhotoUrl,
+                        timelineHidden: hideResult.hidden,
+                        warning: 'โพสต์ผ่าน cookie-only mode (ไม่มี Ads/Page token ที่ใช้งานได้)',
+                        needsScheduling: !!scheduleTimestamp,
+                        ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                        _debug: {
+                            flow: 'cookie-only-photo',
+                            hide: hideResult,
+                            cookieCandidateIndex: i + 1,
+                        },
+                    });
+                } catch (cookiePhotoError) {
+                    const cookiePhotoMsg = cookiePhotoError instanceof Error ? cookiePhotoError.message : String(cookiePhotoError);
+                    console.warn('[publish] cookie-only photo candidate failed:', cookiePhotoMsg);
+                }
+            }
         }
 
         const isOAuthError = lastFacebookError?.type === 'OAuthException';

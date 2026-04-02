@@ -932,6 +932,56 @@ function handleImmediatePublishSuccess(mode, els = null) {
 
 window.handleImmediatePublishSuccess = handleImmediatePublishSuccess;
 
+async function postPublishWithNetworkRecovery(payload, options = {}) {
+    const timeoutMs = Number(options.timeoutMs || 35000);
+
+    const runAttempt = async (useNativeDirect) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const url = useNativeDirect
+                ? `${window.API_BASE}/api/publish`
+                : "/api/publish";
+            const fetchImpl =
+                useNativeDirect && typeof window.__PUBILO_NATIVE_FETCH__ === "function"
+                    ? window.__PUBILO_NATIVE_FETCH__
+                    : fetch;
+
+            return await fetchImpl(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+        } catch (error) {
+            if (error?.name === "AbortError") {
+                throw new Error("คำขอโพสต์ใช้เวลานานเกิน 35 วินาที ระบบยกเลิกให้แล้ว ลองอีกครั้ง");
+            }
+            throw error;
+        } finally {
+            clearTimeout(timer);
+        }
+    };
+
+    try {
+        return await runAttempt(false);
+    } catch (error) {
+        const message = String(error?.message || error || "").toLowerCase();
+        const isNetworkFetchError =
+            message.includes("failed to fetch") ||
+            message.includes("networkerror") ||
+            message.includes("network request failed") ||
+            message.includes("load failed");
+        if (!isNetworkFetchError) {
+            throw error;
+        }
+
+        console.warn("[PUBLISH] Network fetch failed, retrying via native direct API_BASE");
+        return await runAttempt(true);
+    }
+}
+
 function setupPublishHandler(mode) {
     const els = getModeElements(mode);
     if (!els.publishBtn) return;
@@ -1056,26 +1106,22 @@ function setupPublishHandler(mode) {
                     renderedImageDataUrl,
                 );
 
-                const response = await fetch("/api/publish", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        pageId,
-                        postMode: "text",
-                        primaryText: "",
-                        message: "",
-                        textFormatPresetId: "",
-                        imageUrl: textImageUrl,
-                        targetPageIds,
-                        accessToken: adsToken,
-                        pageToken,
-                        cookieData: cookie,
-                        fbDtsg,
-                        scheduleInSystem: scheduleSource === "manual",
-                        scheduledTime: scheduledTime
-                            ? Math.floor(scheduledTime.getTime() / 1000)
-                            : null,
-                    }),
+                const response = await postPublishWithNetworkRecovery({
+                    pageId,
+                    postMode: "text",
+                    primaryText: "",
+                    message: "",
+                    textFormatPresetId: "",
+                    imageUrl: textImageUrl,
+                    targetPageIds,
+                    accessToken: adsToken,
+                    pageToken,
+                    cookieData: cookie,
+                    fbDtsg,
+                    scheduleInSystem: scheduleSource === "manual",
+                    scheduledTime: scheduledTime
+                        ? Math.floor(scheduledTime.getTime() / 1000)
+                        : null,
                 });
 
                 const data = await response.json();
@@ -1264,24 +1310,20 @@ function setupPublishHandler(mode) {
 
                 console.log("[FEWFEED] Publishing image via /api/publish...");
 
-                const response = await fetch("/api/publish", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        pageId,
-                        postMode: "image",
-                        imageUrl,
-                        primaryText,
-                        targetPageIds,
-                        accessToken: adsToken,
-                        pageToken,
-                        cookieData: cookie,
-                        fbDtsg,
-                        scheduleInSystem: scheduleSource === "manual",
-                        scheduledTime: scheduledTime
-                            ? Math.floor(scheduledTime.getTime() / 1000)
-                            : null,
-                    }),
+                const response = await postPublishWithNetworkRecovery({
+                    pageId,
+                    postMode: "image",
+                    imageUrl,
+                    primaryText,
+                    targetPageIds,
+                    accessToken: adsToken,
+                    pageToken,
+                    cookieData: cookie,
+                    fbDtsg,
+                    scheduleInSystem: scheduleSource === "manual",
+                    scheduledTime: scheduledTime
+                        ? Math.floor(scheduledTime.getTime() / 1000)
+                        : null,
                 });
 
                 const data = await response.json();
@@ -1443,44 +1485,44 @@ function setupPublishHandler(mode) {
                 console.log("[PUBLISH] === END PAYLOAD ===");
             }
 
-            const response = await fetch("/api/publish", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    imageUrl: imageToUpload,
-                    linkUrl: linkUrlValue,
-                    linkName: linkNameValue,
-                    caption: captionText,
-                    description: descriptionText,
-                    primaryText: publishSnapshot.primaryText || "",
-                    targetPageIds,
-                    postMode: mode,
-                    accessToken: adsToken, // Ads Token (server fetches Page Token from this)
-                    pageToken: freshPageToken || getPageToken() || cachedPageToken || "",
-                    cookieData: cookie,
-                    pageId: pageId,
-                    adAccountId: adAccountId,
-                    callToAction: ctaConfig.type,
-                    callToActionLabel: ctaConfig.label,
-                    fbDtsg: fbDtsg, // Required for GraphQL scheduling
-                    scheduleInSystem: scheduleSource === "manual",
-                    scheduledTime: scheduledTime
-                        ? Math.floor(scheduledTime.getTime() / 1000)
-                        : null, // Unix timestamp
-                }),
+            const response = await postPublishWithNetworkRecovery({
+                imageUrl: imageToUpload,
+                linkUrl: linkUrlValue,
+                linkName: linkNameValue,
+                caption: captionText,
+                description: descriptionText,
+                primaryText: publishSnapshot.primaryText || "",
+                targetPageIds,
+                postMode: mode,
+                accessToken: adsToken, // Ads Token (server fetches Page Token from this)
+                pageToken: freshPageToken || getPageToken() || cachedPageToken || "",
+                cookieData: cookie,
+                pageId: pageId,
+                adAccountId: adAccountId,
+                callToAction: ctaConfig.type,
+                callToActionLabel: ctaConfig.label,
+                fbDtsg: fbDtsg, // Required for GraphQL scheduling
+                scheduleInSystem: scheduleSource === "manual",
+                scheduledTime: scheduledTime
+                    ? Math.floor(scheduledTime.getTime() / 1000)
+                    : null, // Unix timestamp
             });
 
             // All responses are now streaming (both immediate and scheduled)
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
             let fullLog = "";
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                const text = decoder.decode(value);
-                fullLog += text;
-                console.log(text);
+            if (response.body && typeof response.body.getReader === "function") {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const text = decoder.decode(value);
+                    fullLog += text;
+                    console.log(text);
+                }
+            } else {
+                // Some environments may return non-streaming responses.
+                fullLog = await response.text();
             }
 
             // Parse result from log
@@ -1676,10 +1718,30 @@ function setupPublishHandler(mode) {
             if (isSessionExpiredError && !publishSessionRefreshRetryByMode[mode]) {
                 publishSessionRefreshRetryByMode[mode] = true;
                 try {
-                    const refreshResult = typeof refreshFacebookTokensFromExtension === "function"
-                        ? await refreshFacebookTokensFromExtension()
-                        : { success: false };
-                    if (refreshResult?.success) {
+                    // Try robust session recovery chain (cache -> get_data -> refresh token).
+                    let recovered = false;
+                    if (typeof syncWithExtensionNow === "function") {
+                        recovered = await syncWithExtensionNow();
+                    } else if (typeof refreshFacebookTokensFromExtension === "function") {
+                        const refreshResult = await refreshFacebookTokensFromExtension();
+                        recovered = !!refreshResult?.success;
+                    }
+
+                    if (recovered) {
+                        // Prime freshest page token before retrying.
+                        try {
+                            const latestToken =
+                                fbToken ||
+                                localStorage.getItem("fewfeed_accessToken") ||
+                                localStorage.getItem("fewfeed_token") ||
+                                "";
+                            if (typeof getFreshPageTokenFromExtension === "function" && pageId && latestToken) {
+                                await getFreshPageTokenFromExtension(pageId, latestToken);
+                            }
+                        } catch (_) {
+                            // Best-effort token warm-up; retry can still continue.
+                        }
+
                         showPublishToast("รีเฟรช Facebook session แล้ว กำลังลองโพสต์ให้อีกครั้ง", "warning");
                         els.publishBtn.textContent =
                             typeof getPrimaryPublishLabel === "function"
@@ -1698,7 +1760,15 @@ function setupPublishHandler(mode) {
 
             publishSessionRefreshRetryByMode[mode] = false;
             console.error("[FEWFEED] Error:", errMessage);
-            alert("Publish failed: " + err.message);
+            const isNetworkFetchError =
+                /failed to fetch|networkerror|network request failed|load failed/i.test(errMessage);
+            if (isNetworkFetchError) {
+                alert("เชื่อมต่อ API ไม่สำเร็จ (network) กรุณาลองใหม่อีกครั้ง");
+            } else if (isSessionExpiredError) {
+                alert("Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง");
+            } else {
+                alert("Publish failed: " + err.message);
+            }
             els.publishBtn.textContent =
                 typeof getPrimaryPublishLabel === "function"
                     ? getPrimaryPublishLabel(mode)
