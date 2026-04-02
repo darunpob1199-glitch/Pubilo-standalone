@@ -3,6 +3,13 @@ import { BILLING_PLANS, getBillingPlan } from '../config/plans';
 import type { Env } from '../types';
 import { getWorkspaceId } from '../lib/workspace';
 import { hasTmwConfig, createPay, detailPay, confirmPay, cancelPay } from '../lib/tmw-gateway';
+import {
+    applyPaidPaymentOrder,
+    createCheckoutIntent,
+    getEffectiveWorkspaceSubscription,
+    getLatestWorkspacePaymentOrder,
+    markPaymentOrderExpired,
+} from '../lib/billing-state';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -38,21 +45,8 @@ app.get('/plans', (c) => {
 
 app.get('/current', async (c) => {
     const workspaceId = getWorkspaceId(c);
-    const subscription = await c.env.DB.prepare(`
-        SELECT id, workspace_id, plan_code, status, billing_interval, amount_thb, currency, started_at, current_period_end, created_at, updated_at
-        FROM organization_subscriptions
-        WHERE workspace_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-    `).bind(workspaceId).first<any>();
-
-    const latestOrder = await c.env.DB.prepare(`
-        SELECT id, workspace_id, plan_code, billing_interval, amount_thb, currency, status, gateway, gateway_reference, qr_reference, expires_at, paid_at, payload_json, created_at, updated_at
-        FROM payment_orders
-        WHERE workspace_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-    `).bind(workspaceId).first<any>();
+    const subscription = await getEffectiveWorkspaceSubscription(c.env, workspaceId);
+    const latestOrder = await getLatestWorkspacePaymentOrder(c.env, workspaceId);
 
     return c.json({
         success: true,
@@ -72,80 +66,30 @@ app.post('/checkout-intent', async (c) => {
         return c.json({ success: false, error: 'Invalid planCode' }, 400);
     }
 
-    const subscriptionId = crypto.randomUUID();
-    const orderId = crypto.randomUUID();
-    const now = new Date();
-
-    // เช็ค subscription เดิมที่ยังเหลือวัน → +วัน แทน reset
-    const existingSub = await c.env.DB.prepare(`
-        SELECT current_period_end FROM organization_subscriptions
-        WHERE workspace_id = ? AND status = 'active'
-        ORDER BY created_at DESC LIMIT 1
-    `).bind(workspaceId).first<{ current_period_end: string | null }>();
-
-    const baseDate = (existingSub?.current_period_end && new Date(existingSub.current_period_end) > now)
-        ? new Date(existingSub.current_period_end)
-        : now;
-    const currentPeriodEnd = new Date(baseDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000).toISOString();
-    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
-
-    await c.env.DB.batch([
-        c.env.DB.prepare(`
-            INSERT INTO organization_subscriptions (
-                id, workspace_id, plan_code, status, billing_interval, amount_thb, currency,
-                started_at, current_period_end, created_at, updated_at
-            ) VALUES (?, ?, ?, 'pending_payment', ?, ?, 'THB', ?, ?, ?, ?)
-        `).bind(
-            subscriptionId,
-            workspaceId,
-            plan.code,
-            plan.interval,
-            plan.amountThb,
-            now.toISOString(),
-            currentPeriodEnd,
-            now.toISOString(),
-            now.toISOString(),
-        ),
-        c.env.DB.prepare(`
-            INSERT INTO payment_orders (
-                id, workspace_id, subscription_id, plan_code, billing_interval, amount_thb,
-                currency, status, expires_at, payload_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 'THB', 'pending', ?, ?, ?, ?)
-        `).bind(
-            orderId,
-            workspaceId,
-            subscriptionId,
-            plan.code,
-            plan.interval,
-            plan.amountThb,
-            expiresAt,
-            JSON.stringify({
-                manualCheckout: true,
-                gatewayReady: false,
-                amountThb: plan.amountThb,
-            }),
-            now.toISOString(),
-            now.toISOString(),
-        ),
-    ]);
+    const intent = await createCheckoutIntent(c.env, {
+        workspaceId,
+        plan,
+        source: 'billing',
+    });
 
     return c.json({
         success: true,
         subscription: {
-            id: subscriptionId,
+            id: intent.subscription.id,
             workspaceId,
-            status: 'pending_payment',
-            planCode: plan.code,
-            interval: plan.interval,
-            amountThb: plan.amountThb,
-            currentPeriodEnd,
+            status: intent.subscription.status,
+            planCode: intent.subscription.plan_code,
+            interval: intent.subscription.billing_interval,
+            amountThb: intent.subscription.amount_thb,
+            currentPeriodEnd: intent.subscription.current_period_end,
         },
         paymentOrder: {
-            id: orderId,
-            status: 'pending',
-            amountThb: plan.amountThb,
-            expiresAt,
+            id: intent.paymentOrder.id,
+            status: intent.paymentOrder.status,
+            amountThb: intent.paymentOrder.amount_thb,
+            expiresAt: intent.paymentOrder.expires_at,
         },
+        reusedOrder: intent.reusedOrder,
     });
 });
 
@@ -182,6 +126,9 @@ app.post('/create-payment', async (c) => {
     }
     if (order.status === 'paid') {
         return c.json({ success: false, error: 'Order already paid' }, 409);
+    }
+    if (order.status === 'cancelled' || order.status === 'expired') {
+        return c.json({ success: false, error: `Order already ${order.status}` }, 409);
     }
 
     // ถ้ามี gateway_reference อยู่แล้ว ดึง detail เลย ไม่ต้อง create ใหม่
@@ -308,6 +255,9 @@ app.get('/payment-status/:orderId', async (c) => {
     if (order.status === 'paid') {
         return c.json({ success: true, status: 'paid', paidAt: order.paid_at });
     }
+    if (order.status === 'cancelled' || order.status === 'expired') {
+        return c.json({ success: true, status: order.status });
+    }
 
     if (!order.gateway_reference || !hasTmwConfig(c.env)) {
         return c.json({ success: true, status: order.status });
@@ -318,25 +268,25 @@ app.get('/payment-status/:orderId', async (c) => {
     const result = await confirmPay(c.env, order.gateway_reference, clientIp);
 
     if (isTmwSuccess(result.status)) {
-        const now = new Date().toISOString();
-        await c.env.DB.batch([
-            c.env.DB.prepare(`
-                UPDATE payment_orders
-                SET status = 'paid', paid_at = ?, updated_at = ?
-                WHERE id = ?
-            `).bind(now, now, orderId),
-            c.env.DB.prepare(`
-                UPDATE organization_subscriptions
-                SET status = 'active', updated_at = ?
-                WHERE id = ?
-            `).bind(now, order.subscription_id),
-        ]);
-
-        return c.json({ success: true, status: 'paid', paidAt: now });
+        const applied = await applyPaidPaymentOrder(c.env, orderId, {
+            paidAt: new Date().toISOString(),
+            gateway: 'tmw_maemanee',
+        });
+        return c.json({
+            success: true,
+            status: 'paid',
+            paidAt: applied.order.paid_at,
+            subscription: {
+                id: applied.subscription.id,
+                planCode: applied.subscription.plan_code,
+                periodEnd: applied.subscription.current_period_end,
+            },
+        });
     }
 
     const detail = await detailPay(c.env, order.gateway_reference, false);
     if (detail.time_out !== undefined && detail.time_out < 0) {
+        await markPaymentOrderExpired(c.env, orderId);
         return c.json({ success: true, status: 'expired', timeOut: detail.time_out });
     }
 
@@ -370,6 +320,9 @@ app.post('/cancel-payment', async (c) => {
     if (order.status === 'paid') {
         return c.json({ success: false, error: 'Cannot cancel paid order' }, 409);
     }
+    if (order.status === 'cancelled') {
+        return c.json({ success: true, status: 'cancelled' });
+    }
 
     if (order.gateway_reference && hasTmwConfig(c.env)) {
         await cancelPay(c.env, order.gateway_reference).catch(() => {});
@@ -387,14 +340,7 @@ app.post('/cancel-payment', async (c) => {
 // Cancel subscription
 app.post('/cancel', async (c) => {
     const workspaceId = getWorkspaceId(c);
-
-    const subscription = await c.env.DB.prepare(`
-        SELECT id, status
-        FROM organization_subscriptions
-        WHERE workspace_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-    `).bind(workspaceId).first<{ id: string; status: string }>();
+    const subscription = await getEffectiveWorkspaceSubscription(c.env, workspaceId);
 
     if (!subscription) {
         return c.json({ success: false, error: 'No subscription found' }, 404);
@@ -451,21 +397,10 @@ app.post('/confirm-payment', async (c) => {
     if (order.status === 'paid') {
         return c.json({ success: false, error: 'Order already paid' }, 400);
     }
-
-    const now = new Date().toISOString();
-
-    await c.env.DB.batch([
-        c.env.DB.prepare(`
-            UPDATE payment_orders
-            SET status = 'paid', paid_at = ?, gateway = 'manual', updated_at = ?
-            WHERE id = ?
-        `).bind(now, now, orderId),
-        c.env.DB.prepare(`
-            UPDATE organization_subscriptions
-            SET status = 'active', updated_at = ?
-            WHERE id = ?
-        `).bind(now, order.subscription_id),
-    ]);
+    const applied = await applyPaidPaymentOrder(c.env, orderId, {
+        paidAt: new Date().toISOString(),
+        gateway: 'manual',
+    });
 
     return c.json({
         success: true,
@@ -473,25 +408,18 @@ app.post('/confirm-payment', async (c) => {
         orderId,
         workspaceId: order.workspace_id,
         amountThb: order.amount_thb,
+        subscription: {
+            id: applied.subscription.id,
+            planCode: applied.subscription.plan_code,
+            periodEnd: applied.subscription.current_period_end,
+        },
     });
 });
 
 // Check subscription status
 app.get('/check-status', async (c) => {
     const workspaceId = getWorkspaceId(c);
-
-    const subscription = await c.env.DB.prepare(`
-        SELECT id, status, plan_code, current_period_end
-        FROM organization_subscriptions
-        WHERE workspace_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-    `).bind(workspaceId).first<{
-        id: string;
-        status: string;
-        plan_code: string;
-        current_period_end: string;
-    }>();
+    const subscription = await getEffectiveWorkspaceSubscription(c.env, workspaceId);
 
     if (!subscription) {
         return c.json({ success: true, active: false, reason: 'no_subscription' });

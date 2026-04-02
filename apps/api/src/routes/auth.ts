@@ -4,6 +4,7 @@ import { buildLineAuthUrl, createCodeChallenge, createCodeVerifier, createLineNo
 import type { Env } from '../types';
 import { getBillingPlan } from '../config/plans';
 import { getCookie } from 'hono/cookie';
+import { createCheckoutIntent, getLatestWorkspacePaymentOrder } from '../lib/billing-state';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -232,13 +233,7 @@ app.get('/me', async (c) => {
 
     let paymentOrder = null;
     if (activeWorkspaceId) {
-        paymentOrder = await c.env.DB.prepare(`
-            SELECT id, plan_code, billing_interval, amount_thb, status, gateway, gateway_reference, qr_reference, expires_at, created_at
-            FROM payment_orders
-            WHERE workspace_id = ?
-            ORDER BY created_at DESC
-            LIMIT 1
-        `).bind(activeWorkspaceId).first();
+        paymentOrder = await getLatestWorkspacePaymentOrder(c.env, activeWorkspaceId);
     }
 
     return c.json({
@@ -331,12 +326,8 @@ app.post('/onboarding/workspace', async (c) => {
     }
 
     const workspaceId = crypto.randomUUID();
-    const subscriptionId = crypto.randomUUID();
-    const paymentOrderId = crypto.randomUUID();
     const now = new Date();
     const slug = await uniqueWorkspaceSlug(c.env, makeSlug(name));
-    const periodEnd = new Date(now.getTime() + plan.durationDays * 24 * 60 * 60 * 1000).toISOString();
-    const paymentExpiry = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
     await c.env.DB.batch([
         c.env.DB.prepare(`
@@ -347,46 +338,14 @@ app.post('/onboarding/workspace', async (c) => {
             INSERT INTO workspace_members (workspace_id, user_id, role, created_at)
             VALUES (?, ?, 'owner', ?)
         `).bind(workspaceId, authState.user.id, now.toISOString()),
-        c.env.DB.prepare(`
-            INSERT INTO organization_subscriptions (
-                id, workspace_id, plan_code, status, billing_interval, amount_thb,
-                currency, started_at, current_period_end, created_at, updated_at
-            ) VALUES (?, ?, ?, 'pending_payment', ?, ?, 'THB', ?, ?, ?, ?)
-        `).bind(
-            subscriptionId,
-            workspaceId,
-            plan.code,
-            plan.interval,
-            plan.amountThb,
-            now.toISOString(),
-            periodEnd,
-            now.toISOString(),
-            now.toISOString(),
-        ),
-        c.env.DB.prepare(`
-            INSERT INTO payment_orders (
-                id, workspace_id, subscription_id, plan_code, billing_interval, amount_thb,
-                currency, status, expires_at, payload_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 'THB', 'pending', ?, ?, ?, ?)
-        `).bind(
-            paymentOrderId,
-            workspaceId,
-            subscriptionId,
-            plan.code,
-            plan.interval,
-            plan.amountThb,
-            paymentExpiry,
-            JSON.stringify({
-                manualCheckout: true,
-                amountThb: plan.amountThb,
-                durationDays: plan.durationDays,
-            }),
-            now.toISOString(),
-            now.toISOString(),
-        ),
     ]);
 
     await updateSessionWorkspace(c.env, authState.session.id, workspaceId);
+    const intent = await createCheckoutIntent(c.env, {
+        workspaceId,
+        plan,
+        source: 'onboarding',
+    });
 
     return c.json({
         success: true,
@@ -397,18 +356,18 @@ app.post('/onboarding/workspace', async (c) => {
             role: 'owner',
         },
         subscription: {
-            id: subscriptionId,
-            status: 'pending_payment',
-            planCode: plan.code,
-            interval: plan.interval,
-            amountThb: plan.amountThb,
-            currentPeriodEnd: periodEnd,
+            id: intent.subscription.id,
+            status: intent.subscription.status,
+            planCode: intent.subscription.plan_code,
+            interval: intent.subscription.billing_interval,
+            amountThb: intent.subscription.amount_thb,
+            currentPeriodEnd: intent.subscription.current_period_end,
         },
         paymentOrder: {
-            id: paymentOrderId,
-            status: 'pending',
-            amountThb: plan.amountThb,
-            expiresAt: paymentExpiry,
+            id: intent.paymentOrder.id,
+            status: intent.paymentOrder.status,
+            amountThb: intent.paymentOrder.amount_thb,
+            expiresAt: intent.paymentOrder.expires_at,
         },
     });
 });
