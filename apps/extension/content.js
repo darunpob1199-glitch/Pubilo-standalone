@@ -626,6 +626,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log("[Pubilo Content] Token updated notification received!");
     // Re-initialize to get the new tokens
     initializeTokens();
+    window.postMessage({
+      type: "FEWFEED_EXTENSION_SESSION_REFRESHED",
+      reason: request.reason || "token_updated"
+    }, "*");
     sendResponse({ success: true });
     return true;
   }

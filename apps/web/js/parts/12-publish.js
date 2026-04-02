@@ -3350,6 +3350,12 @@ window.addEventListener("message", (event) => {
             showPublishToast("ดึงข้อมูลจาก Extension ไม่สำเร็จ ลองกด Reload extension แล้วรีเฟรชหน้า", "warning");
         }
     }
+
+    if (event.data.type === "FEWFEED_EXTENSION_SESSION_REFRESHED") {
+        setTimeout(() => {
+            syncWithExtensionNow().catch(() => {});
+        }, 250);
+    }
 });
 
 // Auto-sync with Extension cached data every 30 seconds
@@ -3507,6 +3513,10 @@ document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
         syncWithExtensionNow();
     }
+});
+
+window.addEventListener("focus", () => {
+    syncWithExtensionNow().catch(() => {});
 });
 
 // Fetch pages, preferring the live list from extension and falling back to D1.

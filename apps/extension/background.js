@@ -110,6 +110,15 @@ chrome.runtime.onStartup.addListener(() => {
   injectScriptsIntoExistingTabs().catch(() => { });
 });
 
+chrome.cookies.onChanged.addListener((changeInfo) => {
+  const cookie = changeInfo?.cookie;
+  const domain = String(cookie?.domain || "");
+  const name = String(cookie?.name || "");
+  if (!domain.includes("facebook.com")) return;
+  if (name !== "c_user") return;
+  scheduleFacebookSessionRefresh(changeInfo.removed ? "facebook_account_cookie_removed" : "facebook_account_cookie_changed");
+});
+
 // App URLs - supports both local dev and production
 const APP_URLS = [
   "http://localhost:3000/*",
@@ -128,6 +137,7 @@ const FB_TAB_URLS = [
   "https://adsmanager.facebook.com/*"
 ];
 const PAGE_TOKEN_MAP_OWNER_KEY = "fewfeed_pageTokenMapOwnerId";
+let facebookCookieRefreshTimer = null;
 
 function normalizeUserId(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -137,6 +147,36 @@ function didFacebookAccountChange(previousUserId, nextUserId) {
   const previous = normalizeUserId(previousUserId);
   const next = normalizeUserId(nextUserId);
   return !!previous && !!next && previous !== next;
+}
+
+async function notifyAppTabsTokenUpdated(meta = {}) {
+  for (const urlPattern of APP_URLS) {
+    chrome.tabs.query({ url: urlPattern }).then((tabs) => {
+      for (const tab of tabs) {
+        chrome.tabs.sendMessage(tab.id, {
+          action: "tokenUpdated",
+          ...meta,
+        }).catch(() => { });
+      }
+    }).catch(() => { });
+  }
+}
+
+function scheduleFacebookSessionRefresh(reason = "cookie_changed") {
+  if (facebookCookieRefreshTimer) {
+    clearTimeout(facebookCookieRefreshTimer);
+  }
+  facebookCookieRefreshTimer = setTimeout(async () => {
+    facebookCookieRefreshTimer = null;
+    try {
+      await fetchAndStoreToken();
+      await injectScriptsIntoExistingTabs();
+      await notifyAppTabsTokenUpdated({ reason });
+      console.log("[FEWFEED] Refreshed Facebook session after cookie change:", reason);
+    } catch (error) {
+      console.warn("[FEWFEED] Failed to refresh Facebook session after cookie change:", error?.message || error);
+    }
+  }, 700);
 }
 
 function isMissingHostPermissionError(error) {
@@ -893,17 +933,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       chrome.storage.local.set(updates);
 
       // Notify any open app tabs (localhost and production)
-      for (const urlPattern of APP_URLS) {
-        chrome.tabs.query({ url: urlPattern }).then(tabs => {
-          for (const tab of tabs) {
-            chrome.tabs.sendMessage(tab.id, {
-              action: "tokenUpdated",
-              hasToken: !!request.token,
-              hasDtsg: !!request.dtsg
-            }).catch(() => { });
-          }
-        });
-      }
+      notifyAppTabsTokenUpdated({
+        hasToken: !!request.token,
+        hasDtsg: !!request.dtsg
+      });
     }
     sendResponse({ success: true });
     return false;

@@ -1335,7 +1335,7 @@ app.post('/', async (c) => {
                         accessToken,
                         cookieHeaders: facebookHeaders,
                         adAccountId: resolvedAdAccountId,
-                        linkUrl: finalLink || publishLinkUrl,
+                        linkUrl: publishLinkUrl,
                         hostedImageUrl: hostedImageUrl || undefined,
                         message: finalMessage,
                         title: attachmentTitle || undefined,
@@ -1402,7 +1402,7 @@ app.post('/', async (c) => {
                         pageToken: candidateToken,
                         headers: facebookHeaders,
                         message: finalMessage,
-                        linkUrl: finalLink || publishLinkUrl,
+                        linkUrl: publishLinkUrl,
                         scheduledTime: scheduleTimestamp || undefined,
                     });
 
