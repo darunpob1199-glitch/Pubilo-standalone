@@ -521,6 +521,18 @@
         window.PUBILO_CURRENT_WORKSPACE = state.workspace;
     }
 
+    async function refreshState(options = {}) {
+        if (options.rehydrate) {
+            return hydrateAndResolve();
+        }
+
+        const payload = await fetchAuthState();
+        applyAuthState(payload);
+        ensureHeaderControls();
+        ensureBillingBanner();
+        return payload;
+    }
+
     async function hydrateAndResolve() {
         if (window.PUBILO_WEB_ONLY_MODE) {
             const mockPayload = {
@@ -593,6 +605,7 @@
 
     window.PubiloAuth = {
         state,
+        refreshState,
         handleUnauthenticated() {
             renderLoginView('Session หมดอายุ กรุณา login ใหม่');
         },
