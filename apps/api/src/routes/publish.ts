@@ -866,7 +866,31 @@ async function createStandaloneAdCreative(params: {
             materializedBy: 'creative',
         };
     }
-    throw new Error('Facebook did not return object_story_id for ad creative');
+
+    try {
+        const adResult = await materializeCreativeWithAd({
+            adAccountId: params.adAccountId,
+            accessToken: params.accessToken,
+            pageId: params.pageId,
+            creativeId,
+            headers: params.cookieHeaders,
+            seed: params.seed ?? null,
+        });
+
+        return {
+            creativeId,
+            postId: adResult.postId,
+            creativeData: adResult.adData,
+            adId: adResult.adId,
+            adsetId: adResult.adsetId,
+            campaignId: adResult.campaignId,
+            seedAdId: adResult.seedAdId,
+            materializedBy: 'ad',
+        };
+    } catch (materializeError) {
+        const detail = materializeError instanceof Error ? materializeError.message : String(materializeError);
+        throw new Error(`Facebook did not return object_story_id for ad creative; ad materialization failed: ${detail}`);
+    }
 }
 
 // POST /api/publish - Publish to Facebook
@@ -1295,6 +1319,7 @@ app.post('/', async (c) => {
         const normalizedAdAccountId = normalizeAdAccountId(adAccountId);
         let resolvedAdAccountId = normalizedAdAccountId;
         let accessibleAdAccounts: string[] = [];
+        let adSeedContext: Awaited<ReturnType<typeof resolveAdSeedContext>> | null = null;
 
         if (isLinkAttachmentPost && accessToken && !resolvedAdAccountId) {
             try {
@@ -1302,6 +1327,25 @@ app.post('/', async (c) => {
                 resolvedAdAccountId = accessibleAdAccounts[0] || '';
             } catch (error) {
                 console.warn('[publish] Failed to auto-resolve ad account from access token:', error);
+            }
+        }
+
+        if (isLinkAttachmentPost && accessToken && resolvedAdAccountId) {
+            try {
+                adSeedContext = await resolveAdSeedContext({
+                    preferredAdAccountId: resolvedAdAccountId,
+                    accessToken,
+                    pageId,
+                    headers: facebookHeaders,
+                });
+                if (adSeedContext?.adAccountId) {
+                    resolvedAdAccountId = adSeedContext.adAccountId;
+                }
+                if (Array.isArray(adSeedContext?.scannedAccounts) && adSeedContext.scannedAccounts.length) {
+                    accessibleAdAccounts = adSeedContext.scannedAccounts;
+                }
+            } catch (error) {
+                console.warn('[publish] Failed to resolve reusable ad seed context:', error);
             }
         }
         const normalizedCallToAction = normalizeCallToActionType(callToAction);
@@ -1325,6 +1369,7 @@ app.post('/', async (c) => {
                 resolvedAdAccountId: resolvedAdAccountId || '(none)',
                 canUseAdCreativeFlow,
                 pageTokenCandidateCount: pageTokenCandidates.length,
+                hasReusableSeed: !!adSeedContext?.seed?.adsetId,
             });
 
             // Primary: ad creative produces rich cards with custom image, title, CTA button.
@@ -1342,6 +1387,7 @@ app.post('/', async (c) => {
                         caption: previewSiteName || undefined,
                         description: attachmentDescription || undefined,
                         callToAction: normalizedCallToAction,
+                        seed: adSeedContext?.seed ?? null,
                     });
 
                     if (!scheduleTimestamp && pageTokenForPublish) {
