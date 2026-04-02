@@ -367,6 +367,29 @@ export async function applyPaidPaymentOrder(env: Env, orderId: string, options?:
         throw new Error('Order not found');
     }
 
+    if (order.status === 'paid') {
+        const subscriptionId = String(order.subscription_id || '').trim();
+        if (!subscriptionId) {
+            throw new Error('Paid order missing subscription_id');
+        }
+
+        const existingSubscription = await env.DB.prepare(`
+            SELECT id, workspace_id, plan_code, status, billing_interval, amount_thb, currency, started_at, current_period_end, created_at, updated_at
+            FROM organization_subscriptions
+            WHERE id = ?
+            LIMIT 1
+        `).bind(subscriptionId).first<SubscriptionRow>();
+
+        if (!existingSubscription) {
+            throw new Error('Paid order subscription not found');
+        }
+
+        return {
+            order,
+            subscription: existingSubscription,
+        };
+    }
+
     const nowIso = options?.paidAt || new Date().toISOString();
     const payload = parseCheckoutPayload(order);
     const plan = getBillingPlan(payload.targetPlanCode || order.plan_code);

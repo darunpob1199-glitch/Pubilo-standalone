@@ -22,6 +22,7 @@ import { processPendingPostActionJobs } from './lib/post-action-jobs';
 import { cronEarningsRouter } from './routes/cron-earnings';
 import { cronHealthCheckRouter } from './routes/cron-health-check';
 import { cronCleanupReelsRouter } from './routes/cron-cleanup-reels';
+import { cronReconcilePaymentsRouter } from './routes/cron-reconcile-payments';
 // Additional routes
 import { lineWebhookRouter } from './routes/line-webhook';
 import { checkPendingSharesRouter } from './routes/check-pending-shares';
@@ -305,6 +306,7 @@ app.route('/api/token-health', tokenHealthRouter);
 app.route('/api/cron/earnings', cronEarningsRouter);
 app.route('/api/cron/health-check', cronHealthCheckRouter);
 app.route('/api/cron/cleanup-reels', cronCleanupReelsRouter);
+app.route('/api/cron/reconcile-payments', cronReconcilePaymentsRouter);
 
 
 
@@ -334,6 +336,16 @@ export default {
                 await processPendingPostActionJobs(env, { perJobLimit: 20, maxJobs: 3 });
             } catch (err) {
                 console.error('[scheduled] post action jobs error:', err);
+            }
+
+            console.log('[scheduled] Every minute - Reconciling pending payment orders');
+            try {
+                const reconcileReq = new Request('https://internal/api/cron/reconcile-payments?limit=20', { headers: internalHeaders });
+                const reconcileRes = await app.fetch(reconcileReq, env, ctx);
+                const reconcileData = await reconcileRes.json();
+                console.log('[scheduled] reconcile-payments result:', reconcileData);
+            } catch (err) {
+                console.error('[scheduled] reconcile-payments error:', err);
             }
         }
 
