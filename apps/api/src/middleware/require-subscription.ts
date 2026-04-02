@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import type { Env } from '../types';
+import { getEffectiveWorkspaceSubscription } from '../lib/billing-state';
 
 const SKIP_SUBSCRIPTION_ENFORCEMENT = true;
 
@@ -29,17 +30,7 @@ export const requireActiveSubscription: MiddlewareHandler<SubscriptionContext> =
         return c.json({ success: false, error: 'Workspace required', code: 'WORKSPACE_REQUIRED' }, 409);
     }
 
-    const sub = await (c.env as Env).DB.prepare(`
-        SELECT id, status, current_period_end
-        FROM organization_subscriptions
-        WHERE workspace_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-    `).bind(workspaceId).first<{
-        id: string;
-        status: string;
-        current_period_end: string | null;
-    }>();
+    const sub = await getEffectiveWorkspaceSubscription(c.env as Env, workspaceId);
 
     if (!sub) {
         return c.json({ success: false, error: 'No subscription found', code: 'SUBSCRIPTION_REQUIRED', reason: 'no_subscription' }, 402);

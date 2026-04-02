@@ -1,6 +1,7 @@
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { Context } from 'hono';
 import type { AuthSession, AuthUser, Env, WorkspaceMembership } from '../types';
+import { getEffectiveWorkspaceSubscription } from '../lib/billing-state';
 
 export const SESSION_COOKIE_NAME = 'pubilo_session';
 const SESSION_TTL_DAYS = 45;
@@ -154,23 +155,24 @@ export async function getSessionFromRequest(c: Context<any>): Promise<{
             wm.workspace_id,
             wm.role,
             w.name as workspace_name,
-            w.slug,
-            os.status as subscription_status,
-            os.plan_code,
-            os.current_period_end as subscription_period_end
+            w.slug
         FROM workspace_members wm
         JOIN workspaces w ON w.id = wm.workspace_id
-        LEFT JOIN organization_subscriptions os
-            ON os.workspace_id = wm.workspace_id
-           AND os.id = (
-               SELECT id FROM organization_subscriptions
-               WHERE workspace_id = wm.workspace_id
-               ORDER BY created_at DESC
-               LIMIT 1
-           )
         WHERE wm.user_id = ?
         ORDER BY w.created_at ASC
-    `).bind(sessionRow.user_id).all<WorkspaceMembership>();
+    `).bind(sessionRow.user_id).all<Pick<WorkspaceMembership, 'workspace_id' | 'role' | 'workspace_name' | 'slug'>>();
+
+    const memberships = await Promise.all(
+        (membershipsResult.results || []).map(async (membership) => {
+            const subscription = await getEffectiveWorkspaceSubscription(env, membership.workspace_id);
+            return {
+                ...membership,
+                subscription_status: subscription?.status || null,
+                plan_code: subscription?.plan_code || null,
+                subscription_period_end: subscription?.current_period_end || null,
+            } satisfies WorkspaceMembership;
+        }),
+    );
 
     return {
         session: {
@@ -185,7 +187,7 @@ export async function getSessionFromRequest(c: Context<any>): Promise<{
             name: sessionRow.name,
             avatar_url: sessionRow.avatar_url,
         },
-        memberships: membershipsResult.results || [],
+        memberships,
     };
 }
 
