@@ -919,10 +919,6 @@ if (newsPublishBtn) {
         const newsPreviewDescEl = document.getElementById("newsPreviewDescription");
         const newsPreviewCaptionEl = document.getElementById("newsPreviewCaption");
         const ctaConfig = getCurrentCtaConfig("news");
-        const hideFromTimelineAfterPublish =
-            typeof window.getAfterPublishActionForCurrentPage === "function"
-                ? window.getAfterPublishActionForCurrentPage() === "hide_timeline"
-                : false;
         
         if (!pageId) {
             alert("กรุณาเลือกเพจก่อน");
@@ -1015,7 +1011,6 @@ if (newsPublishBtn) {
                     callToAction: ctaConfig.type,
                     callToActionLabel: ctaConfig.label,
                     scheduleInSystem: scheduleSource === "manual",
-                    hideFromTimeline: hideFromTimelineAfterPublish,
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
                         : null,

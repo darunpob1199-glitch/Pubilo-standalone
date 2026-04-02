@@ -1189,15 +1189,6 @@
                                     ใช้สำหรับโพสต์และแชร์
                                 </p>
                             </div>
-                            <div class="setting-group" id="hideTokenSettingGroup" style="margin-top: 1rem;">
-                                <label class="form-label">🙈 Token สำหรับ Hide</label>
-                                <input type="text" id="hideTokenInputPanel" class="form-input"
-                                    placeholder="EAAxxxxxxx... (ถ้าไม่ใส่ จะใช้ Token โพสต์แทน)"
-                                    style="font-family: monospace; font-size: 0.85rem;" />
-                                <p class="setting-desc">
-                                    ใช้สำหรับ Auto Hide โพสต์ (ถ้าไม่ใส่จะใช้ Token โพสต์)
-                                </p>
-                            </div>
                         </div>
                     </div>
 
@@ -1458,28 +1449,6 @@
                         </div>
                     </div>
 
-                    <!-- Publish Experience -->
-                    <div class="settings-section collapsible" id="publishExperienceSection">
-                        <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
-                            ✅ หลังโพสต์สำเร็จ
-                            <span class="collapse-icon">›</span>
-                        </h3>
-                        <div class="settings-section-content">
-                            <div class="setting-group">
-                                <label class="form-label">โพสต์ทันทีแล้วให้ทำอะไรต่อ</label>
-                                <select id="afterPublishActionSelectPanel" class="form-input" style="padding: 0.5rem;">
-                                    <option value="stay" selected>อยู่หน้าเดิม (โพสต์ต่อได้ทันที)</option>
-                                    <option value="published">ไปหน้า Published</option>
-                                    <option value="pending">ไปหน้า Pending</option>
-                                    <option value="hide_timeline">โพสต์แล้วซ่อนจากหน้าเพจทันที</option>
-                                </select>
-                                <p class="setting-desc">
-                                    ใช้กับโพสต์ทันทีเท่านั้น (ถ้าตั้งเวลา ระบบยังไปหน้า Pending ตามเดิม)
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- Auto-Post Alternating Section -->
                     <div class="settings-section collapsible" id="autoPostSettingsSection" style="display: none;">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
@@ -1691,48 +1660,21 @@
                         </div>
                     </div>
 
-                    <!-- Auto Hide Posts Section -->
-                    <div class="settings-section collapsible" id="autoHideSettingsSection">
+                    <!-- Hide On Publish Section -->
+                    <div class="settings-section collapsible" id="hideOnPublishSettingsSection">
                         <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')">
-                            🙈 Auto Hide Posts
+                            🙈 ซ่อนหลังโพสต์สำเร็จ
                             <span class="collapse-icon">›</span>
                         </h3>
                         <div class="settings-section-content">
                             <div class="setting-group">
                                 <label class="setting-label">
-                                    <input type="checkbox" id="autoHideEnabled" />
-                                    <span>ซ่อนโพสต์อัตโนมัติ</span>
+                                    <input type="checkbox" id="hideOnPublishEnabled" />
+                                    <span>ซ่อนโพสต์จาก Timeline ทันทีหลังโพสต์</span>
                                 </label>
-                                <p class="setting-desc">ซ่อนโพสต์ประเภทที่เลือกจาก Timeline</p>
-                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap;">
-                                    <button type="button" id="autoHideNowBtn" class="btn"
-                                        style="padding: 0.4rem 0.75rem; font-size: 0.85rem;">
-                                        ซ่อนทันที
-                                    </button>
-                                    <span id="autoHideNowStatus" style="font-size: 0.82rem; color: #6b7280;"></span>
-                                </div>
-                                <div id="hideTypesGroup" style="margin-top: 0.75rem; margin-left: 1.5rem;">
-                                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                        <label
-                                            style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                            <input type="checkbox" id="hideSharedStory" checked
-                                                style="width: 16px; height: 16px;">
-                                            <span style="font-size: 0.9rem;">shared_story (แชร์โพสต์)</span>
-                                        </label>
-                                        <label
-                                            style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                            <input type="checkbox" id="hideMobileStatus" checked
-                                                style="width: 16px; height: 16px;">
-                                            <span style="font-size: 0.9rem;">mobile_status_update (สถานะ)</span>
-                                        </label>
-                                        <label
-                                            style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                            <input type="checkbox" id="hideAddedPhotos" checked
-                                                style="width: 16px; height: 16px;">
-                                            <span style="font-size: 0.9rem;">added_photos (เพิ่มรูป)</span>
-                                        </label>
-                                    </div>
-                                </div>
+                                <p class="setting-desc">
+                                    ใช้ token เดียวกับตอนโพสต์จริง ไม่ต้องซ่อนย้อนหลัง และไม่ใช้ worker cron เก่าแล้ว
+                                </p>
                             </div>
                         </div>
                     </div>

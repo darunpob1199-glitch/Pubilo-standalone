@@ -718,7 +718,6 @@ async function uploadTextPostSquareImage(dataUrl) {
 
 window.renderTextComposerUi = renderTextComposerUi;
 let publishToastTimer = null;
-const PUBLISH_AFTER_ACTION_STORAGE_PREFIX = "fewfeed_afterPublishAction";
 const PUBLISH_IN_FLIGHT_STORAGE_KEY = "fewfeed_publishInFlightState";
 const PUBLISH_IN_FLIGHT_MAX_AGE_MS = 2 * 60 * 1000;
 const publishInFlightByMode = {
@@ -885,31 +884,6 @@ function showPublishToast(message, type = "success") {
 
 window.showPublishToast = showPublishToast;
 
-function normalizeAfterPublishAction(value) {
-    const normalized = String(value || "").trim().toLowerCase();
-    if (
-        normalized === "published" ||
-        normalized === "pending" ||
-        normalized === "hide_timeline"
-    ) {
-        return normalized;
-    }
-    return "stay";
-}
-
-function getAfterPublishActionStorageKey(pageId) {
-    const id = String(pageId || "").trim();
-    return `${PUBLISH_AFTER_ACTION_STORAGE_PREFIX}:${id || "_default"}`;
-}
-
-function getAfterPublishActionForCurrentPage() {
-    const pageId = typeof getCurrentPageId === "function" ? getCurrentPageId() : "";
-    const pageScoped = localStorage.getItem(getAfterPublishActionStorageKey(pageId));
-    const fallback = localStorage.getItem(PUBLISH_AFTER_ACTION_STORAGE_PREFIX);
-    return normalizeAfterPublishAction(pageScoped || fallback || "stay");
-}
-window.getAfterPublishActionForCurrentPage = getAfterPublishActionForCurrentPage;
-
 function restorePublishButtonState(mode, publishBtn) {
     if (!publishBtn) return;
     publishBtn.textContent =
@@ -949,18 +923,6 @@ function focusPrimaryComposerField(mode, els) {
 function handleImmediatePublishSuccess(mode, els = null) {
     const modeEls = els || (typeof getModeElements === "function" ? getModeElements(mode) : null);
     const publishBtn = modeEls?.publishBtn || document.getElementById(`${mode}PublishBtn`) || null;
-    const afterPublishAction = getAfterPublishActionForCurrentPage();
-
-    if (afterPublishAction === "published" || afterPublishAction === "pending") {
-        const targetHash = afterPublishAction === "published" ? "#published" : "#pending";
-        setTimeout(() => {
-            window.location.hash = targetHash;
-            if (typeof handleNavigation === "function") {
-                handleNavigation();
-            }
-        }, 500);
-        return;
-    }
 
     setTimeout(() => {
         restorePublishButtonState(mode, publishBtn);
@@ -982,8 +944,6 @@ function setupPublishHandler(mode) {
             return;
         }
         const pageIdAtClick = document.getElementById("pageSelect")?.value || "";
-        const afterPublishActionAtClick = getAfterPublishActionForCurrentPage();
-        const hideFromTimelineAfterPublish = afterPublishActionAtClick === "hide_timeline";
         const targetPageIdsAtClick =
             typeof getSelectedTargetPageIds === "function"
                 ? getSelectedTargetPageIds()
@@ -1112,7 +1072,6 @@ function setupPublishHandler(mode) {
                         cookieData: cookie,
                         fbDtsg,
                         scheduleInSystem: scheduleSource === "manual",
-                        hideFromTimeline: hideFromTimelineAfterPublish,
                         scheduledTime: scheduledTime
                             ? Math.floor(scheduledTime.getTime() / 1000)
                             : null,
@@ -1319,7 +1278,6 @@ function setupPublishHandler(mode) {
                         cookieData: cookie,
                         fbDtsg,
                         scheduleInSystem: scheduleSource === "manual",
-                        hideFromTimeline: hideFromTimelineAfterPublish,
                         scheduledTime: scheduledTime
                             ? Math.floor(scheduledTime.getTime() / 1000)
                             : null,
@@ -1506,7 +1464,6 @@ function setupPublishHandler(mode) {
                     callToActionLabel: ctaConfig.label,
                     fbDtsg: fbDtsg, // Required for GraphQL scheduling
                     scheduleInSystem: scheduleSource === "manual",
-                    hideFromTimeline: hideFromTimelineAfterPublish,
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
                         : null, // Unix timestamp
