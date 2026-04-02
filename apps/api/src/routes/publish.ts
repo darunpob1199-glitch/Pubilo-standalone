@@ -1411,6 +1411,7 @@ app.post('/', async (c) => {
             }
         }
         const normalizedCallToAction = normalizeCallToActionType(callToAction);
+        const requiresGhostAd = postMode === 'news';
         const canUseAdCreativeFlow = isLinkAttachmentPost && !!accessToken && !!resolvedAdAccountId;
 
         if (isLinkAttachmentPost) {
@@ -1430,11 +1431,26 @@ app.post('/', async (c) => {
                 hasClientAccessToken: !!accessToken,
                 resolvedAdAccountId: resolvedAdAccountId || '(none)',
                 canUseAdCreativeFlow,
+                requiresGhostAd,
                 pageTokenCandidateCount: pageTokenCandidates.length,
                 hasReusableSeed: !!adSeedContext?.seed?.adsetId,
             });
 
             // Primary: ad creative produces rich cards with custom image, title, CTA button.
+            if (requiresGhostAd && !canUseAdCreativeFlow) {
+                return c.json({
+                    success: false,
+                    error: 'ยังสร้าง Ghost Ads ไม่ได้ เพราะไม่มี Ads Token หรือ Ad Account ที่ใช้งานได้สำหรับเพจนี้',
+                    errorType: 'GhostAdsUnavailable',
+                    _debug: {
+                        flow: 'ghost-required',
+                        canUseAdCreativeFlow,
+                        hasClientAccessToken: !!accessToken,
+                        resolvedAdAccountId: resolvedAdAccountId || '',
+                    },
+                }, 400);
+            }
+
             if (canUseAdCreativeFlow) {
                 try {
                     const creativeResult = await createStandaloneAdCreative({
@@ -1484,6 +1500,21 @@ app.post('/', async (c) => {
                     adCreativeError = error instanceof Error ? error.message : String(error);
                     console.warn('[publish] adcreative failed, falling back to feed:', adCreativeError);
                 }
+            }
+
+            if (requiresGhostAd) {
+                return c.json({
+                    success: false,
+                    error: `Ghost Ads ไม่สำเร็จ: ${adCreativeError || 'Facebook ไม่คืน object_story_id ให้ ad creative'}`,
+                    errorType: 'GhostAdsFailed',
+                    _debug: {
+                        flow: 'ghost-required',
+                        adCreativeError,
+                        canUseAdCreativeFlow,
+                        resolvedAdAccountId: resolvedAdAccountId || '',
+                        hasReusableSeed: !!adSeedContext?.seed?.adsetId,
+                    },
+                }, 422);
             }
 
             // Fallback: feed with target URL. Try each page token candidate until one works.
