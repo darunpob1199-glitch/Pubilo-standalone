@@ -17,6 +17,22 @@ type GhostAdSeed = {
     source: 'stored' | 'page-match' | 'account-match' | 'bootstrap';
 };
 
+type HideVerificationResult = {
+    checked: boolean;
+    via: string;
+    payload: Record<string, unknown> | null;
+    error: string;
+};
+
+type HideAfterPublishResult = {
+    attempted: boolean;
+    hidden: boolean;
+    method: string;
+    error: string;
+    targetPostId: string;
+    verification: HideVerificationResult;
+};
+
 function buildFacebookHeaders(cookieData?: string): Record<string, string> | undefined {
     const normalizedCookie = typeof cookieData === 'string' ? cookieData.trim() : '';
     if (!normalizedCookie) return undefined;
@@ -24,6 +40,114 @@ function buildFacebookHeaders(cookieData?: string): Record<string, string> | und
     return {
         Cookie: normalizedCookie,
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    };
+}
+
+function emptyHideVerificationResult(): HideVerificationResult {
+    return {
+        checked: false,
+        via: '',
+        payload: null,
+        error: '',
+    };
+}
+
+function normalizeHideVerificationPayload(postId: string, data: any): Record<string, unknown> {
+    return {
+        id: String(data?.id || postId || '').trim() || postId,
+        permalinkUrl: typeof data?.permalink_url === 'string' ? data.permalink_url : '',
+        isHidden: data?.is_hidden === true,
+        timelineVisibility: typeof data?.timeline_visibility === 'string' ? data.timeline_visibility : '',
+        statusType: typeof data?.status_type === 'string' ? data.status_type : '',
+    };
+}
+
+async function verifyTimelineHideState(params: {
+    postId: string;
+    accessToken?: string;
+    tokenHeaders?: Record<string, string>;
+    cookieHeadersList?: Array<Record<string, string>>;
+}): Promise<HideVerificationResult> {
+    const fields = 'id,permalink_url,is_hidden,timeline_visibility,status_type';
+    const encodedPostId = encodeURIComponent(params.postId);
+    const encodedFields = encodeURIComponent(fields);
+    let lastError = '';
+
+    const token = String(params.accessToken || '').trim();
+    if (token) {
+        try {
+            const response = await fetch(
+                `${FB_API}/${encodedPostId}?fields=${encodedFields}&access_token=${encodeURIComponent(token)}`,
+                params.tokenHeaders ? { headers: params.tokenHeaders } : undefined,
+            );
+            const data = await response.json() as any;
+            if (!data?.error) {
+                return {
+                    checked: true,
+                    via: 'token',
+                    payload: normalizeHideVerificationPayload(params.postId, data),
+                    error: '',
+                };
+            }
+            lastError = data?.error?.message || 'verify_failed_token';
+            console.warn('[publish] Timeline hide verification failed:', {
+                via: 'token',
+                postId: params.postId,
+                error: lastError,
+                code: data?.error?.code,
+                errorSubcode: data?.error?.error_subcode,
+                type: data?.error?.type,
+            });
+        } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
+            console.warn('[publish] Timeline hide verification request failed:', {
+                via: 'token',
+                postId: params.postId,
+                error: lastError,
+            });
+        }
+    }
+
+    const cookieHeadersList = params.cookieHeadersList || [];
+    for (let i = 0; i < cookieHeadersList.length; i += 1) {
+        try {
+            const response = await fetch(
+                `${FB_API}/${encodedPostId}?fields=${encodedFields}`,
+                { headers: cookieHeadersList[i] },
+            );
+            const data = await response.json() as any;
+            if (!data?.error) {
+                return {
+                    checked: true,
+                    via: `cookie_${i + 1}`,
+                    payload: normalizeHideVerificationPayload(params.postId, data),
+                    error: '',
+                };
+            }
+            lastError = data?.error?.message || `verify_failed_cookie_${i + 1}`;
+            console.warn('[publish] Timeline hide verification failed:', {
+                via: `cookie_${i + 1}`,
+                postId: params.postId,
+                error: lastError,
+                code: data?.error?.code,
+                errorSubcode: data?.error?.error_subcode,
+                type: data?.error?.type,
+            });
+        } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
+            console.warn('[publish] Timeline hide verification request failed:', {
+                via: `cookie_${i + 1}`,
+                postId: params.postId,
+                error: lastError,
+            });
+        }
+    }
+
+    return {
+        checked: false,
+        via: '',
+        payload: null,
+        error: lastError || 'verify_not_available',
     };
 }
 
@@ -664,12 +788,25 @@ async function hidePagePostFromTimeline(
         });
         const data = await response.json() as any;
         if (!data?.error) {
+            console.log('[publish] Timeline hide API success:', {
+                method: attempt.method,
+                postId,
+                payload: data,
+            });
             return {
                 success: true,
                 method: attempt.method,
             };
         }
         lastError = data?.error?.message || `hide_failed_${attempt.method}`;
+        console.warn('[publish] Timeline hide API failed:', {
+            method: attempt.method,
+            postId,
+            error: lastError,
+            code: data?.error?.code,
+            errorSubcode: data?.error?.error_subcode,
+            type: data?.error?.type,
+        });
     }
 
     return {
@@ -709,12 +846,25 @@ async function hidePagePostFromTimelineCookieOnly(
         });
         const data = await response.json() as any;
         if (!data?.error) {
+            console.log('[publish] Timeline hide API success:', {
+                method: attempt.method,
+                postId,
+                payload: data,
+            });
             return {
                 success: true,
                 method: attempt.method,
             };
         }
         lastError = data?.error?.message || `hide_failed_${attempt.method}`;
+        console.warn('[publish] Timeline hide API failed:', {
+            method: attempt.method,
+            postId,
+            error: lastError,
+            code: data?.error?.code,
+            errorSubcode: data?.error?.error_subcode,
+            type: data?.error?.type,
+        });
     }
 
     return {
@@ -1737,13 +1887,15 @@ app.post('/', async (c) => {
             return inputId;
         };
 
-        const maybeHideAfterPublish = async (postId: string, tokenForHide: string) => {
+        const maybeHideAfterPublish = async (postId: string, tokenForHide: string): Promise<HideAfterPublishResult> => {
             if (!shouldHideFromTimeline || !postId) {
                 return {
                     attempted: false,
                     hidden: false,
                     method: '',
                     error: '',
+                    targetPostId: '',
+                    verification: emptyHideVerificationResult(),
                 };
             }
 
@@ -1770,11 +1922,25 @@ app.post('/', async (c) => {
                     } catch (dbErr) {
                         console.warn('[publish] Failed to persist hidden_posts row:', dbErr);
                     }
+                    const verification = await verifyTimelineHideState({
+                        postId: timelineHideTarget,
+                        accessToken: authToken,
+                        tokenHeaders: facebookHeaders,
+                        cookieHeadersList: cookieHeaderCandidates,
+                    });
+                    console.log('[publish] Timeline hide success summary:', {
+                        postId,
+                        timelineHideTarget,
+                        method: result.method || '',
+                        verification,
+                    });
                     return {
                         attempted: true,
                         hidden: true,
                         method: result.method || '',
                         error: '',
+                        targetPostId: timelineHideTarget,
+                        verification,
                     };
                 }
                 lastHideError = result.error || '';
@@ -1800,21 +1966,50 @@ app.post('/', async (c) => {
                     } catch (dbErr) {
                         console.warn('[publish] Failed to persist hidden_posts row:', dbErr);
                     }
+                    const verification = await verifyTimelineHideState({
+                        postId: timelineHideTarget,
+                        accessToken: authToken,
+                        tokenHeaders: facebookHeaders,
+                        cookieHeadersList: cookieHeaderCandidates,
+                    });
+                    console.log('[publish] Timeline hide success summary:', {
+                        postId,
+                        timelineHideTarget,
+                        method: cookieHideResult.method || '',
+                        verification,
+                    });
                     return {
                         attempted: true,
                         hidden: true,
                         method: cookieHideResult.method || '',
                         error: '',
+                        targetPostId: timelineHideTarget,
+                        verification,
                     };
                 }
                 lastHideError = cookieHideResult.error || lastHideError;
             }
+
+            const verification = await verifyTimelineHideState({
+                postId: timelineHideTarget,
+                accessToken: authToken,
+                tokenHeaders: facebookHeaders,
+                cookieHeadersList: cookieHeaderCandidates,
+            });
+            console.warn('[publish] Timeline hide failed after all attempts:', {
+                postId,
+                timelineHideTarget,
+                error: lastHideError || (authToken ? 'hide_failed_with_token_and_cookie' : 'hide_failed_cookie_only'),
+                verification,
+            });
 
             return {
                 attempted: true,
                 hidden: false,
                 method: '',
                 error: lastHideError || (authToken ? 'hide_failed_with_token_and_cookie' : 'hide_failed_cookie_only'),
+                targetPostId: timelineHideTarget,
+                verification,
             };
         };
 
