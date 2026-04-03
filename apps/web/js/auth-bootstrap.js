@@ -92,26 +92,40 @@
         // Keep overlay hidden by default to avoid flash on refresh for authenticated users.
         overlay.className = 'pubilo-auth-overlay is-hidden';
         overlay.innerHTML = `
-            <div class="pubilo-top-left-logo">
-                <svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Isometric Stack Approximation -->
-                    <path d="M50 15L85 32.5L50 50L15 32.5L50 15Z" fill="#8b3dff"/>
-                    <path d="M50 35L85 52.5L50 70L15 52.5L50 35Z" stroke="#8795b4" stroke-width="8" fill="none"/>
-                    <path d="M50 55L85 72.5L50 90L15 72.5L50 55Z" stroke="#bc8bff" stroke-width="8" fill="none"/>
+            <div class="pubilo-top-left-logo" style="position:absolute; top:32px; left:48px; display:flex; align-items:center; gap:12px; z-index:20;">
+                <svg width="32" height="32" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M50 15L85 32.5L50 50L15 32.5L50 15Z" fill="#3b82f6"/>
+                    <path d="M50 35L85 52.5L50 70L15 52.5L50 35Z" stroke="#93c5fd" stroke-width="8" fill="none"/>
+                    <path d="M50 55L85 72.5L50 90L15 72.5L50 55Z" stroke="#5b21b6" stroke-width="8" fill="none"/>
                 </svg>
-                <span class="logo-text-title">Pubilo</span>
+                <span style="font-size:22px; font-weight:600; color:#1e293b; letter-spacing:-0.5px;">pubilo</span>
             </div>
-            <div class="pubilo-auth-shell">
-                <div class="pubilo-auth-brand">
-                    <div style="flex: 1; display:flex; flex-direction:column; justify-content:center; align-items:flex-start;">
-                        <span style="font-size:24px; display:block; letter-spacing:6px; color:#7e8baf; font-weight:600; margin-bottom:4px; text-transform:uppercase;">The</span>
-                        <h1 style="font-size:clamp(4rem, 6vw, 7rem); font-weight:500; color:#0f172a; letter-spacing:-3px; margin:0; line-height:1;">
-                            pubilo
-                        </h1>
-                        <span style="font-size:18px; display:block; letter-spacing:10px; color:#7e8baf; font-weight:600; margin-top:4px; text-transform:uppercase;">Workspace</span>
+            <div class="pubilo-auth-shell" style="width:100%; max-width:1100px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:100vh;">
+                <div class="pubilo-auth-brand" style="flex:1; position:relative;">
+                    <div style="position:relative; max-width:480px;">
+                        
+                        <!-- Chat Bubbles -->
+                        <div style="position:absolute; top:-120px; right:-80px; display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+                            <div style="background:rgba(255,255,255,0.4); backdrop-filter:blur(4px); padding:8px 16px; border-radius:100px; font-size:12px; color:#94a3b8; filter:blur(1px);">Of course, John.</div>
+                            <div style="background:rgba(255,255,255,0.7); backdrop-filter:blur(8px); padding:8px 16px; border-radius:100px; font-size:12px; color:#475569; position:relative; right:10px;">I can help you with that.</div>
+                            <div style="background:#ffffff; padding:10px 16px; border-radius:100px; font-size:12px; font-weight:500; color:#1e293b; box-shadow:0 4px 12px rgba(0,0,0,0.05); position:relative; right:5px;">Give me just one second, okay?</div>
+                            <div style="background:#ffffff; padding:10px 16px; border-radius:100px; font-size:12px; font-weight:500; color:#1e293b; box-shadow:0 4px 12px rgba(0,0,0,0.05);">I'll need to verify your identity first, though.</div>
+                        </div>
+
+                        <!-- Dots -->
+                        <div style="position:absolute; width:6px; height:6px; background:#a5b4fc; border-radius:50%; top:20px; left:-20px;"></div>
+                        <div style="position:absolute; width:10px; height:10px; background:#bfdbfe; border-radius:50%; top:60px; left:-10px;"></div>
+                        <div style="position:absolute; width:4px; height:4px; background:#60a5fa; border-radius:50%; bottom:-10px; left:40px;"></div>
+
+                        <!-- Main Title -->
+                        <div style="margin-left:20px;">
+                            <div style="font-size:14px; letter-spacing:6px; color:#94a3b8; font-weight:600; margin-bottom:0px; text-transform:uppercase;">THE</div>
+                            <h1 style="font-size:80px; line-height:1; font-weight:400; color:#1e293b; letter-spacing:-4px; margin:0;">pubilo</h1>
+                            <div style="font-size:14px; letter-spacing:8px; color:#cbd5e1; font-weight:600; margin-top:0px; text-transform:uppercase; margin-left:4px;">FUTURE</div>
+                        </div>
                     </div>
                 </div>
-                <div class="pubilo-auth-card" id="pubiloAuthCard"></div>
+                <div class="pubilo-auth-card" id="pubiloAuthCard" style="flex:0 0 420px; z-index:10;"></div>
             </div>
         `;
         document.body.appendChild(overlay);
