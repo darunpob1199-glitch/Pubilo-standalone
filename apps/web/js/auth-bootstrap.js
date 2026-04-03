@@ -221,18 +221,24 @@
         `).join('');
 
         card.innerHTML = `
-            <form class="pubilo-auth-panel" id="pubiloOnboardingForm">
-                <p class="pubilo-auth-label">Workspace</p>
-                <h2>ตั้งค่า account สำหรับขายใช้งานจริง</h2>
-                <p class="pubilo-auth-copy">เลือกราคาแพ็กเกจแล้วระบบจะสร้าง workspace และเปิด QR PromptPay ให้ชำระได้ทันที</p>
-                <label class="pubilo-field">
-                    <span>ชื่อ Workspace</span>
-                    <input type="text" id="pubiloWorkspaceName" value="${defaultName.replace(/"/g, '&quot;')}" required />
+            <form class="pubilo-auth-panel" id="pubiloOnboardingForm" style="padding: 40px; text-align: left; border: none; box-shadow: 0 20px 40px rgba(0,0,0,0.04); background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-radius: 24px;">
+                <p class="pubilo-auth-label" style="background: #eef2ff; color: #4f46e5; font-size: 11px; letter-spacing: 1px; border-radius: 100px; padding: 6px 12px; display: inline-block; font-weight: 800; margin-bottom: 16px; text-transform: uppercase;">Workspace</p>
+                <h2 style="font-size: 28px; font-weight: 800; color: #0f172a; margin-bottom: 12px; line-height: 1.25; letter-spacing: -0.5px;">ตั้งค่า account<br>สำหรับใช้งานจริง</h2>
+                <p class="pubilo-auth-copy" style="font-size: 14px; color: #64748b; margin-bottom: 32px; line-height: 1.6;">เลือกราคาแพ็กเกจแล้วระบบจะสร้าง workspace และเปิด QR PromptPay ให้ชำระได้ทันที</p>
+                
+                <label class="pubilo-field" style="margin-bottom: 24px;">
+                    <span style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 8px; display: block;">ชื่อ Workspace</span>
+                    <input type="text" id="pubiloWorkspaceName" value="${defaultName.replace(/"/g, '&quot;')}" required style="border-radius: 14px; border: 2px solid #e2e8f0; height: 52px; padding: 0 16px; font-size: 16px; color: #0f172a; transition: all 0.2s;" onfocus="this.style.borderColor='#6366f1';" onblur="this.style.borderColor='#e2e8f0';" />
                 </label>
-                <div class="pubilo-plan-grid">${plansHtml}</div>
-                <button class="pubilo-primary-btn" type="submit">สร้าง Workspace</button>
-                <p class="pubilo-auth-note" id="pubiloOnboardingNote"></p>
-                <button type="button" class="pubilo-logout-link" id="pubiloOnboardingLogout">Logout</button>
+                
+                <div class="pubilo-plan-grid" style="margin-bottom: 32px;">${plansHtml}</div>
+                
+                <button class="pubilo-primary-btn" type="submit" style="width: 100%; height: 56px; border-radius: 16px; font-size: 16px; background: #4f46e5; border: none; color: white; font-weight: 700; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 20px rgba(79, 70, 229, 0.3)';" onmouseout="this.style.transform='none'; this.style.boxShadow='none';">สร้าง Workspace</button>
+                <p class="pubilo-auth-note" id="pubiloOnboardingNote" style="color: #ef4444; font-size: 14px; margin-top: 12px; text-align: center;"></p>
+                
+                <div style="text-align: center; margin-top: 24px;">
+                    <button type="button" class="pubilo-logout-link" id="pubiloOnboardingLogout" style="background: none; border: none; text-decoration: underline; color: #94a3b8; cursor: pointer; font-size: 14px; font-weight: 500; transition: color 0.2s;" onmouseover="this.style.color='#0f172a';" onmouseout="this.style.color='#94a3b8';">Logout</button>
+                </div>
             </form>
         `;
 
