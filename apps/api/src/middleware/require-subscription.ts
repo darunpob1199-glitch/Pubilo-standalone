@@ -2,7 +2,7 @@ import type { MiddlewareHandler } from 'hono';
 import type { Env } from '../types';
 import { getEffectiveWorkspaceSubscription } from '../lib/billing-state';
 
-const SKIP_SUBSCRIPTION_ENFORCEMENT = true;
+const SKIP_SUBSCRIPTION_ENFORCEMENT = false;
 
 type SubscriptionContext = {
     Bindings: Env;

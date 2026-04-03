@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../index';
+import { normalizeBillingData } from '../lib/billing-normalize';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -23,6 +24,47 @@ app.get('/', async (c) => {
             message: 'Migration status',
             counts,
         });
+    } catch (error) {
+        return c.json({ success: false, error: String(error) }, 500);
+    }
+});
+
+app.get('/billing/normalize', async (c) => {
+    const workspaceId = c.req.query('workspaceId') || null;
+    const limit = Number(c.req.query('limit') || 200);
+    const dryRun = c.req.query('dryRun') !== 'false';
+
+    try {
+        const result = await normalizeBillingData(c.env, {
+            workspaceId,
+            limit,
+            dryRun,
+        });
+        return c.json(result);
+    } catch (error) {
+        return c.json({ success: false, error: String(error) }, 500);
+    }
+});
+
+app.post('/billing/normalize', async (c) => {
+    let body: Record<string, unknown> = {};
+    try {
+        body = await c.req.json();
+    } catch {
+        body = {};
+    }
+
+    const workspaceId = typeof body.workspaceId === 'string' ? body.workspaceId : null;
+    const limit = Number(body.limit || 200);
+    const dryRun = body.dryRun !== false;
+
+    try {
+        const result = await normalizeBillingData(c.env, {
+            workspaceId,
+            limit,
+            dryRun,
+        });
+        return c.json(result);
     } catch (error) {
         return c.json({ success: false, error: String(error) }, 500);
     }
