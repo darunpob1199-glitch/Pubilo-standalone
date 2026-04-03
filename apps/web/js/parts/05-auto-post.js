@@ -7,8 +7,26 @@ const pageTokenInputPanel = document.getElementById("pageTokenInputPanel");
 const autoFetchPageTokenBtn = document.getElementById("autoFetchPageTokenBtn");
 const pageTokenAutoStatus = document.getElementById("pageTokenAutoStatus");
 const recurringAutoPostEnabled = false;
+const recurringScheduleFeatureEnabled05 = window.PUBILO_RECURRING_AUTO_SCHEDULE_ENABLED === true;
 const autoPostSettingsSection = document.getElementById("autoPostSettingsSection");
 let currentPostMode = "image";
+
+function hideRecurringAutoScheduleUi05() {
+    const hiddenIds = [
+        "autoScheduleSettingsSection",
+        "scheduleIntervalGroupPanel",
+        "workingHoursGroupPanel",
+        "nextScheduleInfoPanel",
+        "imageSourceGroupPanel",
+        "ogBackgroundGroupPanel",
+        "ogFontGroupPanel",
+    ];
+
+    hiddenIds.forEach((id) => {
+        const element = document.getElementById(id);
+        if (element) element.style.display = "none";
+    });
+}
 
 function getHideOnPublishInput() {
     return document.getElementById("hideOnPublishEnabled");
@@ -16,6 +34,10 @@ function getHideOnPublishInput() {
 
 if (!recurringAutoPostEnabled && autoPostSettingsSection) {
     autoPostSettingsSection.style.display = "none";
+}
+
+if (!recurringScheduleFeatureEnabled05) {
+    hideRecurringAutoScheduleUi05();
 }
 
 // Auto-resize textarea function
@@ -677,7 +699,8 @@ async function loadSettingsPanel() {
             console.log("[LOAD] Got settings from API, post_token:", s.post_token ? s.post_token.substring(0, 20) + "..." : "(null)");
 
             // Apply ALL settings to form
-            autoScheduleEnabledPanel.checked = s.auto_schedule || false;
+            const enabled = recurringScheduleFeatureEnabled05 && !!s.auto_schedule;
+            autoScheduleEnabledPanel.checked = enabled;
             const hideOnPublishEnabled = getHideOnPublishInput();
             if (hideOnPublishEnabled) hideOnPublishEnabled.checked = !!s.hide_on_publish;
             scheduleMinutesPanel.value = s.schedule_minutes || "00, 15, 30, 45";
@@ -703,7 +726,7 @@ async function loadSettingsPanel() {
             // Update cache
             cachedPageSettings = {
                 pageId,
-                autoSchedule: s.auto_schedule,
+                autoSchedule: enabled,
                 hideOnPublish: s.hide_on_publish,
                 scheduleMinutes: s.schedule_minutes,
                 postToken: s.post_token,
@@ -749,7 +772,7 @@ async function loadSettingsPanel() {
     if (scheduleMinutesGridPanel) syncInputToMinuteGrid(scheduleMinutesPanel, scheduleMinutesGridPanel);
 
     // Update visibility
-    const enabled = autoScheduleEnabledPanel.checked;
+    const enabled = recurringScheduleFeatureEnabled05 && autoScheduleEnabledPanel.checked;
     const isOg = imageSourceSelectPanel.value === "og";
     scheduleIntervalGroupPanel.style.display = enabled ? "block" : "none";
     workingHoursGroupPanel.style.display = enabled ? "block" : "none";
@@ -820,7 +843,7 @@ async function loadSettingsPanel() {
 
 // Auto schedule checkbox change handler for panel
 autoScheduleEnabledPanel.addEventListener("change", () => {
-    const enabled = autoScheduleEnabledPanel.checked;
+    const enabled = recurringScheduleFeatureEnabled05 && autoScheduleEnabledPanel.checked;
     const isOg = imageSourceSelectPanel.value === "og";
     scheduleIntervalGroupPanel.style.display = enabled ? "block" : "none";
     workingHoursGroupPanel.style.display = enabled ? "block" : "none";
@@ -836,14 +859,14 @@ autoScheduleEnabledPanel.addEventListener("change", () => {
 // Image source change handler for panel
 imageSourceSelectPanel.addEventListener("change", () => {
     const isOg = imageSourceSelectPanel.value === "og";
-    const enabled = autoScheduleEnabledPanel.checked;
+    const enabled = recurringScheduleFeatureEnabled05 && autoScheduleEnabledPanel.checked;
     ogBackgroundGroupPanel.style.display = (enabled && isOg) ? "block" : "none";
     ogFontGroupPanel.style.display = (enabled && isOg) ? "block" : "none";
 });
 
 // Schedule minutes change handler for panel
 scheduleMinutesPanel.addEventListener("input", () => {
-    if (autoScheduleEnabledPanel.checked) {
+    if (recurringScheduleFeatureEnabled05 && autoScheduleEnabledPanel.checked) {
         nextScheduleDisplayPanel.textContent = calculateNextScheduleForPanel();
     }
 });
@@ -871,7 +894,7 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
             : "";
     console.log("[SAVE] Token from input:", postToken ? postToken.substring(0, 20) + "..." : "(empty)");
 
-    const autoSchedule = autoScheduleEnabledPanel.checked;
+    const autoSchedule = recurringScheduleFeatureEnabled05 ? autoScheduleEnabledPanel.checked : false;
     const mins = scheduleMinutesPanel.value || "00, 15, 30, 45";
     const workingStart = workingHoursStart.value !== "" ? parseInt(workingHoursStart.value) : 6;
     const workingEnd = workingHoursEnd.value !== "" ? parseInt(workingHoursEnd.value) : 24;

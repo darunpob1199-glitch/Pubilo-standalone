@@ -5,6 +5,7 @@ const PUBILO_WEB_ONLY_MODE = false;
 window.PUBILO_WEB_ONLY_MODE = PUBILO_WEB_ONLY_MODE;
 window.PUBILO_HIDDEN_HASHES = ['quotes', 'earnings'];
 window.PUBILO_DISABLED_HASHES = ['hide-posts'];
+window.PUBILO_RECURRING_AUTO_SCHEDULE_ENABLED = false;
 
 // Old production preview URLs stay frozen on older deploys and keep causing stale-client issues.
 // Always move users back to the stable production hostname.

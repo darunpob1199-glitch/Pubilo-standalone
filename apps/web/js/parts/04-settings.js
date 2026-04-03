@@ -63,6 +63,31 @@ const textManualScheduleClearBtn = document.getElementById("textManualScheduleCl
 const imageManualScheduleInput = document.getElementById("imageManualScheduleInput");
 const imageManualScheduleHint = document.getElementById("imageManualScheduleHint");
 const imageManualScheduleClearBtn = document.getElementById("imageManualScheduleClearBtn");
+const recurringScheduleFeatureEnabled04 = window.PUBILO_RECURRING_AUTO_SCHEDULE_ENABLED === true;
+
+function hideRecurringAutoScheduleUi04() {
+    const hiddenIds = [
+        "autoScheduleSettingsSection",
+        "scheduleIntervalGroup",
+        "nextScheduleInfo",
+        "imageSourceGroup",
+        "ogBackgroundGroup",
+        "scheduleIntervalGroupPanel",
+        "workingHoursGroupPanel",
+        "nextScheduleInfoPanel",
+        "imageSourceGroupPanel",
+        "ogBackgroundGroupPanel",
+        "ogFontGroupPanel",
+    ];
+
+    hiddenIds.forEach((id) => {
+        const element = document.getElementById(id);
+        if (element) element.style.display = "none";
+    });
+
+    const legacyGroup = autoScheduleEnabled?.closest(".setting-group");
+    if (legacyGroup) legacyGroup.style.display = "none";
+}
 
 // Sync minute checkboxes with hidden input
 function syncMinuteGridToInput(grid, input) {
@@ -297,7 +322,9 @@ async function resolveScheduledTimeForMode(mode, pageId) {
     }
 
     const isAutoSchedule =
-        cachedPageSettings.pageId === pageId && cachedPageSettings.autoSchedule;
+        recurringScheduleFeatureEnabled04 &&
+        cachedPageSettings.pageId === pageId &&
+        cachedPageSettings.autoSchedule;
 
     if (isAutoSchedule) {
         await refreshScheduledPostTimes();
@@ -375,6 +402,10 @@ let cachedPageSettings = {
     autoSchedule: false,
     scheduleMinutes: "00, 15, 30, 45"
 };
+
+if (!recurringScheduleFeatureEnabled04) {
+    hideRecurringAutoScheduleUi04();
+}
 
 bindManualScheduleControls("link");
 bindManualScheduleControls("news");
@@ -466,7 +497,7 @@ async function loadSettings() {
         const data = await response.json();
 
         if (data.success && data.settings) {
-            const enabled = data.settings.auto_schedule === true;
+            const enabled = recurringScheduleFeatureEnabled04 && data.settings.auto_schedule === true;
             const mins = data.settings.schedule_minutes || "00, 15, 30, 45";
             const imgSource = data.settings.image_source || "ai";
             const ogBgUrl = data.settings.og_background_url || "";
@@ -560,6 +591,7 @@ function getPrimaryPublishLabel(mode = postMode) {
     const hasManualSchedule = !!input?.value?.trim();
     const currentPageId = getCurrentPageId();
     const hasAutoSchedule =
+        recurringScheduleFeatureEnabled04 &&
         cachedPageSettings.autoSchedule &&
         (!currentPageId || cachedPageSettings.pageId === currentPageId);
     return hasManualSchedule || hasAutoSchedule ? "SCHEDULE" : "POST NOW";
@@ -711,7 +743,7 @@ function calculateNextScheduleForPanel() {
 
 // Auto-refresh next scheduled time every 30 seconds
 setInterval(() => {
-    if (autoScheduleEnabledPanel.checked && nextScheduleDisplayPanel) {
+    if (recurringScheduleFeatureEnabled04 && autoScheduleEnabledPanel.checked && nextScheduleDisplayPanel) {
         try {
             const result = calculateNextScheduleForPanel();
             nextScheduleDisplayPanel.textContent = result;
@@ -752,7 +784,7 @@ scheduleMinutes.addEventListener(
 saveSettingsBtn.addEventListener("click", async () => {
     const pageId = getCurrentPageId();
     if (pageId) {
-        const autoSchedule = autoScheduleEnabled.checked;
+        const autoSchedule = recurringScheduleFeatureEnabled04 ? autoScheduleEnabled.checked : false;
         const mins = scheduleMinutes.value || "00, 15, 30, 45";
         const imgSource = imageSourceSelect.value || "ai";
         const ogBgUrl = ogBackgroundUrl.value || "";
