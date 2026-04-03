@@ -568,11 +568,19 @@ input[type="checkbox"] {
     justify-content: space-between;
 }
 
-.pubilo-auth-shell--billing-gate {
+.pubilo-auth-shell--billing-gate,
+.pubilo-auth-shell--onboarding {
     width: 100vw;
     flex-direction: column;
     box-shadow: none;
-    background: #ffffff;
+    background: linear-gradient(135deg, #f0f7ff 0%, #e0eaff 40%, #dbeafe 80%, #bfdbfe 100%);
+}
+
+.pubilo-auth-overlay--billing-gate,
+.pubilo-auth-overlay--onboarding {
+    background: transparent;
+    backdrop-filter: blur(8px);
+    padding: 0;
 }
 
 .pubilo-auth-shell--payment-only {
@@ -642,16 +650,18 @@ input[type="checkbox"] {
 }
 
 .pubilo-auth-card {
-    flex: 0 0 500px;
-    background: #f8fafc;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 40px;
+    flex: none;
+    width: 100%;
+    max-width: 400px;
+    z-index: 10;
+    padding: 0;
+    transition: max-width 0.3s;
 }
 
+.pubilo-auth-card--onboarding,
 .pubilo-auth-card--billing-gate {
     width: 100%;
+    max-width: 800px;
     flex: 1;
     background: transparent;
     padding: 0;
