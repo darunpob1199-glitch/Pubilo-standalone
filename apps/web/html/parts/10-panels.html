@@ -215,7 +215,7 @@
                         ลบโพสต์ออกจาก Facebook แบบ batch สำหรับเคลียร์เพจจำนวนมาก ปุ่มนี้ควรใช้หลังจากเช็ก filter และรายการที่เลือกแล้วเท่านั้น
                     </div>
                     <div class="pending-summary-bar" id="deletePostsSummaryBar"></div>
-                    <div class="pending-filter-bar post-tool-filter-bar">
+                    <div class="pending-filter-bar post-tool-filter-bar" style="display: none;">
                         <div class="pending-filter-search">
                             <input class="pending-filter-input" id="deletePostsSearchInput" type="search" placeholder="ค้นหาข้อความหรือ post id" />
                         </div>
@@ -255,7 +255,7 @@
                             <button class="post-tool-secondary-btn" id="deletePostsClearSelectionBtn" type="button">ล้างที่เลือก</button>
                         </div>
                     </div>
-                    <div class="post-tool-body">
+                    <div class="post-tool-body" style="grid-template-columns: minmax(0, 1fr);">
                         <div class="post-tool-main">
                             <div class="pending-table-container" id="deletePostsTableContainer">
                                 <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
@@ -265,7 +265,7 @@
                                 <button class="post-tool-secondary-btn" id="deletePostsLoadMoreBtn" type="button">โหลดเพิ่ม</button>
                             </div>
                         </div>
-                        <aside class="post-tool-side">
+                        <aside class="post-tool-side" style="display: none;">
                             <div class="post-tool-side-header">Recent Jobs</div>
                             <div class="post-tool-jobs" id="deletePostsJobs"></div>
                         </aside>
