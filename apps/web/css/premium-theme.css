@@ -564,49 +564,51 @@ body:not(.pubilo-authenticated) > .container {
 
 .pubilo-auth-shell {
     width: 100vw;
-    max-width: none;
-    min-height: 100vh;
     height: 100vh;
-    background: white;
-    border-radius: 0;
-    box-shadow: none;
+    background: linear-gradient(135deg, #2e1065 0%, #4c1d95 30%, #7c3aed 70%, #f3e8ff 100%);
     display: flex;
-    overflow: hidden;
     position: relative;
-    align-items: stretch;
-    justify-content: space-between;
+    overflow: hidden;
+}
+
+.pubilo-auth-shell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at top right, rgba(255,255,255,0.1) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+.pubilo-auth-brand {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    z-index: 1;
+    color: #ffffff;
+    padding: 60px;
+}
+
+#pubiloRightContainer {
+    flex: 0 0 600px;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 24px 24px 0;
+    transition: flex 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .pubilo-auth-shell--billing-gate,
 .pubilo-auth-shell--onboarding {
-    width: 100vw;
-    flex-direction: column;
-    box-shadow: none;
-    background: linear-gradient(135deg, #f0f7ff 0%, #e0eaff 40%, #dbeafe 80%, #bfdbfe 100%);
+    background: linear-gradient(135deg, #f5f3ff 0%, #e0e7ff 100%);
 }
 
 .pubilo-auth-overlay--billing-gate,
 .pubilo-auth-overlay--onboarding {
     background: transparent;
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(12px);
     padding: 0;
-}
-
-.pubilo-auth-shell--payment-only {
-    width: 100vw;
-    flex-direction: column;
-    height: auto;
-}
-
-.pubilo-auth-brand {
-    flex: 5.5;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    background: #0f62fe;
-    z-index: 1;
-    color: #ffffff;
-    padding: 60px;
 }
 
 .pubilo-auth-brand::before {
@@ -661,19 +663,31 @@ body:not(.pubilo-authenticated) > .container {
 .pubilo-auth-card {
     flex: none;
     width: 100%;
-    max-width: 400px;
+    max-width: 500px;
+    height: 100%;
+    background: #ffffff;
+    border-radius: 32px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     z-index: 10;
-    padding: 0;
+    padding: 20px;
     transition: max-width 0.3s;
+    overflow-y: auto;
+}
+
+.pubilo-auth-card::-webkit-scrollbar {
+    display: none;
 }
 
 .pubilo-auth-card--onboarding,
 .pubilo-auth-card--billing-gate {
     width: 100%;
-    max-width: 800px;
+    max-width: 900px;
     flex: 1;
-    background: transparent;
-    padding: 0;
+    background: #ffffff;
+    padding: 40px;
 }
 
 .pubilo-auth-card--payment-only {
