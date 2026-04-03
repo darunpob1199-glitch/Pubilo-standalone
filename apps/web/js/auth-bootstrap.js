@@ -155,6 +155,12 @@
         `;
     }
 
+    function getPublicBillingPlans() {
+        const plans = Array.isArray(state.plans) ? state.plans : [];
+        const filteredPlans = plans.filter((plan) => plan.code !== 'test_1');
+        return filteredPlans.length ? filteredPlans : plans;
+    }
+
     function renderOnboardingView(profile) {
         const overlay = ensureOverlay();
         setOverlayVariant('default');
@@ -162,7 +168,7 @@
         writeAuthFlowState('onboarding');
         const card = overlay.querySelector('#pubiloAuthCard');
         const defaultName = `${(profile?.user?.name || 'My').split(' ')[0]} Workspace`;
-        const plansHtml = (state.plans || []).map((plan, index) => `
+        const plansHtml = getPublicBillingPlans().map((plan, index) => `
             <label class="pubilo-plan-card ${index === 0 ? 'selected' : ''}" data-plan-card="${plan.code}">
                 <input type="radio" name="planCode" value="${plan.code}" ${index === 0 ? 'checked' : ''} />
                 <div class="pubilo-plan-top">
@@ -373,14 +379,13 @@
         };
 
         const visiblePlans = (() => {
-            const plans = state.plans || [];
+            const plans = getPublicBillingPlans();
             const priorityCodes = ['monthly_500', 'yearly_4499'];
             const prioritized = priorityCodes
                 .map((code) => plans.find((plan) => plan.code === code))
                 .filter(Boolean);
-            const testPlan = plans.find((plan) => plan.code === 'test_1');
             if (prioritized.length) {
-                return testPlan ? [...prioritized, testPlan] : prioritized;
+                return prioritized;
             }
             return plans;
         })();

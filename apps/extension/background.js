@@ -127,6 +127,51 @@ const FB_TAB_URLS = [
   "https://business.facebook.com/*",
   "https://adsmanager.facebook.com/*"
 ];
+const PAGE_TOKEN_MAP_KEY = "fewfeed_pageTokenMap";
+const PAGE_TOKEN_MAP_OWNER_KEY = "fewfeed_pageTokenMapOwnerId";
+
+function parseStoredPageTokenMap(rawValue) {
+  try {
+    const parsed = JSON.parse(rawValue || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+async function notifyAppTabsSessionUpdated(reason = "session_updated") {
+  const tabs = await listUniqueTabsByPatterns(APP_URLS);
+  await Promise.allSettled(
+    tabs
+      .filter((tab) => !!tab?.id)
+      .map((tab) =>
+        chrome.tabs.sendMessage(tab.id, {
+          action: "tokenUpdated",
+          reason,
+        }),
+      ),
+  );
+}
+
+let facebookSessionRefreshTimer = null;
+
+function scheduleFacebookSessionRefresh(reason = "cookie_change") {
+  if (facebookSessionRefreshTimer) {
+    clearTimeout(facebookSessionRefreshTimer);
+  }
+
+  facebookSessionRefreshTimer = setTimeout(async () => {
+    facebookSessionRefreshTimer = null;
+    try {
+      await fetchAndStoreToken();
+      await notifyAppTabsSessionUpdated(reason);
+      injectScriptsIntoExistingTabs().catch(() => {});
+      console.log("[FEWFEED] Refreshed Facebook session after cookie change:", reason);
+    } catch (error) {
+      console.warn("[FEWFEED] Failed to refresh Facebook session after cookie change:", error?.message || error);
+    }
+  }, 600);
+}
 
 function isMissingHostPermissionError(error) {
   const message = String(error?.message || error || "").toLowerCase();
@@ -252,6 +297,15 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
+chrome.cookies.onChanged.addListener((changeInfo) => {
+  const cookie = changeInfo?.cookie;
+  const domain = String(cookie?.domain || "");
+  const name = String(cookie?.name || "");
+  if (!domain.includes("facebook.com")) return;
+  if (!["c_user", "xs"].includes(name)) return;
+  scheduleFacebookSessionRefresh(`cookie_${name}_${changeInfo.removed ? "removed" : "updated"}`);
+});
+
 // When extension icon is clicked
 chrome.action.onClicked.addListener(async () => {
   console.log("[Pubilo] Extension clicked!");
@@ -362,11 +416,17 @@ async function fetchAndStoreToken() {
       "fewfeed_userName",
       "fewfeed_cookie",
       "fewfeed_avatarUrl",
-      "fewfeed_pageTokenMap",
+      PAGE_TOKEN_MAP_KEY,
+      PAGE_TOKEN_MAP_OWNER_KEY,
     ]);
     const cookieSnapshot = await getFacebookCookieSnapshot();
     const cookieString = cookieSnapshot.cookieString || "";
     const userId = cookieSnapshot.userId || "";
+    const previousPageTokenMapOwnerId = String(
+      previousData[PAGE_TOKEN_MAP_OWNER_KEY] || previousData.fewfeed_userId || "",
+    ).trim();
+    const canReusePreviousPageTokenMap =
+      !!userId && previousPageTokenMapOwnerId === String(userId).trim();
 
     if (!cookieString) {
       console.log("[FEWFEED] No Facebook cookies found");
@@ -539,14 +599,12 @@ async function fetchAndStoreToken() {
     // After storing ads token, also fetch and store page tokens so they
     // survive even when the ads token expires later.
     let pageTokenMap = {};
-    const previousPageTokenMap = (() => {
-      try {
-        const parsed = JSON.parse(previousData.fewfeed_pageTokenMap || "{}");
-        return parsed && typeof parsed === "object" ? parsed : {};
-      } catch (_) {
-        return {};
-      }
-    })();
+    const previousPageTokenMap = canReusePreviousPageTokenMap
+      ? parseStoredPageTokenMap(previousData[PAGE_TOKEN_MAP_KEY])
+      : {};
+    if (previousPageTokenMapOwnerId && userId && previousPageTokenMapOwnerId !== String(userId).trim()) {
+      console.log("[FEWFEED] Facebook account changed, clearing previous page token map owner:", previousPageTokenMapOwnerId, "->", userId);
+    }
     const effectiveAccessToken = hasFreshAccessToken ? storageData.fewfeed_accessToken : "";
     if (effectiveAccessToken) {
       try {
@@ -578,7 +636,8 @@ async function fetchAndStoreToken() {
       pageTokenMap = previousPageTokenMap;
       console.log("[FEWFEED] No valid ads token, using previous page token map");
     }
-    storageData.fewfeed_pageTokenMap = JSON.stringify(pageTokenMap);
+    storageData[PAGE_TOKEN_MAP_KEY] = JSON.stringify(pageTokenMap);
+    storageData[PAGE_TOKEN_MAP_OWNER_KEY] = userId || "";
     await chrome.storage.local.set(storageData);
 
     console.log("[FEWFEED] Ads token, fb_dtsg, cookies and page tokens stored!");
@@ -882,18 +941,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           "fewfeed_userName",
           "fewfeed_cookie",
           "fewfeed_ready",
-          "fewfeed_pageTokenMap",
+          PAGE_TOKEN_MAP_KEY,
+          PAGE_TOKEN_MAP_OWNER_KEY,
           "fewfeed_avatarUrl"
         ];
         let data = await chrome.storage.local.get(readKeys);
+        const cookieSnapshot = await getFacebookCookieSnapshot();
+        const currentCookieUserId = String(cookieSnapshot.userId || "").trim();
+        const storedUserId = String(data.fewfeed_userId || "").trim();
+        const accountChanged = !!(
+          currentCookieUserId &&
+          storedUserId &&
+          currentCookieUserId !== storedUserId
+        );
+        if (accountChanged) {
+          console.log("[FEWFEED] Stored session belongs to a different Facebook account, forcing refresh:", storedUserId, "->", currentCookieUserId);
+          await fetchAndStoreToken();
+          data = await chrome.storage.local.get(readKeys);
+        }
 
         const hasPageTokenMap = (() => {
-          try {
-            const parsed = JSON.parse(data.fewfeed_pageTokenMap || "{}");
-            return !!parsed && typeof parsed === "object" && Object.keys(parsed).length > 0;
-          } catch (_) {
-            return false;
-          }
+          const parsed = parseStoredPageTokenMap(data[PAGE_TOKEN_MAP_KEY]);
+          return Object.keys(parsed).length > 0;
         })();
         const hasUsableSession = !!(data.fewfeed_accessToken || hasPageTokenMap);
         if (!hasUsableSession) {
@@ -915,7 +984,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           avatarUrl: data.fewfeed_avatarUrl || "",
           cookie: data.fewfeed_cookie,
           ready: data.fewfeed_ready,
-          pageTokenMap: data.fewfeed_pageTokenMap || "{}"
+          pageTokenMap: data[PAGE_TOKEN_MAP_KEY] || "{}",
+          pageTokenMapOwnerId: data[PAGE_TOKEN_MAP_OWNER_KEY] || ""
         });
       } catch (error) {
         replyError(error);
@@ -940,11 +1010,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           "fewfeed_userId",
           "fewfeed_userName",
           "fewfeed_cookie",
-          "fewfeed_avatarUrl"
+          "fewfeed_avatarUrl",
+          PAGE_TOKEN_MAP_KEY,
+          PAGE_TOKEN_MAP_OWNER_KEY,
         ]);
         sendResponse({
           success: !!(data.fewfeed_accessToken || data.fewfeed_cookie),
           ...data,
+          pageTokenMap: data[PAGE_TOKEN_MAP_KEY] || "{}",
+          pageTokenMapOwnerId: data[PAGE_TOKEN_MAP_OWNER_KEY] || "",
           debug: fetchResult || { success: false, reason: "timeout" },
         });
       } catch (error) {
@@ -955,11 +1029,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             "fewfeed_userId",
             "fewfeed_userName",
             "fewfeed_cookie",
-            "fewfeed_avatarUrl"
+            "fewfeed_avatarUrl",
+            PAGE_TOKEN_MAP_KEY,
+            PAGE_TOKEN_MAP_OWNER_KEY,
           ]);
           sendResponse({
             success: !!(fallback.fewfeed_accessToken || fallback.fewfeed_cookie),
             ...fallback,
+            pageTokenMap: fallback[PAGE_TOKEN_MAP_KEY] || "{}",
+            pageTokenMapOwnerId: fallback[PAGE_TOKEN_MAP_OWNER_KEY] || "",
             warning: error?.message || String(error),
             debug: { success: false, reason: "exception" },
           });

@@ -12,8 +12,6 @@ const navItems = [
   { name: 'overview', label: 'Overview', icon: '📊' },
   { name: 'customers', label: 'Customers', icon: '👥' },
   { name: 'payments', label: 'Payments', icon: '💰' },
-  { name: 'activity', label: 'Activity', icon: '📈' },
-  { name: 'system', label: 'System', icon: '⚙️' },
 ]
 
 function logout() {

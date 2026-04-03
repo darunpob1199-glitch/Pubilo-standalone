@@ -1,6 +1,12 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env } from '../types';
+import { getBillingPlan, BILLING_PLANS } from '../config/plans';
+import {
+    createCheckoutIntent,
+    applyPaidPaymentOrder,
+    getEffectiveWorkspaceSubscription,
+} from '../lib/billing-state';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -33,9 +39,8 @@ app.get('/overview', async (c) => {
         pendingSubsCount,
         revenueTotal,
         todayRevenue,
+        monthRevenue,
         recentUsers,
-        postsToday,
-        postsWeek,
     ] = await Promise.all([
         c.env.DB.prepare(`SELECT COUNT(*) as count FROM users`).first<{ count: number }>(),
         c.env.DB.prepare(`SELECT COUNT(*) as count FROM workspaces WHERE id != 'ws_legacy'`).first<{ count: number }>(),
@@ -55,17 +60,13 @@ app.get('/overview', async (c) => {
             WHERE status = 'paid' AND date(paid_at) = date('now')
         `).first<{ total: number }>(),
         c.env.DB.prepare(`
+            SELECT COALESCE(SUM(amount_thb), 0) as total FROM payment_orders
+            WHERE status = 'paid' AND datetime(paid_at) >= datetime('now', '-30 days')
+        `).first<{ total: number }>(),
+        c.env.DB.prepare(`
             SELECT id, name, email, avatar_url, created_at, last_login_at
-            FROM users ORDER BY created_at DESC LIMIT 5
+            FROM users ORDER BY created_at DESC LIMIT 10
         `).all(),
-        c.env.DB.prepare(`
-            SELECT COUNT(*) as count FROM publish_history
-            WHERE date(published_at) = date('now')
-        `).first<{ count: number }>(),
-        c.env.DB.prepare(`
-            SELECT COUNT(*) as count FROM publish_history
-            WHERE datetime(published_at) >= datetime('now', '-7 days')
-        `).first<{ count: number }>(),
     ]);
 
     // Revenue last 7 days
@@ -77,6 +78,14 @@ app.get('/overview', async (c) => {
         ORDER BY day ASC
     `).all();
 
+    // Plan breakdown
+    const planBreakdown = await c.env.DB.prepare(`
+        SELECT plan_code, COUNT(*) as count
+        FROM organization_subscriptions
+        WHERE status = 'active' AND datetime(current_period_end) > datetime('now')
+        GROUP BY plan_code
+    `).all();
+
     return c.json({
         success: true,
         overview: {
@@ -86,9 +95,9 @@ app.get('/overview', async (c) => {
             pendingSubscriptions: pendingSubsCount?.count || 0,
             totalRevenue: revenueTotal?.total || 0,
             todayRevenue: todayRevenue?.total || 0,
-            postsToday: postsToday?.count || 0,
-            postsThisWeek: postsWeek?.count || 0,
+            monthRevenue: monthRevenue?.total || 0,
             revenueByDay: revenueByDay.results || [],
+            planBreakdown: planBreakdown.results || [],
             recentUsers: recentUsers.results || [],
         },
     });
@@ -115,23 +124,28 @@ app.get('/customers', async (c) => {
     const customers = await c.env.DB.prepare(`
         SELECT u.id, u.name, u.email, u.avatar_url, u.created_at, u.last_login_at,
                wm.workspace_id, w.name as workspace_name, wm.role,
-               os.plan_code, os.status as subscription_status,
-               os.current_period_end, os.amount_thb
+               os.id as subscription_id, os.plan_code,
+               os.status as subscription_status,
+               os.current_period_end, os.amount_thb, os.started_at
         FROM users u
         LEFT JOIN workspace_members wm ON u.id = wm.user_id
         LEFT JOIN workspaces w ON wm.workspace_id = w.id AND w.id != 'ws_legacy'
-        LEFT JOIN (
-            SELECT workspace_id, plan_code, status, current_period_end, amount_thb
-            FROM organization_subscriptions
-            WHERE id IN (
-                SELECT id FROM organization_subscriptions os2
-                WHERE os2.workspace_id = organization_subscriptions.workspace_id
+        LEFT JOIN organization_subscriptions os ON w.id = os.workspace_id
+            AND os.id = (
+                SELECT os2.id FROM organization_subscriptions os2
+                WHERE os2.workspace_id = w.id
+                  AND (
+                    (os2.status = 'active' AND datetime(os2.current_period_end) > datetime('now'))
+                    OR os2.status = 'pending_payment'
+                  )
                 ORDER BY
-                    CASE WHEN status = 'active' THEN 0 WHEN status = 'pending_payment' THEN 1 ELSE 2 END,
-                    datetime(updated_at) DESC
+                    CASE os2.status
+                        WHEN 'active' THEN 0
+                        WHEN 'pending_payment' THEN 1
+                    END,
+                    datetime(os2.updated_at) DESC
                 LIMIT 1
             )
-        ) os ON w.id = os.workspace_id
         ${whereClause}
         ORDER BY u.created_at DESC
         LIMIT ? OFFSET ?
@@ -146,6 +160,81 @@ app.get('/customers', async (c) => {
             total: totalRow?.count || 0,
             totalPages: Math.ceil((totalRow?.count || 0) / limit),
         },
+    });
+});
+
+// ── Available plans ─────────────────────────────────────────────────
+app.get('/plans', async (c) => {
+    return c.json({
+        success: true,
+        plans: BILLING_PLANS.map(p => ({
+            code: p.code,
+            label: p.label,
+            interval: p.interval,
+            amountThb: p.amountThb,
+            durationDays: p.durationDays,
+            description: p.description,
+        })),
+    });
+});
+
+// ── Grant plan to workspace (admin assigns plan) ────────────────────
+app.post('/grant-plan', async (c) => {
+    const body = await c.req.json();
+    const workspaceId = String(body.workspaceId || '').trim();
+    const planCode = String(body.planCode || '').trim();
+
+    if (!workspaceId) {
+        return c.json({ success: false, error: 'Missing workspaceId' }, 400);
+    }
+
+    const plan = getBillingPlan(planCode);
+    if (!plan) {
+        return c.json({ success: false, error: `Invalid plan: ${planCode}` }, 400);
+    }
+
+    // Verify workspace exists
+    const workspace = await c.env.DB.prepare(
+        `SELECT id, name FROM workspaces WHERE id = ?`
+    ).bind(workspaceId).first<{ id: string; name: string }>();
+
+    if (!workspace) {
+        return c.json({ success: false, error: 'Workspace not found' }, 404);
+    }
+
+    // Use the existing billing flow: create checkout → immediately apply as paid
+    const checkout = await createCheckoutIntent(c.env, {
+        workspaceId,
+        plan,
+        source: 'billing',
+    });
+
+    const applied = await applyPaidPaymentOrder(c.env, checkout.paymentOrder.id, {
+        paidAt: new Date().toISOString(),
+        gateway: 'admin_grant',
+    });
+
+    return c.json({
+        success: true,
+        message: `Plan "${plan.label}" granted to workspace "${workspace.name}"`,
+        workspace: { id: workspace.id, name: workspace.name },
+        subscription: {
+            id: applied.subscription.id,
+            planCode: applied.subscription.plan_code,
+            status: applied.subscription.status,
+            periodEnd: applied.subscription.current_period_end,
+        },
+    });
+});
+
+// ── Get workspace subscription detail ───────────────────────────────
+app.get('/workspace/:workspaceId/subscription', async (c) => {
+    const workspaceId = c.req.param('workspaceId');
+    const subscription = await getEffectiveWorkspaceSubscription(c.env, workspaceId);
+
+    return c.json({
+        success: true,
+        subscription,
     });
 });
 
@@ -200,8 +289,6 @@ app.post('/confirm-payment', async (c) => {
         return c.json({ success: false, error: 'Missing orderId' }, 400);
     }
 
-    // Re-use existing billing confirm logic
-    const { applyPaidPaymentOrder } = await import('../lib/billing-state');
     const applied = await applyPaidPaymentOrder(c.env, orderId, {
         paidAt: new Date().toISOString(),
         gateway: 'admin_manual',
@@ -215,102 +302,6 @@ app.post('/confirm-payment', async (c) => {
             id: applied.subscription.id,
             planCode: applied.subscription.plan_code,
             periodEnd: applied.subscription.current_period_end,
-        },
-    });
-});
-
-// ── Activity / publish history ──────────────────────────────────────
-app.get('/activity', async (c) => {
-    const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '50')));
-
-    const [recentPosts, queueStatus, recentLogs] = await Promise.all([
-        c.env.DB.prepare(`
-            SELECT ph.id, ph.organization_id, ph.page_id, ph.post_type,
-                   ph.message_text, ph.facebook_url, ph.published_at,
-                   ph.source, ph.warning_message,
-                   ps.page_name
-            FROM publish_history ph
-            LEFT JOIN page_settings ps ON ph.page_id = ps.page_id AND ph.organization_id = ps.organization_id
-            ORDER BY ph.published_at DESC
-            LIMIT ?
-        `).bind(limit).all(),
-
-        c.env.DB.prepare(`
-            SELECT status, COUNT(*) as count
-            FROM scheduled_publish_queue
-            GROUP BY status
-        `).all(),
-
-        c.env.DB.prepare(`
-            SELECT id, organization_id, page_id, post_type, status,
-                   error_message, created_at
-            FROM auto_post_logs
-            ORDER BY created_at DESC
-            LIMIT 20
-        `).all(),
-    ]);
-
-    return c.json({
-        success: true,
-        recentPosts: recentPosts.results || [],
-        queueStatus: queueStatus.results || [],
-        recentLogs: recentLogs.results || [],
-    });
-});
-
-// ── System health ───────────────────────────────────────────────────
-app.get('/system', async (c) => {
-    const [
-        autoSchedulePages,
-        activePages,
-        totalPages,
-        recentErrors,
-        queueStats,
-        pendingShares,
-        activeJobs,
-    ] = await Promise.all([
-        c.env.DB.prepare(`
-            SELECT COUNT(*) as count FROM page_settings WHERE auto_schedule = 1
-        `).first<{ count: number }>(),
-        c.env.DB.prepare(`
-            SELECT COUNT(*) as count FROM page_settings
-            WHERE auto_schedule = 1 AND post_token_encrypted IS NOT NULL AND post_token_encrypted != ''
-        `).first<{ count: number }>(),
-        c.env.DB.prepare(`
-            SELECT COUNT(*) as count FROM page_settings
-        `).first<{ count: number }>(),
-        c.env.DB.prepare(`
-            SELECT page_id, error_message, created_at
-            FROM auto_post_logs
-            WHERE status = 'error'
-            ORDER BY created_at DESC
-            LIMIT 10
-        `).all(),
-        c.env.DB.prepare(`
-            SELECT status, COUNT(*) as count
-            FROM scheduled_publish_queue
-            WHERE datetime(created_at) >= datetime('now', '-24 hours')
-            GROUP BY status
-        `).all(),
-        c.env.DB.prepare(`
-            SELECT COUNT(*) as count FROM share_queue WHERE status = 'pending'
-        `).first<{ count: number }>(),
-        c.env.DB.prepare(`
-            SELECT COUNT(*) as count FROM post_action_jobs
-            WHERE status IN ('pending', 'processing')
-        `).first<{ count: number }>(),
-    ]);
-
-    return c.json({
-        success: true,
-        system: {
-            autoSchedulePages: autoSchedulePages?.count || 0,
-            activePagesWithToken: activePages?.count || 0,
-            totalPages: totalPages?.count || 0,
-            pendingShares: pendingShares?.count || 0,
-            activeJobs: activeJobs?.count || 0,
-            recentErrors: recentErrors.results || [],
-            queueStats24h: queueStats.results || [],
         },
     });
 });

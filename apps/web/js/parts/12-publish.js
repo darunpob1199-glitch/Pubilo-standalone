@@ -1806,6 +1806,9 @@ let selectedPageIndex = 0;
 let selectedTargetPageIds = [];
 let targetPageSearchQuery = "";
 const TARGET_PAGE_STORAGE_KEY = "fewfeed_targetPageIds";
+const PAGE_TOKEN_MAP_KEY = "fewfeed_pageTokenMap";
+const PAGE_SUMMARY_MAP_KEY = "fewfeed_pageSummaryMap";
+const PAGE_CACHE_USER_ID_KEY = "fewfeed_pageCacheUserId";
 const PRIMARY_PAGE_PLACEHOLDER_NAME = "เลือกเพจหลัก";
 const PRIMARY_PAGE_PLACEHOLDER_ID = "ยังไม่ได้เลือก";
 
@@ -1818,6 +1821,125 @@ const multiPageSelectedMeta = document.getElementById("multiPageSelectedMeta");
 const multiPageSearchInput = document.getElementById("multiPageSearchInput");
 const multiPageSelectedStrip = document.getElementById("multiPageSelectedStrip");
 const multiPageList = document.getElementById("multiPageList");
+
+function getPageCacheOwnerId() {
+    return String(localStorage.getItem(PAGE_CACHE_USER_ID_KEY) || "").trim();
+}
+
+function normalizePageCacheOwnerId(ownerId = "") {
+    return String(
+        ownerId ||
+        localStorage.getItem("fewfeed_userId") ||
+        getPageCacheOwnerId() ||
+        "",
+    ).trim();
+}
+
+function readScopedJsonObject(key, ownerId = "") {
+    const normalizedOwnerId = normalizePageCacheOwnerId(ownerId);
+    const cacheOwnerId = getPageCacheOwnerId();
+    if (cacheOwnerId && normalizedOwnerId && cacheOwnerId !== normalizedOwnerId) {
+        return {};
+    }
+
+    try {
+        const parsed = JSON.parse(localStorage.getItem(key) || "{}");
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function writeScopedJsonObject(key, value, ownerId = "") {
+    const normalizedOwnerId = normalizePageCacheOwnerId(ownerId);
+    if (!normalizedOwnerId) return;
+    localStorage.setItem(PAGE_CACHE_USER_ID_KEY, normalizedOwnerId);
+    localStorage.setItem(key, JSON.stringify(value || {}));
+}
+
+function readScopedPageTokenMap(ownerId = "") {
+    return readScopedJsonObject(PAGE_TOKEN_MAP_KEY, ownerId);
+}
+
+function readScopedPageSummaryMap(ownerId = "") {
+    return readScopedJsonObject(PAGE_SUMMARY_MAP_KEY, ownerId);
+}
+
+function writeScopedPageTokenMap(tokenMap, ownerId = "") {
+    writeScopedJsonObject(PAGE_TOKEN_MAP_KEY, tokenMap, ownerId);
+}
+
+function writeScopedPageSummaryMap(summaryMap, ownerId = "") {
+    writeScopedJsonObject(PAGE_SUMMARY_MAP_KEY, summaryMap, ownerId);
+}
+
+function clearPageScopedCache(reason = "") {
+    [
+        PAGE_TOKEN_MAP_KEY,
+        PAGE_SUMMARY_MAP_KEY,
+        PAGE_CACHE_USER_ID_KEY,
+        "fewfeed_selectedPageId",
+        "fewfeed_selectedPageName",
+        "fewfeed_selectedPagePicture",
+        "fewfeed_selectedPageToken",
+        "fewfeed_selectedAdAccountId",
+        TARGET_PAGE_STORAGE_KEY,
+    ].forEach((key) => localStorage.removeItem(key));
+    selectedTargetPageIds = [];
+    if (reason) {
+        console.log("[FEWFEED] Cleared page-scoped cache:", reason);
+    }
+}
+
+function mergeLoadedPageTokens(pages, ownerId = "") {
+    const normalizedOwnerId = normalizePageCacheOwnerId(ownerId);
+    if (!normalizedOwnerId || !Array.isArray(pages) || pages.length === 0) return;
+
+    const tokenMap = { ...readScopedPageTokenMap(normalizedOwnerId) };
+    const summaryMap = { ...readScopedPageSummaryMap(normalizedOwnerId) };
+
+    pages.forEach((page) => {
+        const pageId = String(page?.id || "").trim();
+        if (!pageId) return;
+
+        const accessToken = typeof page?.access_token === "string" ? page.access_token.trim() : "";
+        if (accessToken) {
+            tokenMap[pageId] = accessToken;
+        }
+
+        summaryMap[pageId] = {
+            id: pageId,
+            name: String(page?.name || summaryMap[pageId]?.name || "Page"),
+            picture: page?.picture?.data?.url || summaryMap[pageId]?.picture || "",
+        };
+    });
+
+    writeScopedPageTokenMap(tokenMap, normalizedOwnerId);
+    writeScopedPageSummaryMap(summaryMap, normalizedOwnerId);
+}
+
+function getScopedCachedPages(ownerId = "") {
+    const normalizedOwnerId = normalizePageCacheOwnerId(ownerId);
+    const summaryMap = readScopedPageSummaryMap(normalizedOwnerId);
+    const pages = Object.values(summaryMap)
+        .map((page) => {
+            const pageId = String(page?.id || "").trim();
+            if (!pageId) return null;
+            return {
+                id: pageId,
+                name: String(page?.name || "Page"),
+                picture: {
+                    data: {
+                        url: page?.picture || `https://graph.facebook.com/${pageId}/picture?type=small`,
+                    },
+                },
+                color: "#f59e0b",
+            };
+        })
+        .filter(Boolean);
+
+    return pages;
+}
 
 function getPageAvatarUrl(page) {
     return (
@@ -1965,6 +2087,7 @@ function clearPrimaryPageSelection() {
 
     localStorage.removeItem("fewfeed_selectedPageId");
     localStorage.removeItem("fewfeed_selectedPageName");
+    localStorage.removeItem("fewfeed_selectedPagePicture");
     localStorage.removeItem("fewfeed_selectedPageToken");
     document.getElementById("pageSelect").value = "";
     selectedPageIndex = -1;
@@ -2335,21 +2458,27 @@ function selectPage(index) {
     // Save selected page ID and name to localStorage for persistence across refreshes
     localStorage.setItem("fewfeed_selectedPageId", page.id);
     localStorage.setItem("fewfeed_selectedPageName", page.name || "Page");
+    const imgUrl =
+        page.picture?.data?.url ||
+        `https://graph.facebook.com/${page.id}/picture?type=small`;
     const selectedPageToken = typeof page.access_token === "string" ? page.access_token.trim() : "";
-    let tokenMap = {};
-    try {
-        tokenMap = JSON.parse(localStorage.getItem("fewfeed_pageTokenMap") || "{}");
-    } catch (_) {
-        tokenMap = {};
-    }
+    const cacheOwnerId = normalizePageCacheOwnerId();
+    const tokenMap = readScopedPageTokenMap(cacheOwnerId);
+    const summaryMap = readScopedPageSummaryMap(cacheOwnerId);
 
     const mappedToken = tokenMap?.[String(page.id)]?.trim() || "";
     const effectivePageToken = selectedPageToken || mappedToken;
 
     if (selectedPageToken) {
         tokenMap[String(page.id)] = selectedPageToken;
-        localStorage.setItem("fewfeed_pageTokenMap", JSON.stringify(tokenMap));
+        writeScopedPageTokenMap(tokenMap, cacheOwnerId);
     }
+    summaryMap[String(page.id)] = {
+        id: String(page.id),
+        name: page.name || "Page",
+        picture: imgUrl || "",
+    };
+    writeScopedPageSummaryMap(summaryMap, cacheOwnerId);
 
     if (effectivePageToken) {
         localStorage.setItem("fewfeed_selectedPageToken", effectivePageToken);
@@ -2379,10 +2508,6 @@ function selectPage(index) {
         page.name || "Page";
     document.getElementById("previewPageId").textContent = page.id;
     document.getElementById("pageSelect").value = page.id;
-
-    const imgUrl =
-        page.picture?.data?.url ||
-        `https://graph.facebook.com/${page.id}/picture?type=small`;
     document.getElementById("previewAvatarImg").src = imgUrl;
     localStorage.setItem("fewfeed_selectedPagePicture", imgUrl);
 
@@ -2435,11 +2560,21 @@ function selectPage(index) {
 }
 
 function hydratePageFromLocalStorageFallback() {
+    const currentUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+    const cacheOwnerId = getPageCacheOwnerId();
+    if (cacheOwnerId && currentUserId && cacheOwnerId !== currentUserId) {
+        console.warn("[FEWFEED] Skipping local page fallback because cache owner differs from current account");
+        return false;
+    }
+
     const savedPageId = localStorage.getItem("fewfeed_selectedPageId") || "";
     if (!savedPageId) return false;
 
-    const savedPageName = localStorage.getItem("fewfeed_selectedPageName") || "Saved Page";
+    const summaryMap = readScopedPageSummaryMap(currentUserId || cacheOwnerId);
+    const savedSummary = summaryMap[String(savedPageId)] || {};
+    const savedPageName = savedSummary.name || localStorage.getItem("fewfeed_selectedPageName") || "Saved Page";
     const savedPicture =
+        savedSummary.picture ||
         localStorage.getItem("fewfeed_selectedPagePicture") ||
         `https://graph.facebook.com/${savedPageId}/picture?type=small`;
 
@@ -2452,7 +2587,7 @@ function hydratePageFromLocalStorageFallback() {
         },
     ]);
 
-    console.log("[FEWFEED] Hydrated page selector from localStorage fallback");
+    console.log("[FEWFEED] Hydrated page selector from scoped localStorage fallback");
     return true;
 }
 
@@ -2622,15 +2757,10 @@ async function getFreshPageTokenFromExtension(pageId, accessToken) {
         const nextToken = typeof matchedPage?.access_token === "string" ? matchedPage.access_token.trim() : "";
         if (!nextToken) return "";
 
-        let tokenMap = {};
-        try {
-            tokenMap = JSON.parse(localStorage.getItem("fewfeed_pageTokenMap") || "{}");
-        } catch (_) {
-            tokenMap = {};
-        }
-
+        const cacheOwnerId = normalizePageCacheOwnerId();
+        const tokenMap = readScopedPageTokenMap(cacheOwnerId);
         tokenMap[String(pageId)] = nextToken;
-        localStorage.setItem("fewfeed_pageTokenMap", JSON.stringify(tokenMap));
+        writeScopedPageTokenMap(tokenMap, cacheOwnerId);
         localStorage.setItem("fewfeed_selectedPageToken", nextToken);
 
         const tokenInput = document.getElementById("pageTokenInputPanel");
@@ -2653,9 +2783,7 @@ async function getFreshPageTokenFromExtension(pageId, accessToken) {
             console.warn("[FEWFEED] Failed to persist fresh page token:", persistError);
         }
 
-        if (typeof mergeLoadedPageTokens === "function") {
-            mergeLoadedPageTokens(pages);
-        }
+        mergeLoadedPageTokens(pages, cacheOwnerId);
 
         return nextToken;
     } catch (error) {
@@ -2927,6 +3055,8 @@ function normalizeExtensionSessionData(rawData = {}) {
         userName: pickString(rawData.userName, rawData.fewfeed_userName),
         avatarUrl: pickString(rawData.avatarUrl, rawData.fewfeed_avatarUrl),
         pageTokenMap: rawData.pageTokenMap || rawData.fewfeed_pageTokenMap || null,
+        pageTokenMapOwnerId: pickString(rawData.pageTokenMapOwnerId),
+        pageSummaryMap: rawData.pageSummaryMap || null,
     };
 }
 
@@ -2944,6 +3074,21 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
     const session = normalizeExtensionSessionData(sessionData);
     if (!hasAnyExtensionSessionData(session)) {
         return false;
+    }
+
+    const previousUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+    const incomingUserId = String(session.userId || session.pageTokenMapOwnerId || "").trim();
+    const currentPageCacheOwnerId = getPageCacheOwnerId();
+    const ownerChanged = !!(
+        incomingUserId &&
+        (
+            (previousUserId && previousUserId !== incomingUserId) ||
+            (currentPageCacheOwnerId && currentPageCacheOwnerId !== incomingUserId)
+        )
+    );
+    if (ownerChanged) {
+        clearPageScopedCache(`${currentPageCacheOwnerId || previousUserId} -> ${incomingUserId}`);
+        clearPrimaryPageSelection();
     }
 
     const previousAdsToken =
@@ -2989,12 +3134,20 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
             const raw = typeof session.pageTokenMap === "string" ? JSON.parse(session.pageTokenMap) : session.pageTokenMap;
             if (raw && typeof raw === "object" && Object.keys(raw).length > 0) {
                 const simpleMap = {};
+                const summaryMap = {};
                 for (const [pid, entry] of Object.entries(raw)) {
                     const tok = typeof entry === "string" ? entry : entry?.token;
                     if (tok) simpleMap[pid] = tok;
+                    summaryMap[pid] = {
+                        id: pid,
+                        name: typeof entry === "object" ? entry?.name || "" : "",
+                        picture: typeof entry === "object" ? entry?.picture || "" : "",
+                    };
                 }
                 if (Object.keys(simpleMap).length > 0) {
-                    localStorage.setItem("fewfeed_pageTokenMap", JSON.stringify(simpleMap));
+                    const pageCacheOwnerId = incomingUserId || normalizePageCacheOwnerId();
+                    writeScopedPageTokenMap(simpleMap, pageCacheOwnerId);
+                    writeScopedPageSummaryMap(summaryMap, pageCacheOwnerId);
                     const currentPageId = typeof getCurrentPageId === "function" ? getCurrentPageId() : "";
                     if (currentPageId && simpleMap[currentPageId]) {
                         localStorage.setItem("fewfeed_selectedPageToken", simpleMap[currentPageId]);
@@ -3449,6 +3602,7 @@ async function fetchPages(accessToken) {
         try {
             const extensionPages = await requestPagesFromExtension(accessToken);
             if (Array.isArray(extensionPages) && extensionPages.length > 0) {
+                mergeLoadedPageTokens(extensionPages, localStorage.getItem("fewfeed_userId") || "");
                 renderPagesDropdown(extensionPages);
                 fetchAdAccounts(accessToken);
                 console.log("[FEWFEED] Pages loaded from extension:", extensionPages.length);
@@ -3457,6 +3611,20 @@ async function fetchPages(accessToken) {
         } catch (error) {
             console.warn("[FEWFEED] Extension page fetch failed, falling back to D1:", error);
         }
+    }
+
+    const currentUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+    const scopedCachedPages = getScopedCachedPages(currentUserId);
+    if (scopedCachedPages.length > 0) {
+        renderPagesDropdown(scopedCachedPages);
+        console.log("[FEWFEED] Pages loaded from scoped cache:", scopedCachedPages.length);
+        return;
+    }
+
+    if (currentUserId) {
+        console.warn("[FEWFEED] Active Facebook account has no scoped page cache; skipping unscoped D1 fallback");
+        renderPagesDropdown([]);
+        return;
     }
 
     // Fallback: pages from D1 database via Worker API
@@ -4062,7 +4230,12 @@ function loadSavedData() {
         );
     }
 
-    hydratePageFromLocalStorageFallback();
+    const pageCacheOwnerId = getPageCacheOwnerId();
+    if (pageCacheOwnerId && userId && pageCacheOwnerId !== userId) {
+        clearPageScopedCache(`startup owner mismatch ${pageCacheOwnerId} -> ${userId}`);
+    } else {
+        hydratePageFromLocalStorageFallback();
+    }
 
     // Try to refresh tokens from extension cache immediately on startup.
     syncWithExtensionNow().then((synced) => {
