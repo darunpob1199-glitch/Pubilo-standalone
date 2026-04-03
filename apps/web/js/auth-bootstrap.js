@@ -92,21 +92,23 @@
         // Keep overlay hidden by default to avoid flash on refresh for authenticated users.
         overlay.className = 'pubilo-auth-overlay is-hidden';
         overlay.innerHTML = `
+            <div class="pubilo-top-left-logo">
+                <svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Isometric Stack Approximation -->
+                    <path d="M50 15L85 32.5L50 50L15 32.5L50 15Z" fill="#8b3dff"/>
+                    <path d="M50 35L85 52.5L50 70L15 52.5L50 35Z" stroke="#8795b4" stroke-width="8" fill="none"/>
+                    <path d="M50 55L85 72.5L50 90L15 72.5L50 55Z" stroke="#bc8bff" stroke-width="8" fill="none"/>
+                </svg>
+                <span class="logo-text-title">Pubilo</span>
+            </div>
             <div class="pubilo-auth-shell">
                 <div class="pubilo-auth-brand">
-                    <div style="flex: 1; display:flex; flex-direction:column; justify-content:center;">
-                        <h1>Fast, Efficient and Productive</h1>
-                        <p id="pubiloAuthSubtitle">เข้าสู่ระบบจัดการ Pubilo Workspace ปลอดภัย รวดเร็ว เตรียมพร้อมทุกการทำงานสำหรับองค์กรของคุณ</p>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:14px; font-weight:500; margin-top:40px;">
-                        <div style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                            <span style="font-size:18px;">🇹🇭</span> <span>Thai</span> <span style="font-size:10px; opacity:0.6;">▾</span>
-                        </div>
-                        <div style="display:flex; gap:20px;">
-                            <a href="#" style="color:#3b82f6; text-decoration:none;">Terms</a>
-                            <a href="#" style="color:#3b82f6; text-decoration:none;">Plans</a>
-                            <a href="#" style="color:#3b82f6; text-decoration:none;">Contact Us</a>
-                        </div>
+                    <div style="flex: 1; display:flex; flex-direction:column; justify-content:center; align-items:flex-start;">
+                        <span style="font-size:24px; display:block; letter-spacing:6px; color:#7e8baf; font-weight:600; margin-bottom:4px; text-transform:uppercase;">The</span>
+                        <h1 style="font-size:clamp(4rem, 6vw, 7rem); font-weight:500; color:#0f172a; letter-spacing:-3px; margin:0; line-height:1;">
+                            pubilo
+                        </h1>
+                        <span style="font-size:18px; display:block; letter-spacing:10px; color:#7e8baf; font-weight:600; margin-top:4px; text-transform:uppercase;">Workspace</span>
                     </div>
                 </div>
                 <div class="pubilo-auth-card" id="pubiloAuthCard"></div>
@@ -154,13 +156,17 @@
         const card = overlay.querySelector('#pubiloAuthCard');
         const loginUrl = `${window.API_BASE}/api/auth/login/line?returnTo=${encodeURIComponent(window.location.href)}`;
         card.innerHTML = `
-            <div class="pubilo-auth-panel">
-                <p class="pubilo-auth-label">Sign in</p>
-                <h2>ใช้ LINE account เข้า Pubilo</h2>
-                <p class="pubilo-auth-copy">ระบบใช้ LINE Login สำหรับ dashboard โดยตรง ไม่ต้องมี Cloudflare account และไม่ต้องพึ่ง Google แล้ว</p>
+            <div class="pubilo-auth-panel" style="padding: 40px;">
+                <h2 style="font-size: 22px; font-weight: 600; color: #1e293b; margin-bottom: 24px; text-align: center;">เข้าสู่ระบบจัดการบัญชี</h2>
+                <div style="display:flex; justify-content:center; gap: 16px; margin-bottom: 32px; font-size:14px; font-weight:500;">
+                    <span style="color: #3b82f6; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">บัญชี LINE ของคุณ</span>
+                </div>
                 ${message ? `<p class="pubilo-auth-error">${message}</p>` : ''}
-                <a class="pubilo-auth-provider-btn" href="${loginUrl}">
-                    <span>Continue with LINE</span>
+                <a class="pubilo-auth-provider-btn" href="${loginUrl}" style="background-color: #3b82f6; gap: 10px; width: 100%; border-radius: 8px;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M24 10.304C24 4.612 18.627 0 12 0C5.373 0 0 4.612 0 10.304C0 15.352 4.225 19.588 9.944 20.407C10.332 20.489 11.218 20.73 11.4 21.431C11.564 22.062 11.127 23.444 11.127 23.444C11.127 23.444 10.875 24.582 12.183 23.518C13.491 22.454 19.324 16.924 22.115 13.9C23.407 12.518 24 11.481 24 10.304ZM7.279 13.111H4.636C4.285 13.111 4 12.826 4 12.475V6.786C4 6.435 4.285 6.15 4.636 6.15H7.279C7.63 6.15 7.915 6.435 7.915 6.786C7.915 7.137 7.63 7.422 7.279 7.422H5.272V11.839H7.279C7.63 11.839 7.915 12.124 7.915 12.475C7.915 12.826 7.63 13.111 7.279 13.111ZM10.513 13.111H9.241C8.89 13.111 8.605 12.826 8.605 12.475V6.786C8.605 6.435 8.89 6.15 9.241 6.15H10.513C10.864 6.15 11.149 6.435 11.149 6.786V12.475C11.149 12.826 10.864 13.111 10.513 13.111ZM16.353 13.111H14.154C13.987 13.111 13.824 13.045 13.705 12.927C13.585 12.808 13.518 12.645 13.518 12.475V6.786C13.518 6.435 13.803 6.15 14.154 6.15C14.505 6.15 14.79 6.435 14.79 6.786V11.082L17.202 6.4C17.29 6.241 17.433 6.15 17.587 6.15H18.868C19.219 6.15 19.504 6.435 19.504 6.786V13.111C19.504 13.462 19.219 13.747 18.868 13.747C18.517 13.747 18.232 13.462 18.232 13.111V8.815L15.82 13.497C15.732 13.656 15.589 13.747 15.435 13.747C15.432 13.747 15.428 13.747 15.425 13.747C15.42 13.747 16.353 13.111 16.353 13.111Z" fill="white"/>
+                    </svg>
+                    <span style="font-weight: 500; letter-spacing: 0.5px;">เข้าสู่ระบบด้วย LINE</span>
                 </a>
             </div>
         `;
