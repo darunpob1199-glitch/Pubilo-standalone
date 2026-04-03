@@ -7,6 +7,15 @@ import { getWorkspaceId } from '../lib/workspace';
 const app = new Hono<{ Bindings: Env }>();
 
 const FB_API = 'https://graph.facebook.com/v21.0';
+const DEFAULT_GHOST_TARGET_COUNTRIES = ['TH'];
+
+type GhostAdSeed = {
+    adId: string;
+    adsetId: string;
+    campaignId: string;
+    raw: any;
+    source: 'stored' | 'page-match' | 'account-match' | 'bootstrap';
+};
 
 function buildFacebookHeaders(cookieData?: string): Record<string, string> | undefined {
     const normalizedCookie = typeof cookieData === 'string' ? cookieData.trim() : '';
@@ -444,6 +453,133 @@ async function ensureScheduledPublishQueueTable(env: Env): Promise<void> {
     `).run();
 }
 
+async function ensureGhostAdSeedsTable(env: Env): Promise<void> {
+    await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS ghost_ad_seeds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id TEXT NOT NULL,
+            page_id TEXT NOT NULL,
+            ad_account_id TEXT NOT NULL,
+            campaign_id TEXT NOT NULL,
+            adset_id TEXT NOT NULL,
+            seed_ad_id TEXT,
+            source TEXT NOT NULL DEFAULT 'bootstrap',
+            metadata_json TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (organization_id, page_id, ad_account_id)
+        )
+    `).run();
+
+    await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_ghost_ad_seeds_lookup
+        ON ghost_ad_seeds (organization_id, page_id, ad_account_id)
+    `).run();
+}
+
+async function loadGhostAdSeed(
+    env: Env,
+    organizationId: string,
+    pageId: string,
+    adAccountId: string,
+): Promise<GhostAdSeed | null> {
+    await ensureGhostAdSeedsTable(env);
+
+    const row = await env.DB.prepare(`
+        SELECT campaign_id, adset_id, seed_ad_id, metadata_json
+        FROM ghost_ad_seeds
+        WHERE organization_id = ? AND page_id = ? AND ad_account_id = ?
+        LIMIT 1
+    `).bind(organizationId, pageId, adAccountId).first<{
+        campaign_id?: string | null;
+        adset_id?: string | null;
+        seed_ad_id?: string | null;
+        metadata_json?: string | null;
+    }>();
+
+    const campaignId = String(row?.campaign_id || '').trim();
+    const adsetId = String(row?.adset_id || '').trim();
+    if (!campaignId || !adsetId) return null;
+
+    let raw: any = null;
+    try {
+        raw = row?.metadata_json ? JSON.parse(row.metadata_json) : null;
+    } catch {
+        raw = null;
+    }
+
+    return {
+        adId: String(row?.seed_ad_id || '').trim(),
+        adsetId,
+        campaignId,
+        raw,
+        source: 'stored',
+    };
+}
+
+async function saveGhostAdSeed(
+    env: Env,
+    params: {
+        organizationId: string;
+        pageId: string;
+        adAccountId: string;
+        campaignId: string;
+        adsetId: string;
+        seedAdId?: string;
+        source?: GhostAdSeed['source'];
+        metadata?: any;
+    },
+): Promise<void> {
+    if (!params.organizationId || !params.pageId || !params.adAccountId || !params.campaignId || !params.adsetId) {
+        return;
+    }
+
+    await ensureGhostAdSeedsTable(env);
+
+    await env.DB.prepare(`
+        INSERT INTO ghost_ad_seeds (
+            organization_id,
+            page_id,
+            ad_account_id,
+            campaign_id,
+            adset_id,
+            seed_ad_id,
+            source,
+            metadata_json,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(organization_id, page_id, ad_account_id) DO UPDATE SET
+            campaign_id = excluded.campaign_id,
+            adset_id = excluded.adset_id,
+            seed_ad_id = excluded.seed_ad_id,
+            source = excluded.source,
+            metadata_json = excluded.metadata_json,
+            updated_at = CURRENT_TIMESTAMP
+    `).bind(
+        params.organizationId,
+        params.pageId,
+        params.adAccountId,
+        params.campaignId,
+        params.adsetId,
+        params.seedAdId || null,
+        params.source || 'bootstrap',
+        params.metadata ? JSON.stringify(params.metadata) : null,
+    ).run();
+}
+
+async function deleteGhostAdSeed(
+    env: Env,
+    organizationId: string,
+    pageId: string,
+    adAccountId: string,
+): Promise<void> {
+    await ensureGhostAdSeedsTable(env);
+    await env.DB.prepare(`
+        DELETE FROM ghost_ad_seeds
+        WHERE organization_id = ? AND page_id = ? AND ad_account_id = ?
+    `).bind(organizationId, pageId, adAccountId).run();
+}
+
 async function enqueueScheduledPublish(
     env: Env,
     organizationId: string,
@@ -715,7 +851,7 @@ async function fetchReusableAdSeed(params: {
     accessToken: string;
     pageId: string;
     headers?: Record<string, string>;
-}): Promise<{ adId: string; adsetId: string; campaignId: string; raw: any } | null> {
+}): Promise<GhostAdSeed | null> {
     const fields = 'id,name,adset_id,campaign_id,created_time,creative{id,effective_object_story_id,object_story_id,object_story_spec}';
     const response = await fetch(
         `${FB_API}/${params.adAccountId}/ads?fields=${encodeURIComponent(fields)}&limit=100&access_token=${encodeURIComponent(params.accessToken)}`,
@@ -728,10 +864,12 @@ async function fetchReusableAdSeed(params: {
     }
 
     const rows = Array.isArray(data?.data) ? data.data : [];
-    const matchingRows = rows
+    const normalizedRows = rows
         .map((row: any) => {
             const spec = row?.creative?.object_story_spec || {};
             const creativePageId = String(spec?.page_id || '');
+            const hasLinkData = !!spec?.link_data?.link;
+            const hasStoryId = !!(row?.creative?.object_story_id || row?.creative?.effective_object_story_id);
             return {
                 row,
                 adId: String(row?.id || ''),
@@ -739,21 +877,43 @@ async function fetchReusableAdSeed(params: {
                 campaignId: String(row?.campaign_id || ''),
                 createdTime: String(row?.created_time || ''),
                 creativePageId,
+                hasLinkData,
+                hasStoryId,
             };
         })
-        .filter((row: any) => row.adId && row.adsetId && row.creativePageId === String(params.pageId))
+        .filter((row: any) => row.adId && row.adsetId && row.campaignId)
         .sort((a: any, b: any) => (a.createdTime < b.createdTime ? 1 : a.createdTime > b.createdTime ? -1 : 0));
 
-    if (!matchingRows.length) {
+    const pageMatch = normalizedRows.find((row: any) => row.creativePageId === String(params.pageId));
+    if (pageMatch) {
+        return {
+            adId: pageMatch.adId,
+            adsetId: pageMatch.adsetId,
+            campaignId: pageMatch.campaignId,
+            raw: pageMatch.row,
+            source: 'page-match',
+        };
+    }
+
+    const accountMatch = normalizedRows
+        .filter((row: any) => row.hasLinkData || row.hasStoryId || row.creativePageId)
+        .sort((a: any, b: any) => {
+            const scoreA = Number(!!a.hasLinkData) * 2 + Number(!!a.hasStoryId);
+            const scoreB = Number(!!b.hasLinkData) * 2 + Number(!!b.hasStoryId);
+            if (scoreA !== scoreB) return scoreB - scoreA;
+            return a.createdTime < b.createdTime ? 1 : a.createdTime > b.createdTime ? -1 : 0;
+        })[0];
+
+    if (!accountMatch) {
         return null;
     }
 
-    const selected = matchingRows[0];
     return {
-        adId: selected.adId,
-        adsetId: selected.adsetId,
-        campaignId: selected.campaignId,
-        raw: selected.row,
+        adId: accountMatch.adId,
+        adsetId: accountMatch.adsetId,
+        campaignId: accountMatch.campaignId,
+        raw: accountMatch.row,
+        source: 'account-match',
     };
 }
 
@@ -786,13 +946,15 @@ async function fetchAccessibleAdAccountIds(
 }
 
 async function resolveAdSeedContext(params: {
+    env: Env;
+    organizationId: string;
     preferredAdAccountId: string;
     accessToken: string;
     pageId: string;
     headers?: Record<string, string>;
 }): Promise<{
     adAccountId: string;
-    seed: { adId: string; adsetId: string; campaignId: string; raw: any } | null;
+    seed: GhostAdSeed | null;
     scannedAccounts: string[];
 }> {
     const candidateAccounts = [params.preferredAdAccountId].filter(Boolean);
@@ -809,6 +971,20 @@ async function resolveAdSeedContext(params: {
 
     for (const accountId of candidateAccounts) {
         try {
+            const storedSeed = await loadGhostAdSeed(
+                params.env,
+                params.organizationId,
+                params.pageId,
+                accountId,
+            );
+            if (storedSeed?.adsetId) {
+                return {
+                    adAccountId: accountId,
+                    seed: storedSeed,
+                    scannedAccounts: candidateAccounts,
+                };
+            }
+
             const seed = await fetchReusableAdSeed({
                 adAccountId: accountId,
                 accessToken: params.accessToken,
@@ -835,6 +1011,166 @@ async function resolveAdSeedContext(params: {
         seed: null,
         scannedAccounts: candidateAccounts,
     };
+}
+
+async function createGhostBootstrapCampaign(params: {
+    adAccountId: string;
+    accessToken: string;
+    headers?: Record<string, string>;
+    pageId: string;
+}): Promise<{ campaignId: string; objective: string; raw: any }> {
+    const objectives = ['OUTCOME_TRAFFIC', 'LINK_CLICKS'];
+    let lastError = '';
+
+    for (const objective of objectives) {
+        const body = new URLSearchParams({
+            access_token: params.accessToken,
+            name: `Pubilo Ghost Seed ${params.pageId}`,
+            objective,
+            status: 'PAUSED',
+            special_ad_categories: '[]',
+        });
+
+        const response = await fetch(`${FB_API}/${params.adAccountId}/campaigns`, {
+            method: 'POST',
+            headers: {
+                ...(params.headers || {}),
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body.toString(),
+        });
+        const data = await response.json() as any;
+        if (!data?.error && data?.id) {
+            return {
+                campaignId: String(data.id),
+                objective,
+                raw: data,
+            };
+        }
+        lastError = data?.error?.message || `Failed to create bootstrap campaign with objective ${objective}`;
+    }
+
+    throw new Error(lastError || 'Failed to create bootstrap campaign');
+}
+
+async function createGhostBootstrapAdSet(params: {
+    adAccountId: string;
+    accessToken: string;
+    headers?: Record<string, string>;
+    pageId: string;
+    campaignId: string;
+}): Promise<{ adsetId: string; raw: any }> {
+    const targeting = JSON.stringify({
+        geo_locations: {
+            countries: DEFAULT_GHOST_TARGET_COUNTRIES,
+        },
+        publisher_platforms: ['facebook'],
+        facebook_positions: ['feed'],
+        device_platforms: ['mobile', 'desktop'],
+        age_min: 18,
+        age_max: 65,
+    });
+
+    const variants: Array<Record<string, string>> = [
+        {
+            billing_event: 'IMPRESSIONS',
+            optimization_goal: 'LINK_CLICKS',
+            bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+            destination_type: 'WEBSITE',
+            promoted_object: JSON.stringify({ page_id: params.pageId }),
+        },
+        {
+            billing_event: 'IMPRESSIONS',
+            optimization_goal: 'LINK_CLICKS',
+            bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+            destination_type: 'WEBSITE',
+        },
+        {
+            billing_event: 'IMPRESSIONS',
+            optimization_goal: 'REACH',
+            bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+        },
+    ];
+
+    let lastError = '';
+
+    for (const variant of variants) {
+        const body = new URLSearchParams({
+            access_token: params.accessToken,
+            name: `Pubilo Ghost Seed ${params.pageId}`,
+            campaign_id: params.campaignId,
+            status: 'PAUSED',
+            daily_budget: '10000',
+            targeting,
+            ...variant,
+        });
+
+        const response = await fetch(`${FB_API}/${params.adAccountId}/adsets`, {
+            method: 'POST',
+            headers: {
+                ...(params.headers || {}),
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body.toString(),
+        });
+        const data = await response.json() as any;
+        if (!data?.error && data?.id) {
+            return {
+                adsetId: String(data.id),
+                raw: data,
+            };
+        }
+        lastError = data?.error?.message || 'Failed to create bootstrap adset';
+    }
+
+    throw new Error(lastError || 'Failed to create bootstrap adset');
+}
+
+async function bootstrapGhostAdSeed(params: {
+    env: Env;
+    organizationId: string;
+    pageId: string;
+    adAccountId: string;
+    accessToken: string;
+    headers?: Record<string, string>;
+}): Promise<GhostAdSeed> {
+    const campaign = await createGhostBootstrapCampaign({
+        adAccountId: params.adAccountId,
+        accessToken: params.accessToken,
+        headers: params.headers,
+        pageId: params.pageId,
+    });
+
+    const adset = await createGhostBootstrapAdSet({
+        adAccountId: params.adAccountId,
+        accessToken: params.accessToken,
+        headers: params.headers,
+        pageId: params.pageId,
+        campaignId: campaign.campaignId,
+    });
+
+    const seed: GhostAdSeed = {
+        adId: '',
+        adsetId: adset.adsetId,
+        campaignId: campaign.campaignId,
+        raw: {
+            campaign: campaign.raw,
+            adset: adset.raw,
+        },
+        source: 'bootstrap',
+    };
+
+    await saveGhostAdSeed(params.env, {
+        organizationId: params.organizationId,
+        pageId: params.pageId,
+        adAccountId: params.adAccountId,
+        campaignId: seed.campaignId,
+        adsetId: seed.adsetId,
+        source: seed.source,
+        metadata: seed.raw,
+    });
+
+    return seed;
 }
 
 async function fetchAdStoryIdWithRetry(
@@ -874,77 +1210,133 @@ async function fetchAdStoryIdWithRetry(
 }
 
 async function materializeCreativeWithAd(params: {
+    env: Env;
+    organizationId: string;
     adAccountId: string;
     accessToken: string;
     pageId: string;
     creativeId: string;
     headers?: Record<string, string>;
-    seed?: { adId: string; adsetId: string; campaignId: string; raw: any } | null;
+    seed?: GhostAdSeed | null;
 }): Promise<{ adId: string; adsetId: string; campaignId: string; postId: string; seedAdId: string; adData: any }> {
-    const seed = params.seed ?? await fetchReusableAdSeed({
-        adAccountId: params.adAccountId,
-        accessToken: params.accessToken,
-        pageId: params.pageId,
-        headers: params.headers,
-    });
-
-    if (!seed?.adsetId) {
-        throw new Error('No reusable adset found for this page in the selected ad account');
-    }
-
-    const requestParams = new URLSearchParams({
-        access_token: params.accessToken,
-        name: `Pubilo ${Date.now()}`,
-        adset_id: seed.adsetId,
-        creative: JSON.stringify({ creative_id: params.creativeId }),
-        status: 'PAUSED',
-    });
-
-    const createResponse = await fetch(`${FB_API}/${params.adAccountId}/ads`, {
-        method: 'POST',
-        headers: {
-            ...(params.headers || {}),
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: requestParams.toString(),
-    });
-    const createData = await createResponse.json() as any;
-    if (createData?.error) {
-        throw new Error(createData.error.message || 'Failed to create ad from creative');
-    }
-
-    const adId = String(createData?.id || '');
-    if (!adId) {
-        throw new Error('Facebook did not return ad id');
-    }
-
-    const adStoryResult = await fetchAdStoryIdWithRetry(
-        adId,
-        params.accessToken,
-        params.headers,
-    );
-
-    if (!adStoryResult.postId) {
-        console.warn('[publish] Ad did not return story id after retries:', {
-            adId,
-            creativeId: params.creativeId,
-            adData: adStoryResult.raw,
-            seed,
+    let seed =
+        params.seed
+        ?? await loadGhostAdSeed(params.env, params.organizationId, params.pageId, params.adAccountId)
+        ?? await fetchReusableAdSeed({
+            adAccountId: params.adAccountId,
+            accessToken: params.accessToken,
+            pageId: params.pageId,
+            headers: params.headers,
         });
-        throw new Error('Facebook did not return object_story_id for the ad');
+
+    let bootstrapTried = false;
+    let lastError = '';
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+        if (!seed?.adsetId) {
+            seed = await bootstrapGhostAdSeed({
+                env: params.env,
+                organizationId: params.organizationId,
+                pageId: params.pageId,
+                adAccountId: params.adAccountId,
+                accessToken: params.accessToken,
+                headers: params.headers,
+            });
+            bootstrapTried = true;
+        }
+
+        try {
+            const requestParams = new URLSearchParams({
+                access_token: params.accessToken,
+                name: `Pubilo ${Date.now()}`,
+                adset_id: seed.adsetId,
+                creative: JSON.stringify({ creative_id: params.creativeId }),
+                status: 'PAUSED',
+            });
+
+            const createResponse = await fetch(`${FB_API}/${params.adAccountId}/ads`, {
+                method: 'POST',
+                headers: {
+                    ...(params.headers || {}),
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: requestParams.toString(),
+            });
+            const createData = await createResponse.json() as any;
+            if (createData?.error) {
+                throw new Error(createData.error.message || 'Failed to create ad from creative');
+            }
+
+            const adId = String(createData?.id || '');
+            if (!adId) {
+                throw new Error('Facebook did not return ad id');
+            }
+
+            const adStoryResult = await fetchAdStoryIdWithRetry(
+                adId,
+                params.accessToken,
+                params.headers,
+            );
+
+            if (!adStoryResult.postId) {
+                console.warn('[publish] Ad did not return story id after retries:', {
+                    adId,
+                    creativeId: params.creativeId,
+                    adData: adStoryResult.raw,
+                    seed,
+                });
+                throw new Error('Facebook did not return object_story_id for the ad');
+            }
+
+            if (seed.source === 'bootstrap') {
+                await saveGhostAdSeed(params.env, {
+                    organizationId: params.organizationId,
+                    pageId: params.pageId,
+                    adAccountId: params.adAccountId,
+                    campaignId: seed.campaignId,
+                    adsetId: seed.adsetId,
+                    seedAdId: adId,
+                    source: 'bootstrap',
+                    metadata: seed.raw,
+                });
+            }
+
+            return {
+                adId,
+                adsetId: seed.adsetId,
+                campaignId: seed.campaignId,
+                seedAdId: seed.adId || '',
+                postId: adStoryResult.postId,
+                adData: adStoryResult.raw,
+            };
+        } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
+
+            if (!bootstrapTried && seed && seed.source !== 'bootstrap') {
+                console.warn('[publish] Existing ad seed failed, bootstrapping dedicated ghost seed:', {
+                    pageId: params.pageId,
+                    adAccountId: params.adAccountId,
+                    source: seed.source,
+                    error: lastError,
+                });
+                seed = null;
+                continue;
+            }
+
+            if (seed && (seed.source === 'stored' || seed.source === 'bootstrap')) {
+                await deleteGhostAdSeed(params.env, params.organizationId, params.pageId, params.adAccountId);
+            }
+
+            throw error;
+        }
     }
 
-    return {
-        adId,
-        adsetId: seed.adsetId,
-        campaignId: seed.campaignId,
-        seedAdId: seed.adId,
-        postId: adStoryResult.postId,
-        adData: adStoryResult.raw,
-    };
+    throw new Error(lastError || 'Failed to materialize ad creative');
 }
 
 async function createStandaloneAdCreative(params: {
+    env: Env;
+    organizationId: string;
     pageId: string;
     accessToken: string;
     cookieHeaders?: Record<string, string>;
@@ -956,7 +1348,7 @@ async function createStandaloneAdCreative(params: {
     caption?: string;
     description?: string;
     callToAction?: string;
-    seed?: { adId: string; adsetId: string; campaignId: string; raw: any } | null;
+    seed?: GhostAdSeed | null;
 }): Promise<{
     creativeId: string;
     postId: string;
@@ -1033,6 +1425,8 @@ async function createStandaloneAdCreative(params: {
     }
 
     const seedContext = await resolveAdSeedContext({
+        env: params.env,
+        organizationId: params.organizationId,
         preferredAdAccountId: params.adAccountId,
         accessToken: params.accessToken,
         pageId: params.pageId,
@@ -1041,6 +1435,8 @@ async function createStandaloneAdCreative(params: {
 
     try {
         const materialized = await materializeCreativeWithAd({
+            env: params.env,
+            organizationId: params.organizationId,
             adAccountId: seedContext.adAccountId || params.adAccountId,
             accessToken: params.accessToken,
             pageId: params.pageId,
@@ -1640,6 +2036,8 @@ app.post('/', async (c) => {
             if (canUseAdCreativeFlow) {
                 try {
                     const creativeResult = await createStandaloneAdCreative({
+                        env: c.env,
+                        organizationId,
                         pageId,
                         accessToken,
                         cookieHeaders: facebookHeaders,
