@@ -542,6 +542,14 @@ input[type="checkbox"] {
     padding: 24px 0;
 }
 
+.pubilo-auth-overlay--billing-gate {
+    background:
+        radial-gradient(circle at top left, rgba(124, 58, 237, 0.09), transparent 36%),
+        linear-gradient(180deg, #faf7ff 0%, #ffffff 22%, #ffffff 100%);
+    backdrop-filter: none;
+    padding: 42px 32px 56px;
+}
+
 .pubilo-auth-overlay.is-hidden {
     display: none;
 }
@@ -552,6 +560,13 @@ input[type="checkbox"] {
     grid-template-columns: minmax(260px, 1fr) minmax(320px, 440px);
     gap: 24px;
     align-items: stretch;
+}
+
+.pubilo-auth-shell--billing-gate {
+    width: min(1480px, calc(100vw - 48px));
+    grid-template-columns: 1fr;
+    gap: 0;
+    align-items: start;
 }
 
 .pubilo-auth-brand {
@@ -603,6 +618,12 @@ input[type="checkbox"] {
 
 .pubilo-auth-card {
     display: grid;
+}
+
+.pubilo-auth-card--billing-gate {
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
 }
 
 .pubilo-auth-panel {
@@ -758,6 +779,243 @@ input[type="checkbox"] {
     color: #6b7280;
     font-size: 0.88rem;
     line-height: 1.5;
+}
+
+.pubilo-upgrade-panel {
+    display: grid;
+    gap: 24px;
+    text-align: center;
+}
+
+.pubilo-upgrade-heading {
+    margin: 0;
+    font-size: clamp(2.25rem, 3.4vw, 3.4rem);
+    font-weight: 900;
+    color: #111827;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+}
+
+.pubilo-upgrade-subtext {
+    margin: 0;
+    color: #6b7280;
+    font-size: 1.05rem;
+    line-height: 1.7;
+    max-width: 720px;
+    justify-self: center;
+}
+
+.pubilo-upgrade-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 34px;
+    align-items: stretch;
+    text-align: left;
+    max-width: 1240px;
+    width: 100%;
+    justify-self: center;
+}
+
+.pubilo-upgrade-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    min-height: 100%;
+    padding: 44px 42px 32px;
+    border-radius: 24px;
+    border: 1px solid rgba(124, 58, 237, 0.24);
+    background: #ffffff;
+    box-shadow: 0 12px 36px rgba(15, 23, 42, 0.07);
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.pubilo-upgrade-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(124, 58, 237, 0.45);
+    box-shadow: 0 18px 44px rgba(76, 29, 149, 0.1);
+}
+
+.pubilo-upgrade-card.selected {
+    border-color: #7c3aed;
+    background: #ffffff;
+    box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15), 0 20px 48px rgba(76, 29, 149, 0.1);
+}
+
+.pubilo-upgrade-card input {
+    display: none;
+}
+
+.pubilo-upgrade-badge {
+    position: absolute;
+    top: -12px;
+    right: 20px;
+    padding: 0.34rem 0.85rem;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    color: #fff;
+    font-size: 0.76rem;
+    font-weight: 800;
+    box-shadow: 0 12px 30px rgba(109, 40, 217, 0.28);
+}
+
+.pubilo-upgrade-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+}
+
+.pubilo-upgrade-title {
+    font-size: 1.65rem;
+    font-weight: 900;
+    color: #111827;
+    letter-spacing: -0.02em;
+}
+
+.pubilo-upgrade-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    background: #f3f4f6;
+    color: #6b7280;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+}
+
+.pubilo-upgrade-card.selected .pubilo-upgrade-tag {
+    background: #f3e8ff;
+    color: #7c3aed;
+}
+
+.pubilo-upgrade-price-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.pubilo-upgrade-price-row strong {
+    font-size: clamp(4.4rem, 6vw, 5.6rem);
+    line-height: 0.88;
+    letter-spacing: -0.05em;
+    color: #111827;
+    font-weight: 900;
+}
+
+.pubilo-upgrade-price-suffix {
+    color: #6b7280;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.15;
+    padding-bottom: 0.7rem;
+}
+
+.pubilo-upgrade-section-title {
+    margin: 0;
+    color: #374151;
+    font-size: 1.04rem;
+    font-weight: 700;
+}
+
+.pubilo-upgrade-features {
+    list-style: none;
+    display: grid;
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    color: #374151;
+    font-size: 1.02rem;
+    min-height: 232px;
+}
+
+.pubilo-upgrade-feature-item {
+    display: flex;
+    gap: 0.8rem;
+    align-items: flex-start;
+    line-height: 1.5;
+    font-weight: 600;
+    font-size: 1.02rem;
+}
+
+.pubilo-upgrade-feature-check {
+    color: #7c3aed;
+    font-weight: 900;
+    line-height: 1.2;
+    margin-top: 0.08rem;
+    font-size: 1.2rem;
+}
+
+.pubilo-upgrade-footer {
+    margin-top: auto;
+    display: grid;
+    gap: 0.8rem;
+}
+
+.pubilo-upgrade-cta {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 72px;
+    width: 100%;
+    border-radius: 999px;
+    border: 0;
+    background: linear-gradient(135deg, #7c3aed, #6d28d9);
+    color: #fff;
+    font-size: 1.15rem;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 14px 30px rgba(109, 40, 217, 0.18);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pubilo-upgrade-cta:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 18px 40px rgba(109, 40, 217, 0.24);
+}
+
+.pubilo-upgrade-helper {
+    margin: 0;
+    text-align: center;
+    color: #9ca3af;
+    font-size: 0.86rem;
+    font-weight: 600;
+}
+
+.pubilo-auth-overlay--billing-gate .pubilo-auth-label {
+    background: #ffffff;
+    border: 1px solid rgba(124, 58, 237, 0.18);
+    box-shadow: 0 10px 24px rgba(124, 58, 237, 0.08);
+}
+
+.pubilo-auth-overlay--billing-gate .pubilo-logout-link,
+.pubilo-auth-overlay--billing-gate .pubilo-auth-note {
+    color: #6b7280;
+}
+
+.pubilo-auth-overlay--billing-gate .pubilo-logout-link {
+    justify-self: center;
+    margin-top: 2px;
+}
+
+.pubilo-auth-overlay--billing-gate .pubilo-auth-note {
+    justify-self: center;
+    max-width: 720px;
+    text-align: center;
+}
+
+.pubilo-upgrade-actions {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.pubilo-upgrade-primary {
+    width: 100%;
+    min-height: 58px;
 }
 
 .pubilo-plan-badge {
@@ -985,6 +1243,36 @@ input[type="checkbox"] {
 @media (max-width: 860px) {
     .pubilo-auth-shell {
         grid-template-columns: 1fr;
+    }
+
+    .pubilo-auth-overlay--billing-gate {
+        padding: 24px 16px 32px;
+    }
+
+    .pubilo-auth-shell--billing-gate {
+        width: min(100%, calc(100vw - 16px));
+    }
+
+    .pubilo-upgrade-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    .pubilo-upgrade-card {
+        padding: 32px 24px 24px;
+        gap: 18px;
+    }
+
+    .pubilo-upgrade-title {
+        font-size: 1.45rem;
+    }
+
+    .pubilo-upgrade-price-row strong {
+        font-size: clamp(3.2rem, 18vw, 4.4rem);
+    }
+
+    .pubilo-upgrade-features {
+        min-height: auto;
     }
 
     .pubilo-workspace-chip {
