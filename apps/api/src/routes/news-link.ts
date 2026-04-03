@@ -3,6 +3,21 @@ import { html } from 'hono/html';
 import { Env } from '../index';
 
 const app = new Hono<{ Bindings: Env }>();
+const PREVIEW_CRAWLER_TOKENS = [
+    'facebookexternalhit',
+    'facebot',
+    'twitterbot',
+    'slackbot',
+    'linkedinbot',
+    'discordbot',
+    'telegrambot',
+    'whatsapp',
+    'skypeuripreview',
+    'googlebot',
+    'bingbot',
+    'pinterestbot',
+    'applebot',
+];
 
 function sanitizeText(value: string | null | undefined, fallback = ''): string {
     return typeof value === 'string' ? value.trim() : fallback;
@@ -28,10 +43,21 @@ function normalizeSiteName(siteName: string, targetUrl: string): string {
     }
 }
 
+function shouldServePreviewHtml(userAgent: string): boolean {
+    const normalized = sanitizeText(userAgent).toLowerCase();
+    if (!normalized) return true;
+    return PREVIEW_CRAWLER_TOKENS.some((token) => normalized.includes(token));
+}
+
 app.get('/', (c) => {
     const target = sanitizeText(c.req.query('target'));
     if (!isHttpUrl(target)) {
         return c.text('Invalid target', 400);
+    }
+
+    const userAgent = sanitizeText(c.req.header('user-agent'));
+    if (!shouldServePreviewHtml(userAgent)) {
+        return c.redirect(target, 302);
     }
 
     const title = sanitizeText(c.req.query('title'), 'ดูรายละเอียดสินค้า');
@@ -55,6 +81,7 @@ app.get('/', (c) => {
                 <meta property="og:description" content=${description} />
                 <meta property="og:site_name" content=${siteName} />
                 <link rel="canonical" href=${previewUrl} />
+                <meta http-equiv="refresh" content=${`0;url=${target}`} />
                 ${image
                     ? html`
                         <meta property="og:image" content=${image} />
