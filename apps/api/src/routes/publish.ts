@@ -957,7 +957,19 @@ async function createStandaloneAdCreative(params: {
     description?: string;
     callToAction?: string;
     seed?: { adId: string; adsetId: string; campaignId: string; raw: any } | null;
-}): Promise<{ creativeId: string; postId: string; creativeData: any; adId?: string; adsetId?: string; campaignId?: string; seedAdId?: string; materializedBy?: string }> {
+}): Promise<{
+    creativeId: string;
+    postId: string;
+    creativeData: any;
+    adId?: string;
+    adsetId?: string;
+    campaignId?: string;
+    seedAdId?: string;
+    materializedBy?: string;
+    materializeAdAccountId?: string;
+    hasReusableSeed?: boolean;
+    scannedAccounts?: string[];
+}> {
     const creativePayload: Record<string, any> = {
         page_id: params.pageId,
         link_data: {
@@ -1019,7 +1031,49 @@ async function createStandaloneAdCreative(params: {
             materializedBy: 'creative',
         };
     }
-    throw new Error('Facebook did not return object_story_id for ad creative');
+
+    const seedContext = await resolveAdSeedContext({
+        preferredAdAccountId: params.adAccountId,
+        accessToken: params.accessToken,
+        pageId: params.pageId,
+        headers: params.cookieHeaders,
+    });
+
+    try {
+        const materialized = await materializeCreativeWithAd({
+            adAccountId: seedContext.adAccountId || params.adAccountId,
+            accessToken: params.accessToken,
+            pageId: params.pageId,
+            creativeId,
+            headers: params.cookieHeaders,
+            seed: params.seed ?? seedContext.seed,
+        });
+
+        return {
+            creativeId,
+            postId: materialized.postId,
+            creativeData: materialized.adData,
+            adId: materialized.adId,
+            adsetId: materialized.adsetId,
+            campaignId: materialized.campaignId,
+            seedAdId: materialized.seedAdId,
+            materializedBy: 'ad',
+            materializeAdAccountId: seedContext.adAccountId || params.adAccountId,
+            hasReusableSeed: !!seedContext.seed,
+            scannedAccounts: seedContext.scannedAccounts,
+        };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const wrapped = new Error(`Facebook did not return object_story_id for ad creative; ad materialization failed: ${message}`) as Error & {
+            debug?: Record<string, unknown>;
+        };
+        wrapped.debug = {
+            hasReusableSeed: !!seedContext.seed,
+            scannedAccounts: seedContext.scannedAccounts,
+            materializeAdAccountId: seedContext.adAccountId || params.adAccountId,
+        };
+        throw wrapped;
+    }
 }
 
 // POST /api/publish - Publish to Facebook
@@ -1544,6 +1598,7 @@ app.post('/', async (c) => {
         }
         const normalizedCallToAction = normalizeCallToActionType(callToAction);
         const canUseAdCreativeFlow = isLinkAttachmentPost && !!accessToken && !!resolvedAdAccountId;
+        const isGhostOnlyNewsPost = postMode === 'news';
 
         if (isLinkAttachmentPost) {
             // Include access token as last-resort candidate for feed fallback.
@@ -1557,6 +1612,10 @@ app.post('/', async (c) => {
             ]);
             const pageTokenForPublish = pageTokenCandidates[0] || '';
             let adCreativeError: string | null = null;
+            let adCreativeDebug: Record<string, unknown> = {
+                canUseAdCreativeFlow,
+                resolvedAdAccountId: resolvedAdAccountId || '',
+            };
 
             console.log('[publish] Link post diagnostics:', {
                 hasClientAccessToken: !!accessToken,
@@ -1564,6 +1623,18 @@ app.post('/', async (c) => {
                 canUseAdCreativeFlow,
                 pageTokenCandidateCount: pageTokenCandidates.length,
             });
+
+            if (isGhostOnlyNewsPost && !canUseAdCreativeFlow) {
+                return c.json({
+                    success: false,
+                    error: 'Ghost Ads ไม่พร้อมใช้งานสำหรับ account นี้: ไม่พบ Ads Token หรือ Ad Account ที่ใช้สร้าง ad creative ได้',
+                    errorType: 'GhostAdsUnavailable',
+                    _debug: {
+                        flow: 'ghost-required',
+                        ...adCreativeDebug,
+                    },
+                }, 422);
+            }
 
             // Primary: ad creative produces rich cards with custom image, title, CTA button.
             if (canUseAdCreativeFlow) {
@@ -1573,7 +1644,7 @@ app.post('/', async (c) => {
                         accessToken,
                         cookieHeaders: facebookHeaders,
                         adAccountId: resolvedAdAccountId,
-                        linkUrl: finalLink || publishLinkUrl,
+                        linkUrl: publishLinkUrl || finalLink,
                         hostedImageUrl: hostedImageUrl || undefined,
                         message: finalMessage,
                         title: attachmentTitle || undefined,
@@ -1607,11 +1678,32 @@ app.post('/', async (c) => {
                             creativeId: creativeResult.creativeId,
                             adAccountId: resolvedAdAccountId,
                             materializedBy: creativeResult.materializedBy || '',
+                            materializeAdAccountId: creativeResult.materializeAdAccountId || resolvedAdAccountId,
+                            hasReusableSeed: !!creativeResult.hasReusableSeed,
+                            scannedAccounts: creativeResult.scannedAccounts || [],
                             hide: hideResult,
                         },
                     });
                 } catch (error) {
                     adCreativeError = error instanceof Error ? error.message : String(error);
+                    adCreativeDebug = {
+                        ...adCreativeDebug,
+                        ...((((error as Error & { debug?: Record<string, unknown> }).debug) || {})),
+                    };
+
+                    if (isGhostOnlyNewsPost) {
+                        return c.json({
+                            success: false,
+                            error: `Ghost Ads ไม่สำเร็จ: ${adCreativeError}`,
+                            errorType: 'GhostAdsFailed',
+                            _debug: {
+                                flow: 'ghost-required',
+                                adCreativeError,
+                                ...adCreativeDebug,
+                            },
+                        }, 422);
+                    }
+
                     console.warn('[publish] adcreative failed, falling back to feed:', adCreativeError);
                 }
             }
@@ -1640,7 +1732,7 @@ app.post('/', async (c) => {
                         pageToken: candidateToken,
                         headers: facebookHeaders,
                         message: finalMessage,
-                        linkUrl: finalLink || publishLinkUrl,
+                        linkUrl: publishLinkUrl || finalLink,
                         scheduledTime: scheduleTimestamp || undefined,
                     });
 
@@ -1680,7 +1772,7 @@ app.post('/', async (c) => {
                             pageId,
                             cookieHeaders: cookieHeaderCandidates[i],
                             message: finalMessage,
-                            linkUrl: finalLink || publishLinkUrl,
+                            linkUrl: publishLinkUrl || finalLink,
                         });
 
                         const cookieUrl = buildFacebookPostUrl(cookieResult.postId, pageId);
