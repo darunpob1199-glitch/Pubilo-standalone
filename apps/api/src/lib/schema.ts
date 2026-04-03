@@ -191,6 +191,26 @@ async function ensureBaseTables(env: Env) {
     `).run();
 
     await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_org_subscriptions_workspace_status_period
+        ON organization_subscriptions (workspace_id, status, current_period_end)
+    `).run();
+
+    await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_payment_orders_workspace_created
+        ON payment_orders (workspace_id, created_at)
+    `).run();
+
+    await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_payment_orders_status_expires
+        ON payment_orders (status, expires_at)
+    `).run();
+
+    await env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_payment_orders_gateway_reference
+        ON payment_orders (gateway_reference)
+    `).run();
+
+    await env.DB.prepare(`
         CREATE TABLE IF NOT EXISTS usage_counters (
             workspace_id TEXT NOT NULL,
             metric TEXT NOT NULL,
