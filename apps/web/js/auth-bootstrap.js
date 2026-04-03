@@ -1,6 +1,6 @@
 (function () {
     const SHOW_BILLING_BANNER = false;
-    const SKIP_SIGNUP_AND_BILLING_GATE = true;
+    const SKIP_SIGNUP_AND_BILLING_GATE = false;
     let authReadyResolved = false;
     let resolveAuthReadyPromise = null;
     const state = {
@@ -110,7 +110,7 @@
             <form class="pubilo-auth-panel" id="pubiloOnboardingForm">
                 <p class="pubilo-auth-label">Workspace</p>
                 <h2>ตั้งค่า account สำหรับขายใช้งานจริง</h2>
-                <p class="pubilo-auth-copy">เลือกราคาแพ็กเกจแล้วระบบจะสร้าง workspace + subscription + payment order รอ gateway ต่อทีหลัง</p>
+                <p class="pubilo-auth-copy">เลือกราคาแพ็กเกจแล้วระบบจะสร้าง workspace และเปิด QR PromptPay ให้ชำระได้ทันที</p>
                 <label class="pubilo-field">
                     <span>ชื่อ Workspace</span>
                     <input type="text" id="pubiloWorkspaceName" value="${defaultName.replace(/"/g, '&quot;')}" required />
@@ -559,7 +559,6 @@
         }
 
         if (SKIP_SIGNUP_AND_BILLING_GATE) {
-            // Temporary bypass: allow entering app even if onboarding/payment is pending.
             document.body.classList.add('pubilo-authenticated');
             ensureOverlay().classList.add('is-hidden');
             ensureHeaderControls();
