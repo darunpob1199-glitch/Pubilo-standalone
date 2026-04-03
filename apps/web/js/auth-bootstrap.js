@@ -18,6 +18,7 @@
             resolve(payload || true);
         };
     });
+    const AUTH_FLOW_HISTORY_KEY = '__pubiloAuthFlow';
 
     const domReady = new Promise((resolve) => {
         if (document.readyState === 'loading') {
@@ -32,6 +33,38 @@
             credentials: 'include',
             ...(options || {}),
         });
+    }
+
+    function readAuthFlowState() {
+        const current = window.history.state;
+        if (!current || current[AUTH_FLOW_HISTORY_KEY] !== true) return null;
+        return current;
+    }
+
+    function writeAuthFlowState(view, data = {}, mode = 'replace') {
+        const nextState = {
+            ...(window.history.state && typeof window.history.state === 'object' ? window.history.state : {}),
+            ...data,
+            [AUTH_FLOW_HISTORY_KEY]: true,
+            authFlowView: view,
+        };
+
+        if (mode === 'push') {
+            window.history.pushState(nextState, '', window.location.href);
+            return;
+        }
+
+        window.history.replaceState(nextState, '', window.location.href);
+    }
+
+    function clearAuthFlowState() {
+        const current = window.history.state;
+        if (!current || current[AUTH_FLOW_HISTORY_KEY] !== true) return;
+        const nextState = { ...current };
+        delete nextState[AUTH_FLOW_HISTORY_KEY];
+        delete nextState.authFlowView;
+        delete nextState.orderId;
+        window.history.replaceState(Object.keys(nextState).length ? nextState : null, '', window.location.href);
     }
 
     function authErrorMessage() {
@@ -106,6 +139,7 @@
         const overlay = ensureOverlay();
         setOverlayVariant('default');
         overlay.classList.remove('is-hidden');
+        writeAuthFlowState('login');
         const card = overlay.querySelector('#pubiloAuthCard');
         const loginUrl = `${window.API_BASE}/api/auth/login/line?returnTo=${encodeURIComponent(window.location.href)}`;
         card.innerHTML = `
@@ -125,6 +159,7 @@
         const overlay = ensureOverlay();
         setOverlayVariant('default');
         overlay.classList.remove('is-hidden');
+        writeAuthFlowState('onboarding');
         const card = overlay.querySelector('#pubiloAuthCard');
         const defaultName = `${(profile?.user?.name || 'My').split(' ')[0]} Workspace`;
         const plansHtml = (state.plans || []).map((plan, index) => `
@@ -208,10 +243,11 @@
     // ===== Payment QR View =====
     let paymentPollTimer = null;
 
-    function renderPaymentView(orderId) {
+    function renderPaymentView(orderId, options = {}) {
         const overlay = ensureOverlay();
         setOverlayVariant('payment-only');
         overlay.classList.remove('is-hidden');
+        writeAuthFlowState('payment', { orderId }, options.historyMode || 'push');
         const card = overlay.querySelector('#pubiloAuthCard');
         const amount = state.latestPaymentOrder?.amount_thb || 0;
         const planLabel = state.plans?.find((p) => p.code === state.latestPaymentOrder?.plan_code)?.label || '';
@@ -316,10 +352,11 @@
     }
 
     // ===== Plan Selection View (pending_payment / expired / renewal) =====
-    function renderPlanSelectionView(profile) {
+    function renderPlanSelectionView(profile, options = {}) {
         const overlay = ensureOverlay();
         setOverlayVariant('billing-gate');
         overlay.classList.remove('is-hidden');
+        writeAuthFlowState('plan-selection', {}, options.historyMode || 'replace');
         const shell = overlay.querySelector('.pubilo-auth-shell');
         const brand = overlay.querySelector('.pubilo-auth-brand');
         const card = overlay.querySelector('#pubiloAuthCard');
@@ -336,8 +373,16 @@
         };
 
         const visiblePlans = (() => {
-            const preferred = (state.plans || []).filter((plan) => ['monthly_500', 'yearly_4499'].includes(plan.code));
-            return preferred.length ? preferred : (state.plans || []);
+            const plans = state.plans || [];
+            const priorityCodes = ['monthly_500', 'yearly_4499'];
+            const prioritized = priorityCodes
+                .map((code) => plans.find((plan) => plan.code === code))
+                .filter(Boolean);
+            const testPlan = plans.find((plan) => plan.code === 'test_1');
+            if (prioritized.length) {
+                return testPlan ? [...prioritized, testPlan] : prioritized;
+            }
+            return plans;
         })();
 
         const currentPlanCode = profile.workspace?.planCode || profile.workspace?.plan_code || '';
@@ -350,14 +395,19 @@
         const plansHtml = visiblePlans.map((plan) => {
             const isSelected = plan.code === defaultPlanCode;
             const isYearly = plan.interval === 'yearly';
+            const isTestPlan = plan.code === 'test_1';
             const intervalTag = plan.code === 'test_1' ? 'TEST' : (isYearly ? 'YEARLY' : 'MONTHLY');
             const helperText = plan.code === 'test_1'
-                ? 'ยกเลิกได้ตลอดเวลา'
+                ? 'ใช้ทดสอบ flow จ่ายเงินจริง'
                 : (isYearly ? 'คุ้มที่สุด ประหยัด 25%' : 'เริ่มใช้งานได้ทันที');
             const featureIntro = plan.code === 'yearly_4499'
                 ? 'สิ่งที่จะได้รับเหมือนรายเดือน และ:'
+                : isTestPlan
+                    ? 'สำหรับลอง flow payment:'
                 : 'สิ่งที่คุณจะได้รับ:';
-            const ctaText = plan.code === currentPlanCode && isExpired ? 'เปิดใช้งานใหม่' : 'เลือกแพ็กเกจนี้';
+            const ctaText = isTestPlan
+                ? 'ลองโอน 1 บาท'
+                : (plan.code === currentPlanCode && isExpired ? 'เปิดใช้งานใหม่' : 'เลือกแพ็กเกจนี้');
             const featureList = (features[plan.code] || []).map((feature) => `
                 <li class="pubilo-upgrade-feature-item">
                     <span class="pubilo-upgrade-feature-check">✓</span>
@@ -366,7 +416,7 @@
             `).join('');
 
             return `
-                <label class="pubilo-upgrade-card ${isSelected ? 'selected' : ''}" data-plan-card="${plan.code}">
+                <label class="pubilo-upgrade-card ${isSelected ? 'selected' : ''} ${isTestPlan ? 'is-compact' : ''}" data-plan-card="${plan.code}">
                     ${isYearly ? '<div class="pubilo-upgrade-badge">ประหยัด 25%</div>' : ''}
                     <input type="radio" name="selectPlanCode" value="${plan.code}" ${isSelected ? 'checked' : ''} />
                     <div class="pubilo-upgrade-top">
@@ -467,7 +517,7 @@
                         amount_thb: data.paymentOrder.amountThb,
                         plan_code: planCode,
                     };
-                    renderPaymentView(data.paymentOrder.id);
+                    renderPaymentView(data.paymentOrder.id, { historyMode: 'push' });
                 } else {
                     note.textContent = 'สร้าง order สำเร็จแต่ไม่มี paymentOrder id';
                 }
@@ -640,6 +690,7 @@
 
         document.body.classList.add('pubilo-authenticated');
         ensureOverlay().classList.add('is-hidden');
+        clearAuthFlowState();
         ensureHeaderControls();
         ensureBillingBanner();
         resolveAuthReadyPromise?.(payload);
@@ -650,6 +701,61 @@
         await domReady;
         ensureOverlay();
         state.plans = await fetchPlans();
+        window.addEventListener('popstate', async () => {
+            const authState = readAuthFlowState();
+            if (!authState) return;
+
+            const payload = await fetchAuthState();
+            applyAuthState(payload);
+
+            if (!payload.authenticated) {
+                renderLoginView(authErrorMessage());
+                return;
+            }
+
+            if (payload.onboardingRequired || !payload.workspace) {
+                renderOnboardingView(payload);
+                return;
+            }
+
+            const subStatus = payload.workspace?.subscriptionStatus;
+            const periodEnd = payload.workspace?.subscriptionPeriodEnd;
+            const isPeriodExpired = periodEnd ? new Date(periodEnd) < new Date() : false;
+            const needsPayment =
+                subStatus === 'pending_payment' ||
+                (!subStatus && payload.workspace) ||
+                (subStatus === 'cancelled' && isPeriodExpired) ||
+                (subStatus === 'active' && isPeriodExpired);
+
+            if (!needsPayment) {
+                document.body.classList.add('pubilo-authenticated');
+                ensureOverlay().classList.add('is-hidden');
+                clearAuthFlowState();
+                ensureHeaderControls();
+                ensureBillingBanner();
+                return;
+            }
+
+            if (authState.authFlowView === 'payment' && authState.orderId && payload.latestPaymentOrder?.status !== 'paid') {
+                const orderId = payload.latestPaymentOrder?.id || authState.orderId;
+                renderPaymentView(orderId, { historyMode: 'replace' });
+                return;
+            }
+
+            if (authState.authFlowView === 'plan-selection') {
+                renderPlanSelectionView(payload, { historyMode: 'replace' });
+                return;
+            }
+
+            if (authState.authFlowView === 'onboarding') {
+                renderOnboardingView(payload);
+                return;
+            }
+
+            if (authState.authFlowView === 'login') {
+                renderLoginView(authErrorMessage());
+            }
+        });
         return hydrateAndResolve();
     }
 

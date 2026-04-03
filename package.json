@@ -10,6 +10,7 @@
   "scripts": {
     "dev:api": "cd apps/api && bun run dev",
     "dev:app": "cd apps/app && bun run dev",
+    "dev:admin": "cd apps/admin && npm run dev",
     "dev:og": "cd apps/og && bun run dev",
     "build:app": "cd apps/app && bun run build",
     "deploy:api": "cd apps/api && bun run deploy",
