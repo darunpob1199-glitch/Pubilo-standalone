@@ -16,6 +16,8 @@
     "deploy:api": "cd apps/api && bun run deploy",
     "deploy:app": "cd apps/app && npm run build && npx wrangler pages deploy dist --project-name pubilo-miniapp --commit-dirty=true",
     "deploy:og": "cd apps/og && bun run deploy",
+    "verify:web-delete-tools": "node scripts/verify-web-delete-tools.js",
+    "deploy:web:safe": "npm run verify:web-delete-tools && npx wrangler pages deploy \"apps/web\" --project-name pubilo-web-prod --commit-dirty=true",
     "ext:watch": "bun run scripts/watch-extension.ts",
     "ext:start": "lsof -ti:35729 | xargs kill -9 2>/dev/null; bun run scripts/watch-extension.ts > /tmp/pubilo-ext-watch.log 2>&1 & echo $! > /tmp/pubilo-ext-watch.pid && sleep 0.5 && echo '✅ Hot reload running in background (PID:' $(cat /tmp/pubilo-ext-watch.pid) ')'",
     "ext:stop": "kill $(cat /tmp/pubilo-ext-watch.pid 2>/dev/null) 2>/dev/null && rm -f /tmp/pubilo-ext-watch.pid && echo '🛑 Hot reload stopped' || echo '⚠️ Not running'",
