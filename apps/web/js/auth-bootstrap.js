@@ -89,10 +89,14 @@
 
     function ensureOverlay() {
         let overlay = document.getElementById('pubiloAuthOverlay');
-        if (overlay) return overlay;
+        if (overlay) {
+            overlay.classList.add('pubilo-auth-overlay');
+            return overlay;
+        }
 
         overlay = document.createElement('div');
         overlay.id = 'pubiloAuthOverlay';
+        overlay.className = 'pubilo-auth-overlay is-hidden';
         overlay.innerHTML = `
             <div class="pubilo-auth-shell">
                 <div class="pubilo-auth-brand">

@@ -532,6 +532,10 @@ body:not(.pubilo-authenticated) > .container {
     display: none;
 }
 
+#pubiloAuthOverlay:not(.pubilo-auth-overlay) {
+    display: none !important;
+}
+
 .pubilo-auth-overlay {
     position: fixed;
     inset: 0;
