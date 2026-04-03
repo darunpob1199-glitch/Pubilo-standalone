@@ -22,6 +22,80 @@ async function safeSendMessage(msg, retries = 3) {
   }
 }
 
+const PAGE_TOKEN_MAP_KEY = "fewfeed_pageTokenMap";
+const PAGE_SUMMARY_MAP_KEY = "fewfeed_pageSummaryMap";
+const PAGE_CACHE_USER_ID_KEY = "fewfeed_pageCacheUserId";
+const PAGE_SCOPED_LOCAL_KEYS = [
+  PAGE_TOKEN_MAP_KEY,
+  PAGE_SUMMARY_MAP_KEY,
+  PAGE_CACHE_USER_ID_KEY,
+  "fewfeed_selectedPageId",
+  "fewfeed_selectedPageName",
+  "fewfeed_selectedPagePicture",
+  "fewfeed_selectedPageToken",
+  "fewfeed_selectedAdAccountId",
+  "fewfeed_targetPageIds",
+];
+
+function getPageCacheOwnerId() {
+  return String(localStorage.getItem(PAGE_CACHE_USER_ID_KEY) || "").trim();
+}
+
+function clearPageScopedCache(reason = "") {
+  PAGE_SCOPED_LOCAL_KEYS.forEach((key) => localStorage.removeItem(key));
+  if (reason) {
+    console.log("[Pubilo Content] Cleared page-scoped cache:", reason);
+  }
+}
+
+function readScopedPageTokenMap(ownerId = "") {
+  const normalizedOwnerId = String(ownerId || localStorage.getItem("fewfeed_userId") || "").trim();
+  const cacheOwnerId = getPageCacheOwnerId();
+  if (cacheOwnerId && normalizedOwnerId && cacheOwnerId !== normalizedOwnerId) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PAGE_TOKEN_MAP_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function writeScopedPageCache(pageTokenMapRaw, ownerId = "") {
+  const normalizedOwnerId = String(ownerId || localStorage.getItem("fewfeed_userId") || "").trim();
+  if (!normalizedOwnerId) return { tokenMap: {}, summaryMap: {} };
+
+  const raw = typeof pageTokenMapRaw === "string" ? JSON.parse(pageTokenMapRaw || "{}") : pageTokenMapRaw;
+  const tokenMap = {};
+  const summaryMap = {};
+  if (raw && typeof raw === "object") {
+    for (const [pageId, entry] of Object.entries(raw)) {
+      const token = typeof entry === "string" ? entry : entry?.token;
+      if (!token) continue;
+      tokenMap[pageId] = token;
+      summaryMap[pageId] = {
+        id: pageId,
+        name: typeof entry === "object" ? entry?.name || "" : "",
+        picture: typeof entry === "object" ? entry?.picture || "" : "",
+      };
+    }
+  }
+
+  localStorage.setItem(PAGE_CACHE_USER_ID_KEY, normalizedOwnerId);
+  localStorage.setItem(PAGE_TOKEN_MAP_KEY, JSON.stringify(tokenMap));
+  localStorage.setItem(PAGE_SUMMARY_MAP_KEY, JSON.stringify(summaryMap));
+
+  const firstPageId = Object.keys(tokenMap)[0];
+  if (firstPageId && !localStorage.getItem("fewfeed_selectedPageToken")) {
+    localStorage.setItem("fewfeed_selectedPageToken", tokenMap[firstPageId]);
+  }
+
+  console.log("[Pubilo Content] Stored scoped page cache for", Object.keys(tokenMap).length, "pages");
+  return { tokenMap, summaryMap };
+}
+
 // Main function - request tokens from background and wait for them
 async function initializeTokens() {
   console.log("[Pubilo Content] Requesting tokens from background...");
@@ -91,6 +165,11 @@ async function initializeTokens() {
       fromStorage: !!existingToken
     });
 
+    const currentPageCacheOwnerId = getPageCacheOwnerId();
+    if (currentPageCacheOwnerId && finalUserId && currentPageCacheOwnerId !== finalUserId) {
+      clearPageScopedCache(`owner changed ${currentPageCacheOwnerId} -> ${finalUserId}`);
+    }
+
     // Always overwrite localStorage — clear stale tokens when extension returns empty.
     localStorage.setItem("fewfeed_accessToken", finalToken);
     localStorage.setItem("fewfeed_token", finalToken);
@@ -113,20 +192,8 @@ async function initializeTokens() {
     let pageTokenMapRaw = data?.pageTokenMap || "{}";
     try {
       const pageTokenMap = typeof pageTokenMapRaw === "string" ? JSON.parse(pageTokenMapRaw) : pageTokenMapRaw;
-      if (pageTokenMap && typeof pageTokenMap === "object" && Object.keys(pageTokenMap).length > 0) {
-        const simpleMap = {};
-        for (const [pageId, entry] of Object.entries(pageTokenMap)) {
-          const token = typeof entry === "string" ? entry : entry?.token;
-          if (token) simpleMap[pageId] = token;
-        }
-        if (Object.keys(simpleMap).length > 0) {
-          localStorage.setItem("fewfeed_pageTokenMap", JSON.stringify(simpleMap));
-          const firstPageId = Object.keys(simpleMap)[0];
-          if (!localStorage.getItem("fewfeed_selectedPageToken")) {
-            localStorage.setItem("fewfeed_selectedPageToken", simpleMap[firstPageId]);
-          }
-          console.log("[Pubilo Content] Stored page tokens for", Object.keys(simpleMap).length, "pages from extension");
-        }
+      if (pageTokenMap && typeof pageTokenMap === "object" && Object.keys(pageTokenMap).length > 0 && finalUserId) {
+        writeScopedPageCache(pageTokenMap, finalUserId);
       }
     } catch (ptErr) {
       console.warn("[Pubilo Content] Failed to parse page token map:", ptErr);
@@ -141,7 +208,9 @@ async function initializeTokens() {
       userId: finalUserId,
       userName: finalUserName,
       avatarUrl: finalAvatarUrl,
-      pageTokenMap: pageTokenMapRaw
+      pageTokenMap: pageTokenMapRaw,
+      pageTokenMapOwnerId: finalUserId || "",
+      pageSummaryMap: localStorage.getItem(PAGE_SUMMARY_MAP_KEY) || "{}",
     }, "*");
 
     if (!finalCookie && !finalToken) {
@@ -185,7 +254,9 @@ async function initializeTokens() {
     const cachedUserId = localStorage.getItem("fewfeed_userId") || "";
     const cachedUserName = localStorage.getItem("fewfeed_userName") || "";
     const cachedFbDtsg = localStorage.getItem("fewfeed_fbDtsg") || "";
-    const cachedPageTokenMap = localStorage.getItem("fewfeed_pageTokenMap") || "{}";
+    const cachedPageTokenMap = localStorage.getItem(PAGE_TOKEN_MAP_KEY) || "{}";
+    const cachedPageSummaryMap = localStorage.getItem(PAGE_SUMMARY_MAP_KEY) || "{}";
+    const cachedPageTokenMapOwnerId = localStorage.getItem(PAGE_CACHE_USER_ID_KEY) || "";
 
     if (cachedToken || cachedCookie) {
       console.log("[Pubilo Content] Background unreachable, injecting cached localStorage data");
@@ -196,7 +267,9 @@ async function initializeTokens() {
         fbDtsg: cachedFbDtsg,
         userId: cachedUserId,
         userName: cachedUserName,
-        pageTokenMap: cachedPageTokenMap
+        pageTokenMap: cachedPageTokenMap,
+        pageTokenMapOwnerId: cachedPageTokenMapOwnerId,
+        pageSummaryMap: cachedPageSummaryMap,
       }, "*");
       syncPageUiFromInjectedData({
         accessToken: cachedToken,
@@ -304,6 +377,12 @@ function setAutoTokenStatus(message, tone = "muted") {
 }
 
 async function fetchPageTokenFromExtension(pageId) {
+  const cachedTokenMap = readScopedPageTokenMap();
+  const cachedToken = String(cachedTokenMap[String(pageId)] || "").trim();
+  if (cachedToken) {
+    return cachedToken;
+  }
+
   const accessToken = localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
   const cookie = localStorage.getItem("fewfeed_cookie");
 

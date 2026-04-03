@@ -35,6 +35,7 @@ import { newsLinkRouter } from './routes/news-link';
 import { publishReelRouter } from './routes/publish-reel';
 import { authRouter } from './routes/auth';
 import { billingRouter } from './routes/billing';
+import { adminRouter } from './routes/admin';
 import { ensureAppSchema } from './lib/schema';
 import { requireAuth } from './middleware/require-auth';
 import { requireWorkspace } from './middleware/require-workspace';
@@ -307,6 +308,9 @@ app.route('/api/cron/earnings', cronEarningsRouter);
 app.route('/api/cron/health-check', cronHealthCheckRouter);
 app.route('/api/cron/cleanup-reels', cronCleanupReelsRouter);
 app.route('/api/cron/reconcile-payments', cronReconcilePaymentsRouter);
+
+// Admin dashboard routes
+app.route('/api/admin', adminRouter);
 
 
 

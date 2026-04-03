@@ -18,6 +18,7 @@
             resolve(payload || true);
         };
     });
+    const AUTH_FLOW_HISTORY_KEY = '__pubiloAuthFlow';
 
     const domReady = new Promise((resolve) => {
         if (document.readyState === 'loading') {
@@ -32,6 +33,38 @@
             credentials: 'include',
             ...(options || {}),
         });
+    }
+
+    function readAuthFlowState() {
+        const current = window.history.state;
+        if (!current || current[AUTH_FLOW_HISTORY_KEY] !== true) return null;
+        return current;
+    }
+
+    function writeAuthFlowState(view, data = {}, mode = 'replace') {
+        const nextState = {
+            ...(window.history.state && typeof window.history.state === 'object' ? window.history.state : {}),
+            ...data,
+            [AUTH_FLOW_HISTORY_KEY]: true,
+            authFlowView: view,
+        };
+
+        if (mode === 'push') {
+            window.history.pushState(nextState, '', window.location.href);
+            return;
+        }
+
+        window.history.replaceState(nextState, '', window.location.href);
+    }
+
+    function clearAuthFlowState() {
+        const current = window.history.state;
+        if (!current || current[AUTH_FLOW_HISTORY_KEY] !== true) return;
+        const nextState = { ...current };
+        delete nextState[AUTH_FLOW_HISTORY_KEY];
+        delete nextState.authFlowView;
+        delete nextState.orderId;
+        window.history.replaceState(Object.keys(nextState).length ? nextState : null, '', window.location.href);
     }
 
     function authErrorMessage() {
@@ -72,9 +105,41 @@
         return overlay;
     }
 
+    function setOverlayVariant(variant) {
+        const overlay = ensureOverlay();
+        const shell = overlay.querySelector('.pubilo-auth-shell');
+        const brand = overlay.querySelector('.pubilo-auth-brand');
+        const card = overlay.querySelector('#pubiloAuthCard');
+
+        overlay.classList.remove('pubilo-auth-overlay--billing-gate');
+        shell?.classList.remove('pubilo-auth-shell--billing-gate');
+        shell?.classList.remove('pubilo-auth-shell--payment-only');
+        card?.classList.remove('pubilo-auth-card--billing-gate');
+        card?.classList.remove('pubilo-auth-card--payment-only');
+
+        if (variant === 'billing-gate') {
+            overlay.classList.add('pubilo-auth-overlay--billing-gate');
+            shell?.classList.add('pubilo-auth-shell--billing-gate');
+            card?.classList.add('pubilo-auth-card--billing-gate');
+            if (brand) brand.style.display = 'none';
+            return;
+        }
+
+        if (variant === 'payment-only') {
+            shell?.classList.add('pubilo-auth-shell--payment-only');
+            card?.classList.add('pubilo-auth-card--payment-only');
+            if (brand) brand.style.display = 'none';
+            return;
+        }
+
+        if (brand) brand.style.display = '';
+    }
+
     function renderLoginView(message) {
         const overlay = ensureOverlay();
+        setOverlayVariant('default');
         overlay.classList.remove('is-hidden');
+        writeAuthFlowState('login');
         const card = overlay.querySelector('#pubiloAuthCard');
         const loginUrl = `${window.API_BASE}/api/auth/login/line?returnTo=${encodeURIComponent(window.location.href)}`;
         card.innerHTML = `
@@ -90,12 +155,20 @@
         `;
     }
 
+    function getPublicBillingPlans() {
+        const plans = Array.isArray(state.plans) ? state.plans : [];
+        const filteredPlans = plans.filter((plan) => plan.code !== 'test_1');
+        return filteredPlans.length ? filteredPlans : plans;
+    }
+
     function renderOnboardingView(profile) {
         const overlay = ensureOverlay();
+        setOverlayVariant('default');
         overlay.classList.remove('is-hidden');
+        writeAuthFlowState('onboarding');
         const card = overlay.querySelector('#pubiloAuthCard');
         const defaultName = `${(profile?.user?.name || 'My').split(' ')[0]} Workspace`;
-        const plansHtml = (state.plans || []).map((plan, index) => `
+        const plansHtml = getPublicBillingPlans().map((plan, index) => `
             <label class="pubilo-plan-card ${index === 0 ? 'selected' : ''}" data-plan-card="${plan.code}">
                 <input type="radio" name="planCode" value="${plan.code}" ${index === 0 ? 'checked' : ''} />
                 <div class="pubilo-plan-top">
@@ -176,9 +249,11 @@
     // ===== Payment QR View =====
     let paymentPollTimer = null;
 
-    function renderPaymentView(orderId) {
+    function renderPaymentView(orderId, options = {}) {
         const overlay = ensureOverlay();
+        setOverlayVariant('payment-only');
         overlay.classList.remove('is-hidden');
+        writeAuthFlowState('payment', { orderId }, options.historyMode || 'push');
         const card = overlay.querySelector('#pubiloAuthCard');
         const amount = state.latestPaymentOrder?.amount_thb || 0;
         const planLabel = state.plans?.find((p) => p.code === state.latestPaymentOrder?.plan_code)?.label || '';
@@ -283,25 +358,19 @@
     }
 
     // ===== Plan Selection View (pending_payment / expired / renewal) =====
-    function renderPlanSelectionView(profile) {
+    function renderPlanSelectionView(profile, options = {}) {
         const overlay = ensureOverlay();
+        setOverlayVariant('billing-gate');
         overlay.classList.remove('is-hidden');
+        writeAuthFlowState('plan-selection', {}, options.historyMode || 'replace');
         const shell = overlay.querySelector('.pubilo-auth-shell');
         const brand = overlay.querySelector('.pubilo-auth-brand');
         const card = overlay.querySelector('#pubiloAuthCard');
 
-        // ซ่อน brand card + full width
-        if (brand) brand.style.display = 'none';
-        if (shell) {
-            shell.style.gridTemplateColumns = '1fr';
-            shell.style.maxWidth = '860px';
-        }
-
         const isExpired = profile.workspace?.subscriptionStatus !== 'pending_payment';
         const wsName = profile.workspace?.name || profile.user?.name || 'Pubilo';
         const heading = isExpired ? 'แพ็กเกจหมดอายุแล้ว' : 'เลือกแพ็กเกจ';
-        const subText = isExpired ? 'เลือกแพ็กเกจเพื่อต่ออายุการใช้งาน' : 'เลือกแพ็กเกจแล้วชำระผ่าน QR PromptPay ได้เลย';
-        const btnText = isExpired ? 'ต่ออายุแพ็กเกจ' : 'ชำระเงิน';
+        const subText = isExpired ? 'เลือกแพ็กเกจเพื่อต่ออายุการใช้งาน และปลดล็อกการใช้งานต่อทันทีหลังชำระเงิน' : 'เลือกแพ็กเกจแล้วชำระผ่าน QR PromptPay ได้เลย';
 
         const features = {
             test_1: ['✓ ทดสอบระบบ', '✓ 30 วัน'],
@@ -309,44 +378,80 @@
             yearly_4499: ['✓ ทุกอย่างใน Monthly', '✓ ประหยัด ฿1,501 ต่อปี', '✓ Priority Support', '✓ Early Access ฟีเจอร์ใหม่'],
         };
 
-        const plansHtml = (state.plans || []).map((plan, index) => {
+        const visiblePlans = (() => {
+            const plans = getPublicBillingPlans();
+            const priorityCodes = ['monthly_500', 'yearly_4499'];
+            const prioritized = priorityCodes
+                .map((code) => plans.find((plan) => plan.code === code))
+                .filter(Boolean);
+            if (prioritized.length) {
+                return prioritized;
+            }
+            return plans;
+        })();
+
+        const currentPlanCode = profile.workspace?.planCode || profile.workspace?.plan_code || '';
+        const defaultPlanCode = (() => {
+            if (['monthly_500', 'yearly_4499'].includes(currentPlanCode)) return currentPlanCode;
+            if (visiblePlans.some((plan) => plan.code === 'monthly_500')) return 'monthly_500';
+            return visiblePlans[0]?.code || '';
+        })();
+
+        const plansHtml = visiblePlans.map((plan) => {
+            const isSelected = plan.code === defaultPlanCode;
             const isYearly = plan.interval === 'yearly';
-            const perUnit = isYearly ? '/ ปี' : '/ เดือน';
+            const isTestPlan = plan.code === 'test_1';
             const intervalTag = plan.code === 'test_1' ? 'TEST' : (isYearly ? 'YEARLY' : 'MONTHLY');
-            const badgeHtml = isYearly ? '<div style="position:absolute;top:-12px;right:16px;background:#7c3aed;color:white;padding:0.2rem 0.8rem;border-radius:999px;font-size:0.75rem;font-weight:700;">ประหยัด 25%</div>' : '';
-            const isHighlight = isYearly;
-            const borderColor = isHighlight ? '#7c3aed' : '#e5e7eb';
-            const tagBg = isHighlight ? '#f9f5ff' : '#f2f4f7';
-            const tagColor = isHighlight ? '#7c3aed' : '#6b7280';
-            const btnStyle = isHighlight ? 'background:#7c3aed;color:#fff;' : 'background:#1f2937;color:#fff;';
-            const featureList = (features[plan.code] || []).map(f => `<li style="padding:0.3rem 0;">${f}</li>`).join('');
+            const helperText = plan.code === 'test_1'
+                ? 'ใช้ทดสอบ flow จ่ายเงินจริง'
+                : (isYearly ? 'คุ้มที่สุด ประหยัด 25%' : 'เริ่มใช้งานได้ทันที');
+            const featureIntro = plan.code === 'yearly_4499'
+                ? 'สิ่งที่จะได้รับเหมือนรายเดือน และ:'
+                : isTestPlan
+                    ? 'สำหรับลอง flow payment:'
+                : 'สิ่งที่คุณจะได้รับ:';
+            const ctaText = isTestPlan
+                ? 'ลองโอน 1 บาท'
+                : (plan.code === currentPlanCode && isExpired ? 'เปิดใช้งานใหม่' : 'เลือกแพ็กเกจนี้');
+            const featureList = (features[plan.code] || []).map((feature) => `
+                <li class="pubilo-upgrade-feature-item">
+                    <span class="pubilo-upgrade-feature-check">✓</span>
+                    <span>${feature.replace(/^✓\s*/, '')}</span>
+                </li>
+            `).join('');
 
             return `
-                <div class="pubilo-big-plan-card ${index === 0 ? 'selected' : ''}" data-plan-card="${plan.code}" style="border:2px solid ${borderColor};border-radius:16px;padding:1.5rem;cursor:pointer;transition:all 0.2s ease;background:#fff;position:relative;">
-                    ${badgeHtml}
-                    <input type="radio" name="selectPlanCode" value="${plan.code}" ${index === 0 ? 'checked' : ''} style="display:none;" />
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-                        <span style="font-weight:700;font-size:1.1rem;color:#1f2937;">${plan.label}</span>
-                        <span style="background:${tagBg};padding:0.2rem 0.6rem;border-radius:999px;font-size:0.75rem;font-weight:600;color:${tagColor};">${intervalTag}</span>
+                <label class="pubilo-upgrade-card ${isSelected ? 'selected' : ''} ${isTestPlan ? 'is-compact' : ''}" data-plan-card="${plan.code}">
+                    ${isYearly ? '<div class="pubilo-upgrade-badge">ประหยัด 25%</div>' : ''}
+                    <input type="radio" name="selectPlanCode" value="${plan.code}" ${isSelected ? 'checked' : ''} />
+                    <div class="pubilo-upgrade-top">
+                        <span class="pubilo-upgrade-title">${plan.label}</span>
+                        <span class="pubilo-upgrade-tag">${intervalTag}</span>
                     </div>
-                    <div style="margin-bottom:1rem;">
-                        <span style="font-size:2.2rem;font-weight:800;color:#1f2937;">&#3647;${plan.amountThb.toLocaleString('th-TH')}</span>
-                        <span style="color:#9ca3af;font-size:0.9rem;"> ${perUnit}</span>
+                    <div class="pubilo-upgrade-price-row">
+                        <strong>฿${plan.amountThb.toLocaleString('th-TH')}</strong>
+                        <span class="pubilo-upgrade-price-suffix">${isYearly ? '/ บัญชี<br>ต่อปี' : '/ บัญชี<br>ต่อเดือน'}</span>
                     </div>
-                    <ul style="list-style:none;padding:0;margin:0;color:#6b7280;font-size:0.9rem;min-height:120px;">${featureList}</ul>
-                </div>
+                    <p class="pubilo-upgrade-section-title">${featureIntro}</p>
+                    <ul class="pubilo-upgrade-features">${featureList}</ul>
+                    <div class="pubilo-upgrade-footer">
+                        <button type="submit" class="pubilo-upgrade-cta" data-plan-submit="${plan.code}">
+                            ${ctaText}
+                        </button>
+                        <p class="pubilo-upgrade-helper">${helperText}</p>
+                    </div>
+                </label>
             `;
         }).join('');
 
         card.innerHTML = `
-            <form id="pubiloSelectPlanForm" style="text-align:center;display:grid;gap:20px;">
+            <form id="pubiloSelectPlanForm" class="pubilo-upgrade-panel">
                 <div style="margin-bottom:4px;">
                     <span class="pubilo-auth-label">${wsName}</span>
                 </div>
-                <h2 style="margin:0;font-size:1.8rem;font-weight:800;color:#1f2937;">${heading}</h2>
-                <p style="margin:0;color:#6b7280;">${subText}</p>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;text-align:left;">${plansHtml}</div>
-                <button class="pubilo-primary-btn" type="submit" style="width:100%;min-height:56px;">${btnText}</button>
+                <h2 class="pubilo-upgrade-heading">${heading}</h2>
+                <p class="pubilo-upgrade-subtext">${subText}</p>
+                <div class="pubilo-upgrade-grid">${plansHtml}</div>
                 <p class="pubilo-auth-note" id="pubiloSelectPlanNote" style="margin:0;"></p>
                 <button type="button" class="pubilo-logout-link" id="pubiloSelectPlanLogout">Logout</button>
             </form>
@@ -356,25 +461,26 @@
             node.addEventListener('click', () => {
                 card.querySelectorAll('[data-plan-card]').forEach((item) => {
                     item.classList.remove('selected');
-                    item.style.borderColor = item.dataset.planCard === 'yearly_4499' ? '#7c3aed' : '#e5e7eb';
-                    item.style.boxShadow = 'none';
                 });
                 node.classList.add('selected');
-                node.style.borderColor = '#7c3aed';
-                node.style.boxShadow = '0 0 0 3px rgba(124,58,237,0.15)';
-                node.style.background = '#faf5ff';
                 const input = node.querySelector('input');
                 if (input) input.checked = true;
             });
         });
 
-        // Auto-select first card visual
-        const firstCard = card.querySelector('[data-plan-card]');
-        if (firstCard) {
-            firstCard.style.borderColor = '#7c3aed';
-            firstCard.style.boxShadow = '0 0 0 3px rgba(124,58,237,0.15)';
-            firstCard.style.background = '#faf5ff';
-        }
+        card.querySelectorAll('[data-plan-submit]').forEach((button) => {
+            button.addEventListener('click', (event) => {
+                const planCode = button.getAttribute('data-plan-submit');
+                const matchingCard = card.querySelector(`[data-plan-card="${planCode}"]`);
+                const matchingInput = card.querySelector(`input[name="selectPlanCode"][value="${planCode}"]`);
+                if (matchingCard) {
+                    card.querySelectorAll('[data-plan-card]').forEach((item) => item.classList.remove('selected'));
+                    matchingCard.classList.add('selected');
+                }
+                if (matchingInput) matchingInput.checked = true;
+                event.stopPropagation();
+            });
+        });
 
         card.querySelector('#pubiloSelectPlanLogout').addEventListener('click', async () => {
             await nativeFetch('/api/auth/logout', { method: 'POST' });
@@ -416,7 +522,7 @@
                         amount_thb: data.paymentOrder.amountThb,
                         plan_code: planCode,
                     };
-                    renderPaymentView(data.paymentOrder.id);
+                    renderPaymentView(data.paymentOrder.id, { historyMode: 'push' });
                 } else {
                     note.textContent = 'สร้าง order สำเร็จแต่ไม่มี paymentOrder id';
                 }
@@ -589,6 +695,7 @@
 
         document.body.classList.add('pubilo-authenticated');
         ensureOverlay().classList.add('is-hidden');
+        clearAuthFlowState();
         ensureHeaderControls();
         ensureBillingBanner();
         resolveAuthReadyPromise?.(payload);
@@ -599,6 +706,61 @@
         await domReady;
         ensureOverlay();
         state.plans = await fetchPlans();
+        window.addEventListener('popstate', async () => {
+            const authState = readAuthFlowState();
+            if (!authState) return;
+
+            const payload = await fetchAuthState();
+            applyAuthState(payload);
+
+            if (!payload.authenticated) {
+                renderLoginView(authErrorMessage());
+                return;
+            }
+
+            if (payload.onboardingRequired || !payload.workspace) {
+                renderOnboardingView(payload);
+                return;
+            }
+
+            const subStatus = payload.workspace?.subscriptionStatus;
+            const periodEnd = payload.workspace?.subscriptionPeriodEnd;
+            const isPeriodExpired = periodEnd ? new Date(periodEnd) < new Date() : false;
+            const needsPayment =
+                subStatus === 'pending_payment' ||
+                (!subStatus && payload.workspace) ||
+                (subStatus === 'cancelled' && isPeriodExpired) ||
+                (subStatus === 'active' && isPeriodExpired);
+
+            if (!needsPayment) {
+                document.body.classList.add('pubilo-authenticated');
+                ensureOverlay().classList.add('is-hidden');
+                clearAuthFlowState();
+                ensureHeaderControls();
+                ensureBillingBanner();
+                return;
+            }
+
+            if (authState.authFlowView === 'payment' && authState.orderId && payload.latestPaymentOrder?.status !== 'paid') {
+                const orderId = payload.latestPaymentOrder?.id || authState.orderId;
+                renderPaymentView(orderId, { historyMode: 'replace' });
+                return;
+            }
+
+            if (authState.authFlowView === 'plan-selection') {
+                renderPlanSelectionView(payload, { historyMode: 'replace' });
+                return;
+            }
+
+            if (authState.authFlowView === 'onboarding') {
+                renderOnboardingView(payload);
+                return;
+            }
+
+            if (authState.authFlowView === 'login') {
+                renderLoginView(authErrorMessage());
+            }
+        });
         return hydrateAndResolve();
     }
 
