@@ -179,12 +179,24 @@
             overlay.classList.add('pubilo-auth-overlay--onboarding');
             shell?.classList.add('pubilo-auth-shell--onboarding');
             card?.classList.add('pubilo-auth-card--onboarding');
-            if (brand) brand.style.display = 'none';
-            if (rightContainer) rightContainer.style.flex = '1';
+            if (brand) {
+                brand.style.display = '';
+                brand.querySelector('h1').innerText = "Upgrade Your\nWorkspace.";
+                brand.querySelector('p').innerHTML = "Select a plan that fits your team's needs.<br>Start managing everything in one place.";
+                // Change illustration to something billing-related (update SVG colors etc if desired, but for now just text update)
+            }
+            if (rightContainer) {
+                rightContainer.style.flex = '5';
+                rightContainer.style.position = 'relative';
+            }
             return;
         }
 
-        if (brand) brand.style.display = '';
+        if (brand) {
+            brand.style.display = '';
+            brand.querySelector('h1').innerText = "Welcome!";
+            brand.querySelector('p').innerHTML = "Get a real intranet on top of your Office 365<br>environment, with Pubilo.";
+        }
         if (rightContainer) rightContainer.style.flex = '4.5';
     }
 
@@ -252,35 +264,64 @@
         writeAuthFlowState('onboarding');
         const card = overlay.querySelector('#pubiloAuthCard');
         const defaultName = `${(profile?.user?.name || 'My').split(' ')[0]} Workspace`;
-        const plansHtml = getPublicBillingPlans().map((plan, index) => `
-            <label class="pubilo-plan-card ${index === 0 ? 'selected' : ''}" data-plan-card="${plan.code}">
-                <input type="radio" name="planCode" value="${plan.code}" ${index === 0 ? 'checked' : ''} />
-                <div class="pubilo-plan-top">
-                    <span class="pubilo-plan-name">${plan.label}</span>
-                    <strong>฿${plan.amountThb.toLocaleString('th-TH')}</strong>
+        const plansHtml = getPublicBillingPlans().map((plan, index) => {
+            const isYearly = plan.code.includes('year') || plan.code.includes('4499') || plan.code.includes('2999');
+            
+            return `
+            <label class="pubilo-plan-card pubilo-plan-card--horizontal ${index === 0 ? 'selected' : ''}" data-plan-card="${plan.code}">
+                ${isYearly ? '<div style="position:absolute; top:-10px; right:24px; background:linear-gradient(135deg, #f59e0b, #d97706); color:white; font-size:11px; font-weight:800; padding:4px 12px; border-radius:100px; letter-spacing:0.5px; box-shadow:0 4px 10px rgba(245,158,11,0.3);">RECOMMENDED</div>' : ''}
+                <div style="display:flex; align-items:center; gap:20px; flex: 1;">
+                    <!-- Custom Radio -->
+                    <div class="pubilo-radio-circle">
+                        <input type="radio" name="planCode" value="${plan.code}" ${index === 0 ? 'checked' : ''} />
+                        <div class="pubilo-radio-inner"></div>
+                    </div>
+                    <!-- Plan Info -->
+                    <div class="pubilo-plan-info">
+                        <span class="pubilo-plan-name">${plan.label}</span>
+                        <div style="font-size:14px; color:#64748b; font-weight:500; margin-top:2px;">${isYearly ? 'Billed annually' : 'Billed monthly'}</div>
+                    </div>
                 </div>
-                <p>${plan.description}</p>
+                <!-- Price -->
+                <div class="pubilo-plan-price-block">
+                    <strong>฿${plan.amountThb.toLocaleString('th-TH')}</strong>
+                    <span style="font-size:14px; color:#94a3b8; font-weight:500; margin-left:8px;">${isYearly ? '/yr' : '/mo'}</span>
+                </div>
             </label>
-        `).join('');
+            `;
+        }).join('');
 
         card.innerHTML = `
-            <form class="pubilo-auth-panel" id="pubiloOnboardingForm" style="padding: 40px; text-align: left; border: none; box-shadow: 0 20px 40px rgba(0,0,0,0.04); background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-radius: 24px;">
-                <p class="pubilo-auth-label" style="background: #eef2ff; color: #4f46e5; font-size: 11px; letter-spacing: 1px; border-radius: 100px; padding: 6px 12px; display: inline-block; font-weight: 800; margin-bottom: 16px; text-transform: uppercase;">Workspace</p>
-                <h2 style="font-size: 28px; font-weight: 800; color: #0f172a; margin-bottom: 12px; line-height: 1.25; letter-spacing: -0.5px;">ตั้งค่า account<br>สำหรับใช้งานจริง</h2>
-                <p class="pubilo-auth-copy" style="font-size: 14px; color: #64748b; margin-bottom: 32px; line-height: 1.6;">เลือกราคาแพ็กเกจแล้วระบบจะสร้าง workspace และเปิด QR PromptPay ให้ชำระได้ทันที</p>
+            <!-- Top Left Logo specifically for this clean view -->
+            <div style="position: absolute; top: 40px; left: 40px; display: flex; align-items: center; gap: 12px; z-index: 50;">
+                <svg width="36" height="36" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M50 68 L80 84 L50 100 L20 84 Z" stroke="#C084FC" stroke-width="8" stroke-linejoin="round"/>
+                    <path d="M50 50 L80 66 L50 82 L20 66 Z" stroke="#94A3B8" stroke-width="8" stroke-linejoin="round"/>
+                    <path d="M50 16 L84 34 L50 52 L16 34 Z" fill="#8B5CF6"/>
+                    <path d="M84 34 L50 52 L50 62 L84 44 Z" fill="#7C3AED"/>
+                    <path d="M16 34 L50 52 L50 62 L16 44 Z" fill="#A78BFA"/>
+                </svg>
+                <span style="font-size: 24px; font-weight: 700; color: #0f172a; font-family: 'Montserrat', sans-serif;">Pubilo</span>
+            </div>
+
+            <form class="pubilo-auth-panel" id="pubiloOnboardingForm" style="padding: 56px 48px; text-align: left; border: none; box-shadow: 0 24px 50px rgba(0,0,0,0.06); background: #ffffff; border-radius: 32px; position:relative;">
+                <p style="background: #f1f5f9; color: #3b82f6; font-size: 11px; letter-spacing: 1.5px; border-radius: 100px; padding: 6px 14px; display: inline-block; font-weight: 800; margin-bottom: 20px; text-transform: uppercase;">Final Step</p>
+                <h2 style="font-size: 36px; font-weight: 800; color: #0f172a; margin-bottom: 12px; line-height: 1.2; letter-spacing: -1px; font-family: 'Montserrat', sans-serif;">Ready to create your workspace?</h2>
+                <p style="font-size: 16px; color: #475569; margin-bottom: 40px; line-height: 1.6;">ระบุชื่อ Workspace ที่ต้องการและเลือกแพ็กเกจที่เหมาะสม ระบบจะพาคุณไปยังหน้าชำระเงิน QR Code เพื่อเริ่มใช้งานได้ทันที</p>
                 
-                <label class="pubilo-field" style="margin-bottom: 24px;">
-                    <span style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 8px; display: block;">ชื่อ Workspace</span>
-                    <input type="text" id="pubiloWorkspaceName" value="${defaultName.replace(/"/g, '&quot;')}" required style="border-radius: 14px; border: 2px solid #e2e8f0; height: 52px; padding: 0 16px; font-size: 16px; color: #0f172a; transition: all 0.2s;" onfocus="this.style.borderColor='#6366f1';" onblur="this.style.borderColor='#e2e8f0';" />
+                <label class="pubilo-field" style="margin-bottom: 32px;">
+                    <span style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 8px; display: block;">ชื่อ Workspace ของคุณ</span>
+                    <input type="text" id="pubiloWorkspaceName" value="${defaultName.replace(/"/g, '&quot;')}" required style="border-radius: 16px; border: 2px solid #e2e8f0; height: 56px; padding: 0 20px; font-size: 16px; font-weight:500; color: #0f172a; transition: all 0.2s;" onfocus="this.style.borderColor='#4f46e5'; this.style.boxShadow='0 0 0 4px rgba(79,70,229,0.1)';" onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none';" />
                 </label>
                 
-                <div class="pubilo-plan-grid" style="margin-bottom: 32px;">${plansHtml}</div>
+                <!-- Horizontal Stack -->
+                <div class="pubilo-plan-grid" style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 40px;">${plansHtml}</div>
                 
-                <button class="pubilo-primary-btn" type="submit" style="width: 100%; height: 56px; border-radius: 16px; font-size: 16px; background: #4f46e5; border: none; color: white; font-weight: 700; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 20px rgba(79, 70, 229, 0.3)';" onmouseout="this.style.transform='none'; this.style.boxShadow='none';">สร้าง Workspace</button>
-                <p class="pubilo-auth-note" id="pubiloOnboardingNote" style="color: #ef4444; font-size: 14px; margin-top: 12px; text-align: center;"></p>
+                <button class="pubilo-primary-btn" type="submit" style="width: 100%; height: 60px; border-radius: 16px; font-size: 16px; background: linear-gradient(135deg, #4f46e5, #3730a3); border: none; color: white; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 10px 20px rgba(79, 70, 229, 0.2);" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 15px 30px rgba(79, 70, 229, 0.3)';" onmouseout="this.style.transform='none'; this.style.boxShadow='0 10px 20px rgba(79, 70, 229, 0.2)';">ยืนยันและชำระเงิน</button>
+                <p class="pubilo-auth-note" id="pubiloOnboardingNote" style="color: #ef4444; font-size: 14px; margin-top: 16px; text-align: center;"></p>
                 
-                <div style="text-align: center; margin-top: 24px;">
-                    <button type="button" class="pubilo-logout-link" id="pubiloOnboardingLogout" style="background: none; border: none; text-decoration: underline; color: #94a3b8; cursor: pointer; font-size: 14px; font-weight: 500; transition: color 0.2s;" onmouseover="this.style.color='#0f172a';" onmouseout="this.style.color='#94a3b8';">Logout</button>
+                <div style="text-align: center; margin-top: 32px;">
+                    <button type="button" class="pubilo-logout-link" id="pubiloOnboardingLogout" style="background: none; border: none; font-weight:600; color: #64748b; cursor: pointer; font-size: 14px; transition: color 0.2s;" onmouseover="this.style.color='#0f172a';" onmouseout="this.style.color='#64748b';">Cancel &amp; Logout</button>
                 </div>
             </form>
         `;
