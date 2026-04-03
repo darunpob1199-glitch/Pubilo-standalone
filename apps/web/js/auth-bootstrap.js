@@ -134,8 +134,8 @@
                     </div>
                 </div>
                 <!-- Right Side Container -->
-                <div style="flex:4.5; background:#ffffff; display:flex; align-items:center; justify-content:center; padding:60px;">
-                    <div class="pubilo-auth-card" id="pubiloAuthCard" style="width:100%; max-width:400px; z-index:10; flex:none; padding:0; background:transparent;"></div>
+                <div id="pubiloRightContainer" style="flex:4.5; background:#ffffff; display:flex; align-items:center; justify-content:center; padding:60px; overflow-y:auto; transition: flex 0.3s;">
+                    <div class="pubilo-auth-card" id="pubiloAuthCard"></div>
                 </div>
             </div>
         `;
@@ -148,18 +148,18 @@
         const shell = overlay.querySelector('.pubilo-auth-shell');
         const brand = overlay.querySelector('.pubilo-auth-brand');
         const card = overlay.querySelector('#pubiloAuthCard');
+        const rightContainer = overlay.querySelector('#pubiloRightContainer');
 
-        overlay.classList.remove('pubilo-auth-overlay--billing-gate');
-        shell?.classList.remove('pubilo-auth-shell--billing-gate');
-        shell?.classList.remove('pubilo-auth-shell--payment-only');
-        card?.classList.remove('pubilo-auth-card--billing-gate');
-        card?.classList.remove('pubilo-auth-card--payment-only');
+        overlay.classList.remove('pubilo-auth-overlay--billing-gate', 'pubilo-auth-overlay--onboarding');
+        shell?.classList.remove('pubilo-auth-shell--billing-gate', 'pubilo-auth-shell--payment-only', 'pubilo-auth-shell--onboarding');
+        card?.classList.remove('pubilo-auth-card--billing-gate', 'pubilo-auth-card--payment-only', 'pubilo-auth-card--onboarding');
 
         if (variant === 'billing-gate') {
             overlay.classList.add('pubilo-auth-overlay--billing-gate');
             shell?.classList.add('pubilo-auth-shell--billing-gate');
             card?.classList.add('pubilo-auth-card--billing-gate');
             if (brand) brand.style.display = 'none';
+            if (rightContainer) rightContainer.style.flex = '1';
             return;
         }
 
@@ -167,10 +167,21 @@
             shell?.classList.add('pubilo-auth-shell--payment-only');
             card?.classList.add('pubilo-auth-card--payment-only');
             if (brand) brand.style.display = 'none';
+            if (rightContainer) rightContainer.style.flex = '1';
+            return;
+        }
+
+        if (variant === 'onboarding') {
+            overlay.classList.add('pubilo-auth-overlay--onboarding');
+            shell?.classList.add('pubilo-auth-shell--onboarding');
+            card?.classList.add('pubilo-auth-card--onboarding');
+            if (brand) brand.style.display = 'none';
+            if (rightContainer) rightContainer.style.flex = '1';
             return;
         }
 
         if (brand) brand.style.display = '';
+        if (rightContainer) rightContainer.style.flex = '4.5';
     }
 
     function renderLoginView(message) {
