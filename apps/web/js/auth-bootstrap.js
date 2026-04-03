@@ -112,32 +112,14 @@
                         <span style="font-size:24px; font-weight:700; color:white; font-family:'Montserrat', sans-serif; letter-spacing:-0.5px;">Pubilo</span>
                     </div>
 
-                    <!-- Illustration -->
-                    <div style="flex:1; display:flex; align-items:center; justify-content:center;">
-                        <svg width="260" height="260" viewBox="0 0 300 300" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <circle cx="150" cy="150" r="120" fill="#0348c4" opacity="0.4" />
-                          <path d="M40 180 Q80 120 160 160 T280 140" stroke="#003594" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
-                          <rect x="80" y="60" width="140" height="180" rx="12" fill="#e0e8f5" transform="rotate(-15 150 150)" />
-                          <rect x="70" y="50" width="140" height="180" rx="12" fill="#ffffff" transform="rotate(-15 150 150)" />
-                          <rect x="120" y="35" width="40" height="15" rx="4" fill="#a5b9d9" transform="rotate(-15 150 150)" />
-                          <rect x="110" y="45" width="60" height="15" rx="4" fill="#809bc4" transform="rotate(-15 150 150)" />
-                          <path d="M90 100 L105 115 L140 80" stroke="#1062fe" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-15 150 150)" />
-                          <line x1="150" y1="100" x2="190" y2="100" stroke="#a5b9d9" stroke-width="6" stroke-linecap="round" transform="rotate(-15 150 150)" />
-                          <path d="M100 130 L120 150 M120 130 L100 150" stroke="#1062fe" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-15 150 150)" />
-                          <line x1="150" y1="140" x2="190" y2="140" stroke="#a5b9d9" stroke-width="6" stroke-linecap="round" transform="rotate(-15 150 150)" />
-                          <path d="M90 180 L105 195 L140 160" stroke="#1062fe" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-15 150 150)" />
-                          <line x1="150" y1="180" x2="190" y2="180" stroke="#a5b9d9" stroke-width="6" stroke-linecap="round" transform="rotate(-15 150 150)" />
-                        </svg>
-                    </div>
-
-                    <!-- Welcome Text -->
-                    <div style="margin-top:auto;">
-                        <h1 style="font-size:36px; font-weight:500; margin-bottom:16px; color:white;">Welcome!</h1>
-                        <p style="font-size:16px; opacity:0.9; margin-bottom:24px; line-height:1.6; color:white;">Get a real intranet on top of your Office 365<br>environment, with Pubilo.</p>
-                        <div style="display:flex; gap:12px;">
-                          <div style="width:10px; height:10px; border-radius:50%; background:white;"></div>
-                          <div style="width:10px; height:10px; border-radius:50%; border:1px solid white;"></div>
-                          <div style="width:10px; height:10px; border-radius:50%; border:1px solid white;"></div>
+                    <!-- Welcome Text at Bottom -->
+                    <div style="margin-top:auto;" id="pubiloBrandTextWrap">
+                        <h1 style="font-size:52px; font-weight:800; margin-bottom:20px; color:white; line-height:1.15; letter-spacing:-1.5px; font-family:'Montserrat', sans-serif;">Work Smarter.<br>Organize Faster.<br>Manage Anywhere.</h1>
+                        <p style="font-size:16px; opacity:0.85; margin-bottom:40px; line-height:1.6; color:white; max-width: 440px; font-weight: 500; font-family:'Montserrat', sans-serif;">From quick team updates to full-length policies, our powerful platform lets you collaborate seamlessly across devices.</p>
+                        <div style="display:flex; gap:12px; align-items:center;">
+                          <div style="width:32px; height:6px; border-radius:6px; background:white;"></div>
+                          <div style="width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.3);"></div>
+                          <div style="width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.3);"></div>
                         </div>
                     </div>
                 </div>
@@ -185,9 +167,8 @@
             card?.classList.add('pubilo-auth-card--onboarding');
             if (brand) {
                 brand.style.display = '';
-                brand.querySelector('h1').innerText = "Upgrade Your\nWorkspace.";
-                brand.querySelector('p').innerHTML = "Select a plan that fits your team's needs.<br>Start managing everything in one place.";
-                // Change illustration to something billing-related (update SVG colors etc if desired, but for now just text update)
+                brand.querySelector('h1').innerHTML = "Upgrade Your<br>Workspace.";
+                brand.querySelector('p').innerHTML = "Select a plan that fits your team's needs.<br>Start managing everything in one place with Pubilo.";
             }
             if (rightContainer) {
                 rightContainer.style.flex = '5';
@@ -198,8 +179,8 @@
 
         if (brand) {
             brand.style.display = '';
-            brand.querySelector('h1').innerText = "Welcome!";
-            brand.querySelector('p').innerHTML = "Get a real intranet on top of your Office 365<br>environment, with Pubilo.";
+            brand.querySelector('h1').innerHTML = "Work Smarter.<br>Organize Faster.<br>Manage Anywhere.";
+            brand.querySelector('p').innerHTML = "From quick team updates to full-length policies, our powerful platform lets you collaborate seamlessly across devices.";
         }
         if (rightContainer) rightContainer.style.flex = '4.5';
     }
@@ -278,7 +259,7 @@
     function renderOnboardingView(profile) {
         const overlay = ensureOverlay();
         setAppShellAuthenticated(false);
-        setOverlayVariant('default');
+        setOverlayVariant('onboarding');
         overlay.classList.remove('is-hidden');
         writeAuthFlowState('onboarding');
         const card = overlay.querySelector('#pubiloAuthCard');
