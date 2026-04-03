@@ -94,9 +94,20 @@
         overlay.innerHTML = `
             <div class="pubilo-auth-shell">
                 <div class="pubilo-auth-brand">
-                    <span class="pubilo-auth-kicker">Pubilo Workspace</span>
-                    <h1>ล็อกอินก่อนใช้งานระบบ</h1>
-                    <p id="pubiloAuthSubtitle">LINE login + workspace + billing ถูกเปิดใช้แล้ว</p>
+                    <div style="flex: 1; display:flex; flex-direction:column; justify-content:center;">
+                        <h1>Fast, Efficient and Productive</h1>
+                        <p id="pubiloAuthSubtitle">เข้าสู่ระบบจัดการ Pubilo Workspace ปลอดภัย รวดเร็ว เตรียมพร้อมทุกการทำงานสำหรับองค์กรของคุณ</p>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:14px; font-weight:500; margin-top:40px;">
+                        <div style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <span style="font-size:18px;">🇹🇭</span> <span>Thai</span> <span style="font-size:10px; opacity:0.6;">▾</span>
+                        </div>
+                        <div style="display:flex; gap:20px;">
+                            <a href="#" style="color:#3b82f6; text-decoration:none;">Terms</a>
+                            <a href="#" style="color:#3b82f6; text-decoration:none;">Plans</a>
+                            <a href="#" style="color:#3b82f6; text-decoration:none;">Contact Us</a>
+                        </div>
+                    </div>
                 </div>
                 <div class="pubilo-auth-card" id="pubiloAuthCard"></div>
             </div>
