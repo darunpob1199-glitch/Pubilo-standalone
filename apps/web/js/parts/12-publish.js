@@ -937,8 +937,25 @@ function handleImmediatePublishSuccess(mode, els = null) {
 
 window.handleImmediatePublishSuccess = handleImmediatePublishSuccess;
 
+const DEFAULT_PUBLISH_TIMEOUT_MS = Number(window.__PUBILO_PUBLISH_TIMEOUT_MS || 120000);
+window.__PUBILO_PUBLISH_TIMEOUT_MS = DEFAULT_PUBLISH_TIMEOUT_MS;
+
+function createPublishTimeoutError(timeoutMs = DEFAULT_PUBLISH_TIMEOUT_MS) {
+    const timeoutSeconds = Math.max(1, Math.round(Number(timeoutMs) / 1000));
+    const error = new Error(
+        `ระบบใช้เวลาตรวจสถานะโพสต์นานกว่า ${timeoutSeconds} วินาที\nโพสต์อาจสำเร็จไปแล้ว กรุณาตรวจที่หน้า Published หรือบนหน้าเพจก่อนกดโพสต์ซ้ำ`,
+    );
+    error.name = "PublishRequestTimeoutError";
+    error.code = "PUBLISH_TIMEOUT";
+    return error;
+}
+
+function isPublishTimeoutError(error) {
+    return error?.name === "PublishRequestTimeoutError" || error?.code === "PUBLISH_TIMEOUT";
+}
+
 async function postPublishWithNetworkRecovery(payload, options = {}) {
-    const timeoutMs = Number(options.timeoutMs || 35000);
+    const timeoutMs = Number(options.timeoutMs || DEFAULT_PUBLISH_TIMEOUT_MS);
 
     const runAttempt = async (useNativeDirect) => {
         const controller = new AbortController();
@@ -961,7 +978,7 @@ async function postPublishWithNetworkRecovery(payload, options = {}) {
             });
         } catch (error) {
             if (error?.name === "AbortError") {
-                throw new Error("คำขอโพสต์ใช้เวลานานเกิน 35 วินาที ระบบยกเลิกให้แล้ว ลองอีกครั้ง");
+                throw createPublishTimeoutError(timeoutMs);
             }
             throw error;
         } finally {
@@ -1721,6 +1738,7 @@ function setupPublishHandler(mode) {
             }
         } catch (err) {
             const errMessage = String(err?.message || err || "");
+            const isPublishTimeout = isPublishTimeoutError(err);
             const isSessionExpiredError =
                 /session has been invalidated|error validating access token|facebook session หมดอายุ|errorcode["']?\s*:\s*190/i.test(errMessage);
             if (isSessionExpiredError && !publishSessionRefreshRetryByMode[mode]) {
@@ -1770,7 +1788,10 @@ function setupPublishHandler(mode) {
             console.error("[FEWFEED] Error:", errMessage);
             const isNetworkFetchError =
                 /failed to fetch|networkerror|network request failed|load failed/i.test(errMessage);
-            if (isNetworkFetchError) {
+            if (isPublishTimeout) {
+                showPublishToast("คำขอโพสต์นานกว่าปกติ โพสต์อาจสำเร็จไปแล้ว กรุณาตรวจที่หน้า Published ก่อนกดซ้ำ", "warning");
+                alert(errMessage);
+            } else if (isNetworkFetchError) {
                 alert("เชื่อมต่อ API ไม่สำเร็จ (network) กรุณาลองใหม่อีกครั้ง");
             } else if (isSessionExpiredError) {
                 alert("Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง");
