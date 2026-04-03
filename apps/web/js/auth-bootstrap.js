@@ -467,7 +467,7 @@
         const features = {
             test_1: ['✓ ทดสอบระบบ', '✓ 30 วัน'],
             monthly_500: ['✓ โพสต์ไม่จำกัด', '✓ ตั้งเวลาอัตโนมัติ', '✓ จัดการคิวโพสต์', '✓ รองรับหลายเพจ'],
-            yearly_4499: ['✓ ทุกอย่างใน Monthly', '✓ ประหยัด ฿1,501 ต่อปี', '✓ Priority Support', '✓ Early Access ฟีเจอร์ใหม่'],
+            yearly_4499: ['✓ ทุกอย่างใน Monthly', '✓ ประหยัด ฿589 ต่อปี', '✓ Priority Support', '✓ Early Access ฟีเจอร์ใหม่'],
         };
 
         const visiblePlans = (() => {
@@ -496,7 +496,7 @@
             const intervalTag = plan.code === 'test_1' ? 'TEST' : (isYearly ? 'YEARLY' : 'MONTHLY');
             const helperText = plan.code === 'test_1'
                 ? 'ใช้ทดสอบ flow จ่ายเงินจริง'
-                : (isYearly ? 'คุ้มที่สุด ประหยัด 25%' : 'เริ่มใช้งานได้ทันที');
+                : (isYearly ? 'คุ้มกว่ารายเดือน ประหยัด ฿589' : 'เริ่มใช้งานได้ทันที');
             const featureIntro = plan.code === 'yearly_4499'
                 ? 'สิ่งที่จะได้รับเหมือนรายเดือน และ:'
                 : isTestPlan
@@ -514,7 +514,7 @@
 
             return `
                 <label class="pubilo-upgrade-card ${isSelected ? 'selected' : ''} ${isTestPlan ? 'is-compact' : ''}" data-plan-card="${plan.code}">
-                    ${isYearly ? '<div class="pubilo-upgrade-badge">ประหยัด 25%</div>' : ''}
+                    ${isYearly ? '<div class="pubilo-upgrade-badge">ประหยัด ฿589</div>' : ''}
                     <input type="radio" name="selectPlanCode" value="${plan.code}" ${isSelected ? 'checked' : ''} />
                     <div class="pubilo-upgrade-top">
                         <span class="pubilo-upgrade-title">${plan.label}</span>

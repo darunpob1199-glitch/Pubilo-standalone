@@ -21,8 +21,8 @@
     };
 
     const PLAN_META = {
-        monthly_500: { label: 'รายเดือน', price: 500, intervalText: 'รายเดือน' },
-        yearly_4499: { label: 'รายปี', price: 4499, intervalText: 'รายปี' },
+        monthly_500: { label: 'รายเดือน', price: 299, intervalText: 'รายเดือน' },
+        yearly_4499: { label: 'รายปี', price: 2999, intervalText: 'รายปี' },
         test_1: { label: 'แพ็กเกจทดสอบ', price: 1, intervalText: 'ทดลอง' },
     };
 
@@ -526,7 +526,7 @@
             return;
         }
 
-        const planLabel = planCode === 'monthly_500' ? 'รายเดือน ฿500' : (planCode === 'yearly_4499' ? 'รายปี ฿4,499' : planCode);
+        const planLabel = planCode === 'monthly_500' ? 'รายเดือน ฿299' : (planCode === 'yearly_4499' ? 'รายปี ฿2,999' : planCode);
         if (!options?.skipConfirm && !confirm(`ยืนยันเลือกแพ็กเกจ ${planLabel} ?`)) return;
 
         const originalText = triggerButton?.textContent || '';

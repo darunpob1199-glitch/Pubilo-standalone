@@ -75,8 +75,8 @@ LINE Login ต้องใช้ Callback URL ตรงกับของจร�
 
 ตอนนี้ระบบ seed plan ไว้แล้ว
 
-- `monthly_500` = 500 บาท / 30 วัน
-- `yearly_4499` = 4,499 บาท / 365 วัน
+- `monthly_500` = 299 บาท / 30 วัน
+- `yearly_4499` = 2,999 บาท / 365 วัน
 
 ตอนนี้ยังเป็น `manual pending payment order`
 
