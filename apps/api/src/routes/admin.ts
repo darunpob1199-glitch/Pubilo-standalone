@@ -1,7 +1,15 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import type { Env } from '../types';
 
 const app = new Hono<{ Bindings: Env }>();
+
+// ── CORS for admin dashboard (deployed on different domain) ──────────
+app.use('*', cors({
+    origin: '*',
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // ── Admin auth middleware ────────────────────────────────────────────
 app.use('*', async (c, next) => {

@@ -7,9 +7,13 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        target: 'https://pubilo-api-dev.lungnuek.workers.dev',
         changeOrigin: true,
+        secure: true,
       },
     },
+  },
+  define: {
+    __API_BASE__: JSON.stringify(process.env.VITE_API_BASE || ''),
   },
 })

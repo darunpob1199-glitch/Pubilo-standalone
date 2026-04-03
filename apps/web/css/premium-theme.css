@@ -856,6 +856,13 @@ input[type="checkbox"] {
     box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15), 0 20px 48px rgba(76, 29, 149, 0.1);
 }
 
+.pubilo-upgrade-card.is-compact {
+    max-width: 360px;
+    justify-self: center;
+    padding: 28px 28px 24px;
+    gap: 16px;
+}
+
 .pubilo-upgrade-card input {
     display: none;
 }
@@ -885,6 +892,10 @@ input[type="checkbox"] {
     font-weight: 900;
     color: #111827;
     letter-spacing: -0.02em;
+}
+
+.pubilo-upgrade-card.is-compact .pubilo-upgrade-title {
+    font-size: 1.28rem;
 }
 
 .pubilo-upgrade-tag {
@@ -920,6 +931,10 @@ input[type="checkbox"] {
     font-weight: 900;
 }
 
+.pubilo-upgrade-card.is-compact .pubilo-upgrade-price-row strong {
+    font-size: clamp(2.8rem, 4vw, 3.4rem);
+}
+
 .pubilo-upgrade-price-suffix {
     color: #6b7280;
     font-size: 1rem;
@@ -944,6 +959,11 @@ input[type="checkbox"] {
     color: #374151;
     font-size: 1.02rem;
     min-height: 232px;
+}
+
+.pubilo-upgrade-card.is-compact .pubilo-upgrade-features {
+    min-height: auto;
+    gap: 0.75rem;
 }
 
 .pubilo-upgrade-feature-item {
@@ -989,6 +1009,11 @@ input[type="checkbox"] {
 .pubilo-upgrade-cta:hover {
     transform: translateY(-1px);
     box-shadow: 0 18px 40px rgba(109, 40, 217, 0.24);
+}
+
+.pubilo-upgrade-card.is-compact .pubilo-upgrade-cta {
+    min-height: 58px;
+    font-size: 1rem;
 }
 
 .pubilo-upgrade-helper {
@@ -1274,6 +1299,12 @@ input[type="checkbox"] {
     .pubilo-upgrade-card {
         padding: 32px 24px 24px;
         gap: 18px;
+    }
+
+    .pubilo-upgrade-card.is-compact {
+        max-width: none;
+        width: 100%;
+        padding: 28px 22px 22px;
     }
 
     .pubilo-upgrade-title {
