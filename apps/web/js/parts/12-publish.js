@@ -1805,12 +1805,21 @@ let lastSessionDrivenFetchKey = "";
 let selectedPageIndex = 0;
 let selectedTargetPageIds = [];
 let targetPageSearchQuery = "";
+let activePagesFetchPromise = null;
+let activePagesFetchKey = "";
+let lastPagesFetchAttemptKey = "";
+let lastPagesFetchAttemptAt = 0;
+let activeAdAccountsFetchPromise = null;
+let activeAdAccountsFetchKey = "";
+let lastAdAccountsFetchAttemptKey = "";
+let lastAdAccountsFetchAttemptAt = 0;
 const TARGET_PAGE_STORAGE_KEY = "fewfeed_targetPageIds";
 const PAGE_TOKEN_MAP_KEY = "fewfeed_pageTokenMap";
 const PAGE_SUMMARY_MAP_KEY = "fewfeed_pageSummaryMap";
 const PAGE_CACHE_USER_ID_KEY = "fewfeed_pageCacheUserId";
 const PRIMARY_PAGE_PLACEHOLDER_NAME = "เลือกเพจหลัก";
 const PRIMARY_PAGE_PLACEHOLDER_ID = "ยังไม่ได้เลือก";
+const EXTENSION_FETCH_COOLDOWN_MS = 5000;
 
 // Page selector elements
 const pageSelector = document.getElementById("pageSelector");
@@ -2723,27 +2732,50 @@ async function fetchAdAccounts(accessToken) {
         return "";
     }
 
+    const requestKey = `${String(localStorage.getItem("fewfeed_userId") || "").trim()}::${String(accessToken || "").trim()}`;
+    const now = Date.now();
+    if (activeAdAccountsFetchPromise && activeAdAccountsFetchKey === requestKey) {
+        return activeAdAccountsFetchPromise;
+    }
+    if (
+        lastAdAccountsFetchAttemptKey === requestKey &&
+        now - lastAdAccountsFetchAttemptAt < EXTENSION_FETCH_COOLDOWN_MS
+    ) {
+        return String(input.value || localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
+    }
+
+    lastAdAccountsFetchAttemptKey = requestKey;
+    lastAdAccountsFetchAttemptAt = now;
+
     const storedAdAccountId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
     if (!input.value && storedAdAccountId) {
         input.value = storedAdAccountId;
     }
 
-    try {
-        const adAccounts = await requestAdAccountsFromExtension(accessToken);
-        const nextId = setSelectedAdAccount(adAccounts);
-        console.log("[FEWFEED] Ad accounts loaded from extension:", adAccounts.length, "selected:", nextId);
-        return nextId;
-    } catch (error) {
-        console.warn("[FEWFEED] Failed to fetch ad accounts from extension:", error);
-        const fallbackId = String(input.value || storedAdAccountId || "").trim();
-        if (fallbackId) {
-            localStorage.setItem("fewfeed_selectedAdAccountId", fallbackId);
-            input.value = fallbackId;
-            return fallbackId;
+    activeAdAccountsFetchKey = requestKey;
+    activeAdAccountsFetchPromise = (async () => {
+        try {
+            const adAccounts = await requestAdAccountsFromExtension(accessToken);
+            const nextId = setSelectedAdAccount(adAccounts);
+            console.log("[FEWFEED] Ad accounts loaded from extension:", adAccounts.length, "selected:", nextId);
+            return nextId;
+        } catch (error) {
+            console.warn("[FEWFEED] Failed to fetch ad accounts from extension:", error);
+            const fallbackId = String(input.value || storedAdAccountId || "").trim();
+            if (fallbackId) {
+                localStorage.setItem("fewfeed_selectedAdAccountId", fallbackId);
+                input.value = fallbackId;
+                return fallbackId;
+            }
+            input.value = "";
+            return "";
+        } finally {
+            activeAdAccountsFetchPromise = null;
+            activeAdAccountsFetchKey = "";
         }
-        input.value = "";
-        return "";
-    }
+    })();
+
+    return activeAdAccountsFetchPromise;
 }
 
 async function getFreshPageTokenFromExtension(pageId, accessToken) {
@@ -3586,6 +3618,21 @@ document.addEventListener('visibilitychange', () => {
 
 // Fetch pages, preferring the live list from extension and falling back to D1.
 async function fetchPages(accessToken) {
+    const requestKey = `${String(localStorage.getItem("fewfeed_userId") || "").trim()}::${String(accessToken || "").trim()}`;
+    const now = Date.now();
+    if (activePagesFetchPromise && activePagesFetchKey === requestKey) {
+        return activePagesFetchPromise;
+    }
+    if (
+        lastPagesFetchAttemptKey === requestKey &&
+        now - lastPagesFetchAttemptAt < EXTENSION_FETCH_COOLDOWN_MS
+    ) {
+        console.log("[FEWFEED] Skipping repeated fetchPages during cooldown");
+        return;
+    }
+    lastPagesFetchAttemptKey = requestKey;
+    lastPagesFetchAttemptAt = now;
+
     const tokenType = accessToken?.startsWith("EAAChZC")
         ? "POST_TOKEN"
         : accessToken?.startsWith("EAABsbCS")
@@ -3598,60 +3645,68 @@ async function fetchPages(accessToken) {
         accessToken?.substring(0, 10) + "...",
     );
 
-    if (accessToken) {
+    activePagesFetchKey = requestKey;
+    activePagesFetchPromise = (async () => {
+        if (accessToken) {
+            try {
+                const extensionPages = await requestPagesFromExtension(accessToken);
+                if (Array.isArray(extensionPages) && extensionPages.length > 0) {
+                    mergeLoadedPageTokens(extensionPages, localStorage.getItem("fewfeed_userId") || "");
+                    renderPagesDropdown(extensionPages);
+                    fetchAdAccounts(accessToken);
+                    console.log("[FEWFEED] Pages loaded from extension:", extensionPages.length);
+                    return;
+                }
+            } catch (error) {
+                console.warn("[FEWFEED] Extension page fetch failed, falling back to D1:", error);
+            }
+        }
+
+        const currentUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+        const scopedCachedPages = getScopedCachedPages(currentUserId);
+        if (scopedCachedPages.length > 0) {
+            renderPagesDropdown(scopedCachedPages);
+            console.log("[FEWFEED] Pages loaded from scoped cache:", scopedCachedPages.length);
+            return;
+        }
+
+        if (currentUserId) {
+            console.warn("[FEWFEED] Active Facebook account has no scoped page cache; skipping unscoped D1 fallback");
+            renderPagesDropdown([]);
+            return;
+        }
+
+        // Fallback: pages from D1 database via Worker API
         try {
-            const extensionPages = await requestPagesFromExtension(accessToken);
-            if (Array.isArray(extensionPages) && extensionPages.length > 0) {
-                mergeLoadedPageTokens(extensionPages, localStorage.getItem("fewfeed_userId") || "");
-                renderPagesDropdown(extensionPages);
-                fetchAdAccounts(accessToken);
-                console.log("[FEWFEED] Pages loaded from extension:", extensionPages.length);
-                return;
+            const response = await fetch("/api/pages");
+            const data = await response.json();
+
+            if (data.success && data.pages && data.pages.length > 0) {
+                console.log("[FEWFEED] Loaded", data.pages.length, "pages from D1");
+
+                // Transform to format expected by renderPagesDropdown
+                const pages = data.pages.map(p => ({
+                    id: p.id,
+                    name: p.name || 'Unknown Page',
+                    picture: p.picture || { data: { url: '' } },
+                    color: p.color || '#f59e0b',
+                }));
+
+                renderPagesDropdown(pages);
+            } else {
+                console.log("[FEWFEED] No pages found in D1");
+                hydratePageFromLocalStorageFallback();
             }
         } catch (error) {
-            console.warn("[FEWFEED] Extension page fetch failed, falling back to D1:", error);
-        }
-    }
-
-    const currentUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
-    const scopedCachedPages = getScopedCachedPages(currentUserId);
-    if (scopedCachedPages.length > 0) {
-        renderPagesDropdown(scopedCachedPages);
-        console.log("[FEWFEED] Pages loaded from scoped cache:", scopedCachedPages.length);
-        return;
-    }
-
-    if (currentUserId) {
-        console.warn("[FEWFEED] Active Facebook account has no scoped page cache; skipping unscoped D1 fallback");
-        renderPagesDropdown([]);
-        return;
-    }
-
-    // Fallback: pages from D1 database via Worker API
-    try {
-        const response = await fetch("/api/pages");
-        const data = await response.json();
-
-        if (data.success && data.pages && data.pages.length > 0) {
-            console.log("[FEWFEED] Loaded", data.pages.length, "pages from D1");
-
-            // Transform to format expected by renderPagesDropdown
-            const pages = data.pages.map(p => ({
-                id: p.id,
-                name: p.name || 'Unknown Page',
-                picture: p.picture || { data: { url: '' } },
-                color: p.color || '#f59e0b',
-            }));
-
-            renderPagesDropdown(pages);
-        } else {
-            console.log("[FEWFEED] No pages found in D1");
+            console.error("[FEWFEED] Failed to fetch pages from API:", error);
             hydratePageFromLocalStorageFallback();
         }
-    } catch (error) {
-        console.error("[FEWFEED] Failed to fetch pages from API:", error);
-        hydratePageFromLocalStorageFallback();
-    }
+    })().finally(() => {
+        activePagesFetchPromise = null;
+        activePagesFetchKey = "";
+    });
+
+    return activePagesFetchPromise;
 }
 
 // Helper: Show cookie status with Token/Cookie/PostToken indicators in header
