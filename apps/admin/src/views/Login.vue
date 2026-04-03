@@ -31,369 +31,394 @@ async function handleLogin() {
 </script>
 
 <template>
-  <div class="login-wrapper">
-    <div class="login-split">
+  <div class="split-login-container">
+    <!-- Left Blue Panel -->
+    <div class="left-panel">
       
-      <!-- Left Side -->
-      <div class="login-hero fade-in">
-        <div class="hero-content">
-          <h1>Fast, Efficient and Productive</h1>
-          <p>เข้าสู่ระบบจัดการแอดมิน Pubilo Workspace ปลอดภัย รวดเร็ว เตรียมพร้อมทุกการทำงานสำหรับองค์กรของคุณ</p>
-        </div>
-        
-        <div class="hero-footer">
-          <div class="lang-selector">
-            <span class="flag">🇹🇭</span>
-            <span>Thai</span>
-            <span class="dropdown-icon">▾</span>
-          </div>
-          <div class="footer-links">
-            <a href="#">Terms</a>
-            <a href="#">Plans</a>
-            <a href="#">Contact Us</a>
-          </div>
-        </div>
+      <!-- Top Left Logo -->
+      <div class="logo">
+        <svg width="24" height="32" viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M0 0 V20 C0 26.6274 5.37258 32 12 32 C18.6274 32 24 26.6274 24 20 V8 H16 V20 C16 22.2091 14.2091 24 12 24 C9.79086 24 8 22.2091 8 20 V0 H0 Z" fill="white"/>
+        </svg>
+        <span class="logo-text">PubiloAdmin</span>
       </div>
 
-      <!-- Right Side -->
-      <div class="login-form-container">
-        <div class="login-card fade-in" style="animation-delay: 0.1s;">
-          <div class="form-header">
-            <div class="logo-box">⚡</div>
-            <h2>Pubilo Admin</h2>
-            <p>Admin Dashboard Access</p>
-          </div>
+      <!-- Illustration Area -->
+      <div class="illustration-wrapper">
+        <svg width="260" height="260" viewBox="0 0 300 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Background blobs -->
+          <circle cx="150" cy="150" r="120" fill="#0348c4" opacity="0.4" />
+          <path d="M40 180 Q80 120 160 160 T280 140" stroke="#003594" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+          <!-- Clipboard -->
+          <rect x="80" y="60" width="140" height="180" rx="12" fill="#e0e8f5" transform="rotate(-15 150 150)" />
+          <rect x="70" y="50" width="140" height="180" rx="12" fill="#ffffff" transform="rotate(-15 150 150)" />
+          <!-- Clip top -->
+          <rect x="120" y="35" width="40" height="15" rx="4" fill="#a5b9d9" transform="rotate(-15 150 150)" />
+          <rect x="110" y="45" width="60" height="15" rx="4" fill="#809bc4" transform="rotate(-15 150 150)" />
+          <!-- Checkmarks -->
+          <path d="M90 100 L105 115 L140 80" stroke="#1062fe" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-15 150 150)" />
+          <line x1="150" y1="100" x2="190" y2="100" stroke="#a5b9d9" stroke-width="6" stroke-linecap="round" transform="rotate(-15 150 150)" />
+          
+          <path d="M100 130 L120 150 M120 130 L100 150" stroke="#1062fe" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-15 150 150)" />
+          <line x1="150" y1="140" x2="190" y2="140" stroke="#a5b9d9" stroke-width="6" stroke-linecap="round" transform="rotate(-15 150 150)" />
+          
+          <path d="M90 180 L105 195 L140 160" stroke="#1062fe" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-15 150 150)" />
+          <line x1="150" y1="180" x2="190" y2="180" stroke="#a5b9d9" stroke-width="6" stroke-linecap="round" transform="rotate(-15 150 150)" />
+        </svg>
+      </div>
 
-          <div v-if="error" class="error-msg">{{ error }}</div>
-
-          <form @submit.prevent="handleLogin">
-            <div class="input-group">
-              <label for="admin-key">Admin Key</label>
-              <div class="input-wrapper">
-                <input
-                  id="admin-key"
-                  v-model="key"
-                  type="password"
-                  class="custom-input"
-                  placeholder="Enter your admin key..."
-                  autofocus
-                />
-              </div>
-              <p class="input-hint">Use your provided secure 16-character key.</p>
-            </div>
-
-            <button type="submit" class="btn-submit" :disabled="loading">
-              {{ loading ? 'Verifying...' : 'Sign In' }}
-            </button>
-            
-            <div class="form-footer">
-              Don't have a key? <a href="#">Contact Support</a>
-            </div>
-          </form>
+      <!-- Welcome Text -->
+      <div class="welcome-text">
+        <h1>Welcome!</h1>
+        <p>Get a real admin dashboard entirely on top of<br>your Pubilo environment, with full control.</p>
+        <div class="dots">
+          <span class="dot active"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
         </div>
       </div>
 
     </div>
+
+    <!-- Right White Panel -->
+    <div class="right-panel">
+      <div class="form-container">
+        <h2 class="form-heading">Log In</h2>
+        <p class="form-subheading">
+          Don't have an account? <a href="#" class="primary-link">Contact Support</a><br>
+          <span class="time-hint">It will take less than a minute.</span>
+        </p>
+
+        <div v-if="error" class="error-msg">{{ error }}</div>
+
+        <form @submit.prevent="handleLogin" class="login-form">
+          
+          <!-- Username Input (Disabled/Visual Only) -->
+          <div class="input-group">
+            <input type="text" class="line-input" value="Root Administrator" disabled />
+            <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a0aabf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+          </div>
+
+          <!-- Password / Admin Key Input -->
+          <div class="input-group">
+            <input 
+              type="password" 
+              class="line-input" 
+              v-model="key" 
+              placeholder="Admin Key" 
+              required 
+              autofocus 
+            />
+            <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a0aabf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="submit-btn" :disabled="loading">
+              {{ loading ? 'Signing...' : 'Sign in' }}
+            </button>
+            <label class="remember-checkbox">
+              <input type="checkbox" checked />
+              <span class="checkmark"></span>
+              Remember key
+            </label>
+          </div>
+
+          <div class="forget-link-wrapper">
+            <a href="#" class="primary-link font-normal">Forget your admin key?</a>
+          </div>
+
+        </form>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');
 
-.login-wrapper {
-  min-height: 100vh;
-  width: 100vw;
-  background: #f8fbff;
+.split-login-container {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  box-sizing: border-box;
-  font-family: 'Inter', sans-serif;
+  width: 100vw;
+  height: 100vh;
+  font-family: 'Montserrat', sans-serif;
+  background: white;
   position: absolute;
   top: 0;
   left: 0;
   z-index: 1000;
 }
 
-.login-split {
-  width: 100%;
-  max-width: 1200px;
-  height: 800px;
-  max-height: 90vh;
-  background: #ffffff;
-  border-radius: 32px;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.02);
-  display: flex;
-  overflow: hidden;
-  position: relative;
-}
-
-/* Left Hero Side */
-.login-hero {
-  flex: 1;
-  position: relative;
-  padding: 60px;
+/* Left Panel */
+.left-panel {
+  flex: 5.5;
+  background-color: #0f62fe; /* Upteamist vibrant blue */
+  color: white;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  background: 
-    radial-gradient(circle at 10% 20%, rgba(200, 230, 255, 0.4) 0%, transparent 60%),
-    radial-gradient(circle at 90% 80%, rgba(210, 220, 255, 0.5) 0%, transparent 60%),
-    #ffffff;
-  z-index: 1;
+  padding: 40px;
+  position: relative;
   overflow: hidden;
 }
 
-.login-hero::before {
-  content: '';
-  position: absolute;
-  top: -20%;
-  left: -20%;
-  width: 140%;
-  height: 140%;
-  background: 
-    radial-gradient(circle at center, rgba(160, 210, 255, 0.15) 0%, transparent 50%),
-    conic-gradient(from 180deg at 50% 50%, rgba(130, 200, 255, 0.1) 0deg, rgba(200, 230, 255, 0.1) 180deg, transparent 360%);
-  filter: blur(40px);
-  z-index: -1;
-  pointer-events: none;
-}
-
-.hero-content {
-  margin-top: auto;
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: auto;
-  padding-right: 40px;
 }
 
-.hero-content h1 {
+.logo-text {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.illustration-wrapper {
+  margin: 0 auto;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.welcome-text {
+  margin-top: auto;
+  margin-bottom: 20px;
+  padding-left: 20px;
+}
+
+.welcome-text h1 {
   font-size: 42px;
-  font-weight: 800;
-  color: #111827;
-  line-height: 1.15;
-  margin-bottom: 24px;
-  letter-spacing: -1px;
-}
-
-.hero-content p {
-  font-size: 16px;
-  color: #4b5563;
-  line-height: 1.6;
-  max-width: 400px;
-}
-
-.hero-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 14px;
   font-weight: 500;
+  margin: 0 0 16px 0;
+  letter-spacing: -0.5px;
 }
 
-.lang-selector {
+.welcome-text p {
+  font-size: 15px;
+  line-height: 1.6;
+  margin: 0 0 32px 0;
+  opacity: 0.9;
+}
+
+.dots {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #111827;
-  cursor: pointer;
+  gap: 12px;
 }
 
-.flag { font-size: 18px; }
-.dropdown-icon { font-size: 10px; opacity: 0.6; }
-
-.footer-links {
-  display: flex;
-  gap: 20px;
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid white;
+  background: transparent;
 }
 
-.footer-links a {
-  color: #3b82f6;
-  text-decoration: none;
-  transition: opacity 0.2s;
+.dot.active {
+  background: white;
 }
 
-.footer-links a:hover {
-  opacity: 0.7;
-}
-
-/* Right Form Side */
-.login-form-container {
-  flex: 0 0 540px;
-  background: #f8fafc;
+/* Right Panel */
+.right-panel {
+  flex: 4.5;
+  background-color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px;
 }
 
-.login-card {
+.form-container {
   width: 100%;
   max-width: 400px;
-  background: #ffffff;
-  border-radius: 24px;
-  padding: 48px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.03);
-  border: 1px solid rgba(0,0,0,0.02);
+  padding: 20px;
 }
 
-.form-header {
-  margin-bottom: 40px;
-}
-
-.logo-box {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #0ba360 0%, #3cba92 100%);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 4px 12px rgba(11, 163, 96, 0.2);
-}
-
-.form-header h2 {
-  font-size: 28px;
-  font-weight: 700;
-  color: #111827;
-  margin-bottom: 6px;
-}
-
-.form-header p {
-  color: #6b7280;
-  font-size: 14px;
-}
-
-.error-msg {
-  background: #fef2f2;
-  color: #ef4444;
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 13px;
+.form-heading {
+  font-size: 32px;
   font-weight: 500;
-  margin-bottom: 24px;
-  border: 1px solid #fee2e2;
+  color: #0f62fe;
+  margin: 0 0 16px 0;
 }
 
-.input-group {
-  margin-bottom: 28px;
-}
-
-.input-group label {
-  display: block;
+.form-subheading {
   font-size: 14px;
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 8px;
+  color: #697077;
+  margin: 0 0 40px 0;
+  line-height: 1.6;
 }
 
-.input-wrapper {
-  position: relative;
-}
-
-.custom-input {
-  width: 100%;
-  padding: 14px 16px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  font-size: 15px;
-  color: #111827;
-  box-sizing: border-box;
-  transition: all 0.2s ease;
-  outline: none;
-}
-
-.custom-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
-}
-
-.custom-input::placeholder {
-  color: #9ca3af;
-}
-
-.input-hint {
-  font-size: 12px;
-  color: #9ca3af;
-  margin-top: 8px;
-}
-
-.btn-submit {
-  width: 100%;
-  padding: 16px;
-  background: #0052ff;
-  color: #ffffff;
-  border: none;
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 14px rgba(0, 82, 255, 0.3);
-}
-
-.btn-submit:hover:not(:disabled) {
-  background: #0040cc;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(0, 82, 255, 0.4);
-}
-
-.btn-submit:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.form-footer {
-  margin-top: 24px;
-  text-align: center;
-  font-size: 14px;
-  color: #6b7280;
-}
-
-.form-footer a {
-  color: #3b82f6;
-  font-weight: 500;
+.primary-link {
+  color: #0f62fe;
   text-decoration: none;
+  font-weight: 600;
 }
 
-.form-footer a:hover {
+.primary-link:hover {
   text-decoration: underline;
 }
 
-.fade-in {
-  animation: fadeIn 0.6s ease-out forwards;
-  opacity: 0;
+.font-normal {
+  font-weight: 500;
+  font-size: 14px;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+.time-hint {
+  color: #a2a9b0;
+  font-size: 13px;
 }
 
-@media (max-width: 992px) {
-  .login-split {
+.error-msg {
+  background: #fff1f1;
+  color: #da1e28;
+  padding: 12px;
+  border-radius: 4px;
+  border: 1px solid #ffb3b8;
+  margin-bottom: 24px;
+  font-size: 14px;
+}
+
+.input-group {
+  position: relative;
+  margin-bottom: 32px;
+}
+
+.line-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid #d1d5db;
+  padding: 12px 0;
+  font-size: 15px;
+  color: #111827;
+  background: transparent;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.line-input:focus {
+  border-bottom-color: #0f62fe;
+}
+
+.line-input::placeholder {
+  color: #a0aabf;
+  font-weight: 400;
+}
+
+.line-input:disabled {
+  color: #a0aabf;
+}
+
+.input-icon {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 40px;
+  margin-bottom: 24px;
+}
+
+.submit-btn {
+  background-color: #0f62fe;
+  color: white;
+  border: none;
+  padding: 14px 32px;
+  border-radius: 4px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.submit-btn:hover {
+  background-color: #0353e9;
+}
+
+.submit-btn:disabled {
+  background-color: #87b2ff;
+  cursor: not-allowed;
+}
+
+/* Custom Checkbox */
+.remember-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #878d96;
+}
+
+.remember-checkbox input {
+  display: none;
+}
+
+.checkmark {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #c6cace;
+  border-radius: 2px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.remember-checkbox input:checked ~ .checkmark {
+  background-color: #0f62fe;
+  border-color: #0f62fe;
+}
+
+.remember-checkbox input:checked ~ .checkmark::after {
+  content: '';
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  margin-bottom: 2px;
+}
+
+.forget-link-wrapper {
+  text-align: center;
+}
+
+/* Responsiveness */
+@media (max-width: 900px) {
+  .split-login-container {
     flex-direction: column;
-    height: auto;
-    max-height: none;
-    background: transparent;
-    box-shadow: none;
   }
-  
-  .login-hero {
-    border-radius: 32px 32px 0 0;
-    padding: 40px 24px;
-  }
-  
-  .login-form-container {
+  .left-panel {
     flex: none;
-    border-radius: 0 0 32px 32px;
-    padding: 32px 24px;
+    padding: 30px;
+    height: auto;
+    min-height: 380px;
   }
-  
-  .login-card {
-    padding: 32px 24px;
+  .right-panel {
+    flex: none;
+    height: auto;
+    padding: 40px 20px;
+  }
+  .illustration-wrapper {
+    display: none; /* hide illustration on small screens to save space */
+  }
+  .welcome-text {
+    margin-top: 40px;
   }
 }
 </style>
