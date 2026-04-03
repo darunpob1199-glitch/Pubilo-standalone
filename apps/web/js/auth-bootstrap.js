@@ -92,13 +92,23 @@
         // Keep overlay hidden by default to avoid flash on refresh for authenticated users.
         overlay.className = 'pubilo-auth-overlay is-hidden';
         overlay.innerHTML = `
-            <div class="pubilo-top-left-logo" style="position:absolute; top:32px; left:48px; display:flex; align-items:center; gap:12px; z-index:20;">
-                <svg width="32" height="32" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M50 15L85 32.5L50 50L15 32.5L50 15Z" fill="#3b82f6"/>
-                    <path d="M50 35L85 52.5L50 70L15 52.5L50 35Z" stroke="#93c5fd" stroke-width="8" fill="none"/>
-                    <path d="M50 55L85 72.5L50 90L15 72.5L50 55Z" stroke="#5b21b6" stroke-width="8" fill="none"/>
+            <div class="pubilo-top-left-logo" style="position:absolute; top:36px; left:48px; display:flex; align-items:center; gap:14px; z-index:20;">
+                <svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Bottom layer (Light Purple Outline) -->
+                    <path d="M50 68 L80 84 L50 100 L20 84 Z" stroke="#C084FC" stroke-width="8" stroke-linejoin="round"/>
+                    
+                    <!-- Middle layer (Grey-Blue Outline) -->
+                    <path d="M50 50 L80 66 L50 82 L20 66 Z" stroke="#94A3B8" stroke-width="8" stroke-linejoin="round"/>
+                    
+                    <!-- Top layer (Solid Purple 3D Box) -->
+                    <!-- Top Face -->
+                    <path d="M50 16 L84 34 L50 52 L16 34 Z" fill="#8B5CF6"/>
+                    <!-- Right Face -->
+                    <path d="M84 34 L50 52 L50 62 L84 44 Z" fill="#7C3AED"/>
+                    <!-- Left Face -->
+                    <path d="M16 34 L50 52 L50 62 L16 44 Z" fill="#A78BFA"/>
                 </svg>
-                <span style="font-size:22px; font-weight:600; color:#1e293b; letter-spacing:-0.5px;">pubilo</span>
+                <span style="font-size:28px; font-weight:700; color:#0f172a; letter-spacing:-0.5px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Pubilo</span>
             </div>
             <div class="pubilo-auth-shell" style="width:100%; max-width:1100px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:100vh;">
                 <div class="pubilo-auth-brand" style="flex:1; position:relative;">
