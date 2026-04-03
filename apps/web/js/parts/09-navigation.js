@@ -191,7 +191,7 @@ function showBillingPanel() {
     const bp = document.getElementById("billingPanel");
     if (bp) bp.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = "";
 }
 
 // News nav item click
