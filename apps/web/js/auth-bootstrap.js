@@ -80,12 +80,21 @@
 
         overlay.classList.remove('pubilo-auth-overlay--billing-gate');
         shell?.classList.remove('pubilo-auth-shell--billing-gate');
+        shell?.classList.remove('pubilo-auth-shell--payment-only');
         card?.classList.remove('pubilo-auth-card--billing-gate');
+        card?.classList.remove('pubilo-auth-card--payment-only');
 
         if (variant === 'billing-gate') {
             overlay.classList.add('pubilo-auth-overlay--billing-gate');
             shell?.classList.add('pubilo-auth-shell--billing-gate');
             card?.classList.add('pubilo-auth-card--billing-gate');
+            if (brand) brand.style.display = 'none';
+            return;
+        }
+
+        if (variant === 'payment-only') {
+            shell?.classList.add('pubilo-auth-shell--payment-only');
+            card?.classList.add('pubilo-auth-card--payment-only');
             if (brand) brand.style.display = 'none';
             return;
         }
@@ -201,7 +210,7 @@
 
     function renderPaymentView(orderId) {
         const overlay = ensureOverlay();
-        setOverlayVariant('default');
+        setOverlayVariant('payment-only');
         overlay.classList.remove('is-hidden');
         const card = overlay.querySelector('#pubiloAuthCard');
         const amount = state.latestPaymentOrder?.amount_thb || 0;
