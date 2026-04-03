@@ -44,13 +44,34 @@ function hasLineLoginConfig(env: Env) {
         && isNonEmptyString(env.LINE_LOGIN_CHANNEL_SECRET);
 }
 
+function sanitizeReturnTo(rawReturnTo: string | null | undefined, appOrigin: string) {
+    try {
+        const safeUrl = new URL(rawReturnTo || `${appOrigin}/`, appOrigin);
+        if (safeUrl.origin !== appOrigin) {
+            return `${appOrigin}/`;
+        }
+
+        if (safeUrl.pathname.startsWith('/api/')) {
+            const fallbackUrl = new URL('/', appOrigin);
+            fallbackUrl.search = safeUrl.search;
+            fallbackUrl.hash = safeUrl.hash;
+            return fallbackUrl.toString();
+        }
+
+        return safeUrl.toString();
+    } catch {
+        return `${appOrigin}/`;
+    }
+}
+
 app.get('/login/line', async (c) => {
     if (!hasLineLoginConfig(c.env)) {
         console.error('[auth] LINE login is not configured: missing LINE_LOGIN_CHANNEL_ID or LINE_LOGIN_CHANNEL_SECRET');
         return c.redirect(`${getAppOrigin(c.env, c.req.url)}/?auth_error=line_not_configured`);
     }
 
-    const returnTo = c.req.query('returnTo') || `${getAppOrigin(c.env, c.req.url)}/`;
+    const appOrigin = getAppOrigin(c.env, c.req.url);
+    const returnTo = sanitizeReturnTo(c.req.query('returnTo'), appOrigin);
     const state = crypto.randomUUID();
     const nonce = createLineNonce();
     const codeVerifier = createCodeVerifier();
@@ -205,7 +226,7 @@ app.get('/callback/line', async (c) => {
         const apiOrigin = getApiOrigin(c.env, c.req.url);
         setSessionCookie(c, session.rawToken, session.expiresAt, appOrigin, apiOrigin);
 
-        return c.redirect(stateRow.return_to || `${appOrigin}/`);
+        return c.redirect(sanitizeReturnTo(stateRow.return_to, appOrigin));
     } catch (error) {
         console.error('[auth] LINE callback failed:', error);
         return c.redirect(`${getAppOrigin(c.env, c.req.url)}/?auth_error=line_callback`);

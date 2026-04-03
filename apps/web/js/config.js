@@ -22,6 +22,13 @@ if (window.location.hostname === 'pubilo.com') {
     window.location.replace(appUrl);
 }
 
+if (window.location.pathname.startsWith('/api/')) {
+    const safeAppUrl = new URL('/', window.location.origin);
+    safeAppUrl.search = window.location.search;
+    safeAppUrl.hash = window.location.hash;
+    window.location.replace(safeAppUrl.toString());
+}
+
 const HOST_API_MAP = {
     'app.pubilo.com': 'https://api.pubilo.com',
     'pubilo-web-prod.pages.dev': 'https://pubilo-api-prod.lungnuek.workers.dev',

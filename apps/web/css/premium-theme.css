@@ -528,7 +528,8 @@ input[type="checkbox"] {
 /* --- AUTH UI --- */
 
 body:not(.pubilo-authenticated) > .header,
-body:not(.pubilo-authenticated) > .container {
+body:not(.pubilo-authenticated) > .container,
+body:not(.pubilo-authenticated) > .app-layout {
     display: none;
 }
 

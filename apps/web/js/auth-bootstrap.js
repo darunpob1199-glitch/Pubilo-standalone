@@ -83,6 +83,23 @@
         return messages[code] || 'เข้าสู่ระบบไม่สำเร็จ';
     }
 
+    function getSafeReturnToUrl() {
+        const currentUrl = new URL(window.location.href);
+        const safeUrl = new URL('/', window.location.origin);
+
+        if (!currentUrl.pathname.startsWith('/api/')) {
+            safeUrl.pathname = currentUrl.pathname || '/';
+        }
+
+        safeUrl.search = currentUrl.search;
+        safeUrl.hash = currentUrl.hash;
+        return safeUrl.toString();
+    }
+
+    function redirectToPublicEntry() {
+        window.location.replace(new URL('/', window.location.origin).toString());
+    }
+
     function setAppShellAuthenticated(isAuthenticated) {
         document.body.classList.toggle('pubilo-authenticated', !!isAuthenticated);
     }
@@ -192,7 +209,7 @@
         overlay.classList.remove('is-hidden');
         writeAuthFlowState('login');
         const card = overlay.querySelector('#pubiloAuthCard');
-        const loginUrl = `${window.API_BASE}/api/auth/login/line?returnTo=${encodeURIComponent(window.location.href)}`;
+        const loginUrl = `${window.API_BASE}/api/auth/login/line?returnTo=${encodeURIComponent(getSafeReturnToUrl())}`;
         card.innerHTML = `
             <div class="pubilo-auth-panel" style="width:100%; border:none; box-shadow:none; background:transparent;">
                 <h2 style="font-size:36px; font-weight:800; color:#0f172a; margin-bottom:12px; font-family:'Montserrat', sans-serif;">Welcome Back!</h2>
@@ -316,7 +333,7 @@
 
         card.querySelector('#pubiloOnboardingLogout').addEventListener('click', async () => {
             await nativeFetch('/api/auth/logout', { method: 'POST' });
-            window.location.reload();
+            redirectToPublicEntry();
         });
 
         card.querySelectorAll('[data-plan-card]').forEach((node) => {
@@ -394,7 +411,7 @@
 
         card.querySelector('#pubiloPaymentLogout').addEventListener('click', async () => {
             await nativeFetch('/api/auth/logout', { method: 'POST' });
-            window.location.reload();
+            redirectToPublicEntry();
         });
 
         generateQr(orderId);
@@ -605,7 +622,7 @@
 
         card.querySelector('#pubiloSelectPlanLogout').addEventListener('click', async () => {
             await nativeFetch('/api/auth/logout', { method: 'POST' });
-            window.location.reload();
+            redirectToPublicEntry();
         });
 
         const form = card.querySelector('#pubiloSelectPlanForm');
@@ -687,7 +704,7 @@
 
         chip.querySelector('#pubiloLogoutBtn').addEventListener('click', async () => {
             await nativeFetch('/api/auth/logout', { method: 'POST' });
-            window.location.reload();
+            redirectToPublicEntry();
         });
 
         const avatarImage = document.getElementById('headerAvatarImg');
