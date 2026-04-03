@@ -6,10 +6,13 @@ const postModeAlternate = document.getElementById("postModeAlternate");
 const pageTokenInputPanel = document.getElementById("pageTokenInputPanel");
 const autoFetchPageTokenBtn = document.getElementById("autoFetchPageTokenBtn");
 const pageTokenAutoStatus = document.getElementById("pageTokenAutoStatus");
-const hideOnPublishEnabled = document.getElementById("hideOnPublishEnabled");
 const recurringAutoPostEnabled = false;
 const autoPostSettingsSection = document.getElementById("autoPostSettingsSection");
 let currentPostMode = "image";
+
+function getHideOnPublishInput() {
+    return document.getElementById("hideOnPublishEnabled");
+}
 
 if (!recurringAutoPostEnabled && autoPostSettingsSection) {
     autoPostSettingsSection.style.display = "none";
@@ -395,7 +398,9 @@ async function loadAutoPostConfig() {
     const colorBgPresetsGroup = document.getElementById("colorBgPresetsGroup");
 
     try {
-        const response = await fetch(`/api/page-settings?pageId=${pageId}`);
+        const response = await fetch(`/api/page-settings?pageId=${encodeURIComponent(pageId)}&t=${Date.now()}`, {
+            cache: "no-store",
+        });
         const data = await response.json();
         console.log("[Auto-Post] API response share_page_id:", data.settings?.share_page_id);
         if (data.success && data.settings) {
@@ -646,6 +651,7 @@ async function loadSettingsPanel() {
         console.log("[LOAD] No page selected");
         const tokenInput = document.getElementById("pageTokenInputPanel");
         if (tokenInput) tokenInput.value = "";
+        const hideOnPublishEnabled = getHideOnPublishInput();
         if (hideOnPublishEnabled) hideOnPublishEnabled.checked = false;
         autoScheduleEnabledPanel.checked = false;
         scheduleMinutesPanel.value = "00, 15, 30, 45";
@@ -661,7 +667,9 @@ async function loadSettingsPanel() {
     console.log("[LOAD] Loading settings for page:", pageId);
 
     try {
-        const response = await fetch(`/api/page-settings?pageId=${pageId}`);
+        const response = await fetch(`/api/page-settings?pageId=${encodeURIComponent(pageId)}&t=${Date.now()}`, {
+            cache: "no-store",
+        });
         const data = await response.json();
 
         if (data.success && data.settings) {
@@ -670,6 +678,7 @@ async function loadSettingsPanel() {
 
             // Apply ALL settings to form
             autoScheduleEnabledPanel.checked = s.auto_schedule || false;
+            const hideOnPublishEnabled = getHideOnPublishInput();
             if (hideOnPublishEnabled) hideOnPublishEnabled.checked = !!s.hide_on_publish;
             scheduleMinutesPanel.value = s.schedule_minutes || "00, 15, 30, 45";
             if (workingHoursStart) workingHoursStart.value = s.working_hours_start ?? 6;
@@ -715,6 +724,7 @@ async function loadSettingsPanel() {
         } else {
             // No settings yet, use defaults
             autoScheduleEnabledPanel.checked = false;
+            const hideOnPublishEnabled = getHideOnPublishInput();
             if (hideOnPublishEnabled) hideOnPublishEnabled.checked = false;
             scheduleMinutesPanel.value = "00, 15, 30, 45";
             if (workingHoursStart) workingHoursStart.value = 6;
@@ -890,6 +900,7 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
 
     // Build ONE complete request with ALL settings including token
 
+    const hideOnPublishEnabled = getHideOnPublishInput();
     const requestBody = {
         pageId,
         postToken: durablePostToken,
@@ -964,11 +975,15 @@ saveSettingsPanelBtn.addEventListener("click", async () => {
         }
 
         if (data.success) {
+            const persistedHideOnPublish = Number(data.settings?.hide_on_publish || 0) === 1;
+            if (hideOnPublishEnabled && persistedHideOnPublish !== !!hideOnPublishEnabled.checked) {
+                hideOnPublishEnabled.checked = persistedHideOnPublish;
+            }
             cachedPageSettings = {
                 ...cachedPageSettings,
                 pageId,
                 autoSchedule,
-                hideOnPublish: !!hideOnPublishEnabled?.checked,
+                hideOnPublish: persistedHideOnPublish,
                 scheduleMinutes: mins,
                 postToken: durablePostToken,
                 workingHoursStart: workingStart,

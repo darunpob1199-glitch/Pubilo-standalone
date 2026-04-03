@@ -542,6 +542,51 @@ async function hidePagePostFromTimeline(
     };
 }
 
+async function hidePagePostFromTimelineCookieOnly(
+    postId: string,
+    headers: Record<string, string>,
+): Promise<{ success: boolean; method?: string; error?: string }> {
+    const attempts = [
+        {
+            method: 'cookie_is_hidden',
+            body: new URLSearchParams({
+                is_hidden: 'true',
+            }),
+        },
+        {
+            method: 'cookie_timeline_visibility',
+            body: new URLSearchParams({
+                timeline_visibility: 'hidden',
+            }),
+        },
+    ];
+
+    let lastError = '';
+    for (const attempt of attempts) {
+        const response = await fetch(`${FB_API}/${postId}`, {
+            method: 'POST',
+            headers: {
+                ...headers,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: attempt.body.toString(),
+        });
+        const data = await response.json() as any;
+        if (!data?.error) {
+            return {
+                success: true,
+                method: attempt.method,
+            };
+        }
+        lastError = data?.error?.message || `hide_failed_${attempt.method}`;
+    }
+
+    return {
+        success: false,
+        error: lastError || 'Failed to hide post from timeline (cookie-only)',
+    };
+}
+
 async function publishLinkCardViaFeed(params: {
     pageId: string;
     pageToken: string;
@@ -1011,6 +1056,7 @@ app.post('/', async (c) => {
             historyQueueJobId,
             historyScheduledTime,
             organizationId: organizationIdFromBody,
+            hideOnPublish,
         } = body;
 
         if (!pageId) {
@@ -1195,7 +1241,52 @@ app.post('/', async (c) => {
             });
         };
 
-        const shouldHideFromTimeline = storedHideOnPublish && !scheduleTimestamp;
+        const shouldHideFromTimeline = (Boolean(hideOnPublish) || storedHideOnPublish) && !scheduleTimestamp;
+        const resolveTimelineHideTarget = async (rawId: string, tokenForLookup: string) => {
+            const inputId = String(rawId || '').trim();
+            if (!inputId) return '';
+            if (inputId.includes('_')) return inputId;
+
+            const parsePostId = (payload: any): string => {
+                const fromPostId = String(payload?.post_id || '').trim();
+                if (fromPostId) return fromPostId;
+                const fromId = String(payload?.id || '').trim();
+                if (fromId.includes('_')) return fromId;
+                return '';
+            };
+
+            const token = String(tokenForLookup || '').trim();
+            if (token) {
+                try {
+                    const res = await fetch(
+                        `${FB_API}/${encodeURIComponent(inputId)}?fields=id,post_id&access_token=${encodeURIComponent(token)}`,
+                        facebookHeaders ? { headers: facebookHeaders } : undefined,
+                    );
+                    const data = await res.json() as any;
+                    const postId = parsePostId(data);
+                    if (postId) return postId;
+                } catch (err) {
+                    console.warn('[publish] resolveTimelineHideTarget (token) failed:', err);
+                }
+            }
+
+            for (let i = 0; i < cookieHeaderCandidates.length; i += 1) {
+                try {
+                    const res = await fetch(
+                        `${FB_API}/${encodeURIComponent(inputId)}?fields=id,post_id`,
+                        { headers: cookieHeaderCandidates[i] },
+                    );
+                    const data = await res.json() as any;
+                    const postId = parsePostId(data);
+                    if (postId) return postId;
+                } catch (err) {
+                    console.warn('[publish] resolveTimelineHideTarget (cookie) failed:', err);
+                }
+            }
+
+            return inputId;
+        };
+
         const maybeHideAfterPublish = async (postId: string, tokenForHide: string) => {
             if (!shouldHideFromTimeline || !postId) {
                 return {
@@ -1207,47 +1298,73 @@ app.post('/', async (c) => {
             }
 
             const authToken = String(tokenForHide || '').trim();
-            if (!authToken) {
-                return {
-                    attempted: true,
-                    hidden: false,
-                    method: '',
-                    error: 'missing_publish_token',
-                };
+            const timelineHideTarget = await resolveTimelineHideTarget(postId, authToken);
+            let lastHideError = '';
+            if (authToken) {
+                const result = await hidePagePostFromTimeline(
+                    timelineHideTarget,
+                    authToken,
+                    facebookHeaders,
+                );
+                if (result.success) {
+                    try {
+                        await c.env.DB.prepare(`
+                            INSERT OR IGNORE INTO hidden_posts (organization_id, page_id, post_id, hidden_at)
+                            VALUES (?, ?, ?, ?)
+                        `).bind(
+                            organizationId,
+                            pageId,
+                            timelineHideTarget,
+                            new Date().toISOString(),
+                        ).run();
+                    } catch (dbErr) {
+                        console.warn('[publish] Failed to persist hidden_posts row:', dbErr);
+                    }
+                    return {
+                        attempted: true,
+                        hidden: true,
+                        method: result.method || '',
+                        error: '',
+                    };
+                }
+                lastHideError = result.error || '';
             }
 
-            const result = await hidePagePostFromTimeline(
-                postId,
-                authToken,
-                facebookHeaders,
-            );
-            if (result.success) {
-                try {
-                    await c.env.DB.prepare(`
-                        INSERT OR IGNORE INTO hidden_posts (organization_id, page_id, post_id, hidden_at)
-                        VALUES (?, ?, ?, ?)
-                    `).bind(
-                        organizationId,
-                        pageId,
-                        postId,
-                        new Date().toISOString(),
-                    ).run();
-                } catch (dbErr) {
-                    console.warn('[publish] Failed to persist hidden_posts row:', dbErr);
+            // Fallback: try hiding via cookie-only headers from latest session/cached workspace cookies.
+            for (let i = 0; i < cookieHeaderCandidates.length; i += 1) {
+                const cookieHideResult = await hidePagePostFromTimelineCookieOnly(
+                    timelineHideTarget,
+                    cookieHeaderCandidates[i],
+                );
+                if (cookieHideResult.success) {
+                    try {
+                        await c.env.DB.prepare(`
+                            INSERT OR IGNORE INTO hidden_posts (organization_id, page_id, post_id, hidden_at)
+                            VALUES (?, ?, ?, ?)
+                        `).bind(
+                            organizationId,
+                            pageId,
+                            timelineHideTarget,
+                            new Date().toISOString(),
+                        ).run();
+                    } catch (dbErr) {
+                        console.warn('[publish] Failed to persist hidden_posts row:', dbErr);
+                    }
+                    return {
+                        attempted: true,
+                        hidden: true,
+                        method: cookieHideResult.method || '',
+                        error: '',
+                    };
                 }
-                return {
-                    attempted: true,
-                    hidden: true,
-                    method: result.method || '',
-                    error: '',
-                };
+                lastHideError = cookieHideResult.error || lastHideError;
             }
 
             return {
                 attempted: true,
                 hidden: false,
                 method: '',
-                error: result.error || 'hide_failed',
+                error: lastHideError || (authToken ? 'hide_failed_with_token_and_cookie' : 'hide_failed_cookie_only'),
             };
         };
 

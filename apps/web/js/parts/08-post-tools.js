@@ -15,7 +15,7 @@ const postToolConfigs = {
         panelId: "deletePostsPanel",
         prefix: "deletePosts",
         empty: "ยังไม่ได้โหลดโพสต์จากเพจ",
-        confirm: (count) => prompt(`กำลังจะลบ ${count} โพสต์\nพิมพ์ DELETE เพื่อยืนยัน`) === "DELETE",
+        confirm: (count) => confirm(`กำลังจะลบ ${count} โพสต์จากเพจนี้\nยืนยันการลบหรือไม่`),
     },
 };
 
@@ -32,6 +32,8 @@ function createPostToolState() {
         jobDetails: {},
         expandedJobIds: new Set(),
         failedSelections: {},
+        reconciledJobIds: new Set(),
+        localRemovedIds: new Set(),
         selectedIds: new Set(),
         filters: {
             query: "",
@@ -77,6 +79,8 @@ function resetPostToolStateDefaults(toolKey) {
     state.jobDetails = {};
     state.expandedJobIds = new Set();
     state.failedSelections = {};
+    state.reconciledJobIds = new Set();
+    state.localRemovedIds = new Set();
     state.safeguards.keepLatestEnabled = toolKey === "hide";
     state.safeguards.keepLatestCount = 10;
     state.safeguards.minAgeEnabled = toolKey === "hide";
@@ -125,8 +129,8 @@ function getHidePageToken() {
     return document.getElementById("hideTokenInputPanel")?.value?.trim() || getPageToken() || "";
 }
 
-function getPostToolAuth() {
-    const currentPageId = getCurrentPageId();
+function getPostToolAuth(pageId = getCurrentPageId()) {
+    const currentPageId = String(pageId || "").trim();
     return {
         postToken: getLoadedPageToken(currentPageId) || getPageToken() || "",
         hideToken: getHidePageToken(),
@@ -175,6 +179,71 @@ function getPostToolPositiveInt(value, fallback) {
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+function getPostToolActivePageId(toolKey) {
+    if (toolKey === "delete") {
+        const dom = getPostToolDom("delete");
+        const selected = String(dom.pageSelect?.value || "").trim();
+        if (selected) return selected;
+    }
+    return String(getCurrentPageId() || "").trim();
+}
+
+async function hydrateDeletePostToolPageOptions() {
+    const dom = getPostToolDom("delete");
+    if (!dom.pageSelect) return;
+
+    const currentValue = String(dom.pageSelect.value || "").trim();
+    const optionsById = new Map();
+    const pushOption = (id, name) => {
+        const normalizedId = String(id || "").trim();
+        if (!normalizedId || optionsById.has(normalizedId)) return;
+        optionsById.set(normalizedId, String(name || `เพจ ${normalizedId}`).trim() || `เพจ ${normalizedId}`);
+    };
+
+    const globalPageSelect = document.getElementById("pageSelect");
+    if (globalPageSelect) {
+        Array.from(globalPageSelect.options || []).forEach((option) => {
+            pushOption(option.value, option.textContent);
+        });
+    }
+
+    try {
+        const response = await fetch("/api/pages");
+        const data = await response.json();
+        if (data.success && Array.isArray(data.pages)) {
+            data.pages.forEach((page) => {
+                pushOption(page.id || page.page_id, page.name || page.page_name);
+            });
+        }
+    } catch (_) {
+        // Ignore API failures and keep fallback options.
+    }
+
+    const savedPageId = String(localStorage.getItem("fewfeed_selectedPageId") || "").trim();
+    const savedPageName = String(localStorage.getItem("fewfeed_selectedPageName") || "").trim();
+    if (savedPageId) {
+        pushOption(savedPageId, savedPageName || `เพจ ${savedPageId}`);
+    }
+
+    const finalCurrentPageId = String(getCurrentPageId() || "").trim();
+    if (finalCurrentPageId) {
+        pushOption(
+            finalCurrentPageId,
+            String(document.querySelector(".page-selector-name")?.textContent || "").trim() || `เพจ ${finalCurrentPageId}`,
+        );
+    }
+
+    const entries = Array.from(optionsById.entries());
+    dom.pageSelect.innerHTML = entries.length
+        ? entries.map(([id, name]) => `<option value="${escapePostToolHtml(id)}">${escapePostToolHtml(name)}</option>`).join("")
+        : '<option value="">-- เลือกเพจ --</option>';
+
+    const preferredValue = currentValue || finalCurrentPageId || savedPageId;
+    if (preferredValue && optionsById.has(preferredValue)) {
+        dom.pageSelect.value = preferredValue;
+    }
+}
+
 function syncDeletePostToolPageSelect() {
     const dom = getPostToolDom("delete");
     const globalPageSelect = document.getElementById("pageSelect");
@@ -188,6 +257,50 @@ function syncDeletePostToolPageSelect() {
     const globalValue = String(globalPageSelect.value || "");
     if (globalValue && dom.pageSelect.value !== globalValue) {
         dom.pageSelect.value = globalValue;
+    }
+}
+
+function getPostToolCoverageTargetDate(state) {
+    if (state.filters.customDate) {
+        const target = parsePostToolDate(`${state.filters.customDate}T23:59:59`);
+        return target ? target.getTime() : null;
+    }
+    if (state.filters.clearBefore) {
+        const target = parsePostToolDate(state.filters.clearBefore);
+        return target ? target.getTime() : null;
+    }
+    return null;
+}
+
+function getPostToolOldestLoadedTime(state) {
+    let oldest = null;
+    for (const post of state.posts) {
+        const date = parsePostToolDate(post.published_at || post.created_at);
+        const ts = date ? date.getTime() : null;
+        if (ts === null) continue;
+        if (oldest === null || ts < oldest) oldest = ts;
+    }
+    return oldest;
+}
+
+async function ensurePostToolDateCoverage(toolKey) {
+    const state = postToolStates[toolKey];
+    const targetTime = getPostToolCoverageTargetDate(state);
+    if (targetTime === null) return;
+    if (!state.pagination.hasMore || !state.pagination.nextCursor) return;
+
+    let guard = 0;
+    while (guard < 12) {
+        const oldestTime = getPostToolOldestLoadedTime(state);
+        if (oldestTime !== null && oldestTime <= targetTime) {
+            break;
+        }
+        if (!state.pagination.hasMore || !state.pagination.nextCursor) {
+            break;
+        }
+        // Keep fetching older pages until we reach the selected date window or run out of data.
+        await loadPostToolPosts(toolKey, { silent: true, append: true, skipDateCoverage: true });
+        guard += 1;
     }
 }
 
@@ -571,6 +684,56 @@ async function refreshExpandedPostToolJobDetails(toolKey) {
     await Promise.all(expandedIds.map((jobId) => loadPostToolJobDetail(toolKey, jobId, { force: true })));
 }
 
+async function reconcilePostToolSuccessfulItems(toolKey) {
+    const state = postToolStates[toolKey];
+    if (!state.loaded || !state.posts.length || !state.jobs.length) return;
+
+    const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
+    const targetJobs = state.jobs.filter((job) => {
+        const jobId = Number(job.id || 0);
+        if (!jobId) return false;
+        if (state.reconciledJobIds.has(jobId)) return false;
+        if (!terminalStatuses.has(String(job.status || "").trim())) return false;
+        return Number(job.success_count || 0) > 0;
+    });
+
+    if (!targetJobs.length) return;
+
+    const removedIds = new Set();
+    for (const job of targetJobs) {
+        const jobId = Number(job.id || 0);
+        if (!jobId) continue;
+        let loaded = false;
+
+        try {
+            const response = await fetch(`/api/post-action-jobs/${jobId}`);
+            const data = await response.json();
+            if (data.success && Array.isArray(data.items)) {
+                loaded = true;
+                data.items
+                    .filter((item) => String(item.status || "") === "success")
+                    .forEach((item) => {
+                        const postId = String(item.post_id || "").trim();
+                        if (postId) removedIds.add(postId);
+                    });
+            }
+        } catch (_) {
+            // Ignore detail fetch errors and retry in next poll.
+            continue;
+        }
+        if (loaded) {
+            state.reconciledJobIds.add(jobId);
+        }
+    }
+
+    if (!removedIds.size) return;
+
+    removedIds.forEach((postId) => state.localRemovedIds.add(postId));
+    state.posts = state.posts.filter((post) => !state.localRemovedIds.has(getPostToolItemId(post)));
+    prunePostToolSelection(toolKey);
+    renderPostToolTable(toolKey);
+}
+
 function renderPostToolJobItems(toolKey, jobId, detailState) {
     if (!detailState) {
         return '<div class="post-tool-job-detail-empty">ยังไม่ได้โหลดรายละเอียด</div>';
@@ -836,10 +999,10 @@ function mergePostToolPosts(existingPosts, incomingPosts) {
     return Array.from(merged.values());
 }
 
-async function loadPostToolPosts(toolKey, { silent = false, append = false } = {}) {
+async function loadPostToolPosts(toolKey, { silent = false, append = false, skipDateCoverage = false } = {}) {
     const state = postToolStates[toolKey];
     const dom = getPostToolDom(toolKey);
-    const pageId = getCurrentPageId();
+    const pageId = getPostToolActivePageId(toolKey);
 
     if (!pageId) {
         state.posts = [];
@@ -889,13 +1052,13 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false } = {
     }
 
     try {
-        const auth = getPostToolAuth();
+        const auth = getPostToolAuth(pageId);
         const response = await fetch("/api/published-posts", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 pageId,
-                source: "facebook",
+                source: toolKey === "delete" ? "facebook" : "merged",
                 limit: 100,
                 after: append ? state.pagination.nextCursor : "",
                 pageToken: auth.postToken,
@@ -916,6 +1079,9 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false } = {
 
         const incomingPosts = Array.isArray(data.logs) ? data.logs : [];
         state.posts = append ? mergePostToolPosts(state.posts, incomingPosts) : incomingPosts;
+        if (state.localRemovedIds.size) {
+            state.posts = state.posts.filter((post) => !state.localRemovedIds.has(getPostToolItemId(post)));
+        }
         state.loaded = true;
         state.pagination.nextCursor = String(data.meta?.nextCursor || "").trim();
         state.pagination.hasMore = Boolean(data.meta?.hasMore && state.pagination.nextCursor);
@@ -923,6 +1089,16 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false } = {
         prunePostToolSelection(toolKey);
         syncPostToolInputs(toolKey);
         renderPostToolTable(toolKey);
+        if (!incomingPosts.length && !append && dom.loadMoreMeta) {
+            const sourceLabel = String(data.meta?.source || "").trim();
+            if (sourceLabel === "history") {
+                dom.loadMoreMeta.textContent = "ไม่พบโพสต์จาก Facebook ตอนนี้ แสดงเฉพาะโพสต์ที่มีในประวัติระบบ";
+            }
+        }
+        if (!skipDateCoverage && !append) {
+            await ensurePostToolDateCoverage(toolKey);
+            renderPostToolTable(toolKey);
+        }
     } catch (error) {
         if (append && dom.loadMoreMeta) {
             dom.loadMoreMeta.textContent = `โหลดเพิ่มไม่สำเร็จ: ${error.message}`;
@@ -1139,7 +1315,7 @@ function updatePostToolPolling(toolKey) {
 
 async function loadPostToolJobs(toolKey) {
     const state = postToolStates[toolKey];
-    const pageId = getCurrentPageId();
+    const pageId = getPostToolActivePageId(toolKey);
     if (!pageId) {
         state.jobs = [];
         state.jobDetails = {};
@@ -1152,6 +1328,7 @@ async function loadPostToolJobs(toolKey) {
         const response = await fetch(`/api/post-action-jobs?pageId=${encodeURIComponent(pageId)}&action=${encodeURIComponent(postToolConfigs[toolKey].action)}&limit=8`);
         const data = await response.json();
         state.jobs = data.success && Array.isArray(data.jobs) ? data.jobs : [];
+        await reconcilePostToolSuccessfulItems(toolKey);
         renderPostToolJobs(toolKey);
         updatePostToolPolling(toolKey);
     } catch (_) {
@@ -1180,8 +1357,8 @@ async function runPostToolAction(toolKey) {
         return;
     }
 
-    const pageId = getCurrentPageId();
-    const auth = getPostToolAuth();
+    const pageId = getPostToolActivePageId(toolKey);
+    const auth = getPostToolAuth(pageId);
 
     try {
         const response = await fetch("/api/post-action-jobs", {
@@ -1251,7 +1428,7 @@ function bindPostToolEvents(toolKey) {
         if (dom.dateInput) dom.dateInput.value = "";
         if (dom.clearBeforeInput) dom.clearBeforeInput.value = "";
         renderPostToolDayFilters(toolKey);
-        renderPostToolTable(toolKey);
+        loadPostToolPosts(toolKey, { silent: true });
     });
 
     dom.dateInput?.addEventListener("change", (event) => {
@@ -1261,7 +1438,7 @@ function bindPostToolEvents(toolKey) {
             if (dom.clearBeforeInput) dom.clearBeforeInput.value = "";
         }
         renderPostToolDayFilters(toolKey);
-        renderPostToolTable(toolKey);
+        loadPostToolPosts(toolKey, { silent: true });
     });
 
     dom.pageSelect?.addEventListener("change", () => {
@@ -1283,7 +1460,7 @@ function bindPostToolEvents(toolKey) {
             if (dom.dateInput) dom.dateInput.value = "";
         }
         renderPostToolDayFilters(toolKey);
-        renderPostToolTable(toolKey);
+        loadPostToolPosts(toolKey, { silent: true });
     });
 
     dom.batchSizeInput?.addEventListener("input", (event) => {
@@ -1360,11 +1537,13 @@ function showPostToolPanel(toolKey) {
     const dom = getPostToolDom(toolKey);
     if (dom.panel) dom.panel.style.display = "flex";
     appLayout.classList.add("pending-mode");
-    document.body.style.overflow = "hidden";
+    // Allow normal page scrolling while browsing long post tool results.
+    document.body.style.overflow = "";
 
     bindPostToolEvents(toolKey);
     if (toolKey === "delete") {
         syncDeletePostToolPageSelect();
+        hydrateDeletePostToolPageOptions();
     }
     loadPostToolPosts(toolKey);
     loadPostToolJobs(toolKey);

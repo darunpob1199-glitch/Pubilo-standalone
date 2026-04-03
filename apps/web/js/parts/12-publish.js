@@ -10,6 +10,11 @@ const publishSessionRefreshRetryByMode = Object.create(null);
 let lastPersistedFacebookSessionSignature = "";
 let workspaceFacebookBootstrapPromise = null;
 
+function getHideOnPublishEnabledSnapshot() {
+    const input = document.getElementById("hideOnPublishEnabled");
+    return !!input?.checked;
+}
+
 const DEFAULT_TEXT_BACKGROUND_OPTIONS = [
     {
         id: "1881421442117417",
@@ -1118,6 +1123,7 @@ function setupPublishHandler(mode) {
                     pageToken,
                     cookieData: cookie,
                     fbDtsg,
+                    hideOnPublish: getHideOnPublishEnabledSnapshot(),
                     scheduleInSystem: scheduleSource === "manual",
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
@@ -1320,6 +1326,7 @@ function setupPublishHandler(mode) {
                     pageToken,
                     cookieData: cookie,
                     fbDtsg,
+                    hideOnPublish: getHideOnPublishEnabledSnapshot(),
                     scheduleInSystem: scheduleSource === "manual",
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
@@ -1502,6 +1509,7 @@ function setupPublishHandler(mode) {
                 callToAction: ctaConfig.type,
                 callToActionLabel: ctaConfig.label,
                 fbDtsg: fbDtsg, // Required for GraphQL scheduling
+                hideOnPublish: getHideOnPublishEnabledSnapshot(),
                 scheduleInSystem: scheduleSource === "manual",
                 scheduledTime: scheduledTime
                     ? Math.floor(scheduledTime.getTime() / 1000)
