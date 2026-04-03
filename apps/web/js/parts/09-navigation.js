@@ -4,7 +4,10 @@ function getAllowedHash(rawHash) {
     const fallbackMap = {
         quotes: "pending",
         earnings: "news",
+        "hide-posts": "published",
     };
+    const hiddenHashes = Array.isArray(window.PUBILO_HIDDEN_HASHES) ? window.PUBILO_HIDDEN_HASHES : [];
+    const disabledHashes = Array.isArray(window.PUBILO_DISABLED_HASHES) ? window.PUBILO_DISABLED_HASHES : [];
 
     if (
         rawHash === "link"
@@ -13,10 +16,13 @@ function getAllowedHash(rawHash) {
         return "news";
     }
 
+    if (disabledHashes.includes(rawHash)) {
+        return fallbackMap[rawHash] || "news";
+    }
+
     if (
         window.PUBILO_WEB_ONLY_MODE &&
-        Array.isArray(window.PUBILO_HIDDEN_HASHES) &&
-        window.PUBILO_HIDDEN_HASHES.includes(rawHash)
+        hiddenHashes.includes(rawHash)
     ) {
         return fallbackMap[rawHash] || "news";
     }

@@ -4,6 +4,7 @@ const PUBILO_WEB_ONLY_MODE = false;
 
 window.PUBILO_WEB_ONLY_MODE = PUBILO_WEB_ONLY_MODE;
 window.PUBILO_HIDDEN_HASHES = ['quotes', 'earnings'];
+window.PUBILO_DISABLED_HASHES = ['hide-posts'];
 
 // Old production preview URLs stay frozen on older deploys and keep causing stale-client issues.
 // Always move users back to the stable production hostname.
@@ -68,20 +69,24 @@ window.API_BASE = normalizeApiBase(
 console.log('[Pubilo] API_BASE:', window.API_BASE, '| host:', window.location.hostname);
 
 document.addEventListener('DOMContentLoaded', () => {
-    if (!PUBILO_WEB_ONLY_MODE) return;
-
-    document.body.dataset.productMode = 'web-only';
-
     const hiddenIds = [
-        'earningsNavItem',
-        'pendingQuotesTab',
-        'quotesPostsTab',
-        'quotesQuotesTab',
-        'quotesPanel',
-        'earningsPanel',
-        'textQuoteSubmitBtn',
-        'addQuoteBtn',
+        'hidePostsNavItem',
     ];
+
+    if (PUBILO_WEB_ONLY_MODE) {
+        document.body.dataset.productMode = 'web-only';
+
+        hiddenIds.push(
+            'earningsNavItem',
+            'pendingQuotesTab',
+            'quotesPostsTab',
+            'quotesQuotesTab',
+            'quotesPanel',
+            'earningsPanel',
+            'textQuoteSubmitBtn',
+            'addQuoteBtn',
+        );
+    }
 
     hiddenIds.forEach((id) => {
         const element = document.getElementById(id);
