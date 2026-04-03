@@ -102,10 +102,14 @@
                 <div class="pubilo-auth-brand">
                     <!-- Top Left Logo -->
                     <div style="display:flex; align-items:center; gap:12px; margin-bottom:auto;">
-                        <svg width="24" height="32" viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M0 0 V20 C0 26.6274 5.37258 32 12 32 C18.6274 32 24 26.6274 24 20 V8 H16 V20 C16 22.2091 14.2091 24 12 24 C9.79086 24 8 22.2091 8 20 V0 H0 Z" fill="white"/>
+                        <svg width="36" height="36" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M50 68 L80 84 L50 100 L20 84 Z" stroke="#C084FC" stroke-width="8" stroke-linejoin="round"/>
+                            <path d="M50 50 L80 66 L50 82 L20 66 Z" stroke="#94A3B8" stroke-width="8" stroke-linejoin="round"/>
+                            <path d="M50 16 L84 34 L50 52 L16 34 Z" fill="#8B5CF6"/>
+                            <path d="M84 34 L50 52 L50 62 L84 44 Z" fill="#7C3AED"/>
+                            <path d="M16 34 L50 52 L50 62 L16 44 Z" fill="#A78BFA"/>
                         </svg>
-                        <span style="font-size:24px; font-weight:600; font-family:'Montserrat', sans-serif;">Pubilo</span>
+                        <span style="font-size:24px; font-weight:700; color:white; font-family:'Montserrat', sans-serif; letter-spacing:-0.5px;">Pubilo</span>
                     </div>
 
                     <!-- Illustration -->
@@ -292,18 +296,6 @@
         }).join('');
 
         card.innerHTML = `
-            <!-- Top Left Logo specifically for this clean view -->
-            <div style="position: absolute; top: 40px; left: 40px; display: flex; align-items: center; gap: 12px; z-index: 50;">
-                <svg width="36" height="36" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M50 68 L80 84 L50 100 L20 84 Z" stroke="#C084FC" stroke-width="8" stroke-linejoin="round"/>
-                    <path d="M50 50 L80 66 L50 82 L20 66 Z" stroke="#94A3B8" stroke-width="8" stroke-linejoin="round"/>
-                    <path d="M50 16 L84 34 L50 52 L16 34 Z" fill="#8B5CF6"/>
-                    <path d="M84 34 L50 52 L50 62 L84 44 Z" fill="#7C3AED"/>
-                    <path d="M16 34 L50 52 L50 62 L16 44 Z" fill="#A78BFA"/>
-                </svg>
-                <span style="font-size: 24px; font-weight: 700; color: #0f172a; font-family: 'Montserrat', sans-serif;">Pubilo</span>
-            </div>
-
             <form class="pubilo-auth-panel" id="pubiloOnboardingForm" style="padding: 56px 48px; text-align: left; border: none; box-shadow: 0 24px 50px rgba(0,0,0,0.06); background: #ffffff; border-radius: 32px; position:relative;">
                 <p style="background: #f1f5f9; color: #3b82f6; font-size: 11px; letter-spacing: 1.5px; border-radius: 100px; padding: 6px 14px; display: inline-block; font-weight: 800; margin-bottom: 20px; text-transform: uppercase;">Final Step</p>
                 <h2 style="font-size: 36px; font-weight: 800; color: #0f172a; margin-bottom: 12px; line-height: 1.2; letter-spacing: -1px; font-family: 'Montserrat', sans-serif;">Ready to create your workspace?</h2>
