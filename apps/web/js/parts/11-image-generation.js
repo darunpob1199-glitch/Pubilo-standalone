@@ -879,12 +879,25 @@ if (newsPublishBtn) {
         const baseLabel = typeof getPrimaryPublishLabel === "function"
             ? getPrimaryPublishLabel("news")
             : "POST NOW";
+        const publishTimeoutMs = Number(window.__PUBILO_PUBLISH_TIMEOUT_MS || 120000);
+        window.__PUBILO_PUBLISH_TIMEOUT_MS = publishTimeoutMs;
         const resetNewsButtonIdle = () => {
             newsPublishBtn.textContent = baseLabel;
             newsPublishBtn.disabled = false;
             newsPublishBtn.classList.remove("published");
             validateNewsMode();
         };
+        const createPublishTimeoutError = (timeoutMs) => {
+            const timeoutSeconds = Math.max(1, Math.round(Number(timeoutMs) / 1000));
+            const error = new Error(
+                `ระบบใช้เวลาตรวจสถานะโพสต์นานกว่า ${timeoutSeconds} วินาที\nโพสต์อาจสำเร็จไปแล้ว กรุณาตรวจที่หน้า Published หรือบนหน้าเพจก่อนกดโพสต์ซ้ำ`,
+            );
+            error.name = "PublishRequestTimeoutError";
+            error.code = "PUBLISH_TIMEOUT";
+            return error;
+        };
+        const isPublishTimeoutError = (error) =>
+            error?.name === "PublishRequestTimeoutError" || error?.code === "PUBLISH_TIMEOUT";
         const withTimeout = async (promise, ms, fallbackValue = null) => {
             let timeoutId;
             const timeoutPromise = new Promise((resolve) => {
@@ -1019,7 +1032,7 @@ if (newsPublishBtn) {
 
             const sendPublishRequest = async () => {
                 const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 35000);
+                const timeout = setTimeout(() => controller.abort(), publishTimeoutMs);
                 try {
                     const response = await fetch("/api/publish", {
                         method: "POST",
@@ -1036,7 +1049,7 @@ if (newsPublishBtn) {
                     return { response, data };
                 } catch (error) {
                     if (error?.name === "AbortError") {
-                        throw new Error("คำขอโพสต์ใช้เวลานานเกิน 35 วินาที ระบบยกเลิกให้แล้ว ลองกดโพสต์ใหม่");
+                        throw createPublishTimeoutError(publishTimeoutMs);
                     }
                     throw error;
                 } finally {
@@ -1153,7 +1166,13 @@ if (newsPublishBtn) {
             }
         } catch (err) {
             console.error("[News] Publish error:", err);
-            alert("เกิดข้อผิดพลาด: " + err.message);
+            const isPublishTimeout = isPublishTimeoutError(err);
+            if (isPublishTimeout) {
+                window.showPublishToast?.("คำขอโพสต์นานกว่าปกติ โพสต์อาจสำเร็จไปแล้ว กรุณาตรวจที่หน้า Published ก่อนกดซ้ำ", "warning");
+                alert(String(err?.message || err || "คำขอโพสต์ใช้เวลานานกว่าปกติ"));
+            } else {
+                alert("เกิดข้อผิดพลาด: " + err.message);
+            }
             const baseLabel = typeof getPrimaryPublishLabel === "function"
                 ? getPrimaryPublishLabel("news")
                 : "POST NOW";
