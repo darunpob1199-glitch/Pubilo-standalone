@@ -92,13 +92,50 @@
         // Keep overlay hidden by default to avoid flash on refresh for authenticated users.
         overlay.className = 'pubilo-auth-overlay is-hidden';
         overlay.innerHTML = `
-            <div class="pubilo-auth-shell">
-                <div class="pubilo-auth-brand">
-                    <span class="pubilo-auth-kicker">Pubilo Workspace</span>
-                    <h1>ล็อกอินก่อนใช้งานระบบ</h1>
-                    <p id="pubiloAuthSubtitle">LINE login + workspace + billing ถูกเปิดใช้แล้ว</p>
+            <div class="pubilo-top-left-logo" style="position:absolute; top:36px; left:48px; display:flex; align-items:center; gap:14px; z-index:20;">
+                <svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Bottom layer (Light Purple Outline) -->
+                    <path d="M50 68 L80 84 L50 100 L20 84 Z" stroke="#C084FC" stroke-width="8" stroke-linejoin="round"/>
+                    
+                    <!-- Middle layer (Grey-Blue Outline) -->
+                    <path d="M50 50 L80 66 L50 82 L20 66 Z" stroke="#94A3B8" stroke-width="8" stroke-linejoin="round"/>
+                    
+                    <!-- Top layer (Solid Purple 3D Box) -->
+                    <!-- Top Face -->
+                    <path d="M50 16 L84 34 L50 52 L16 34 Z" fill="#8B5CF6"/>
+                    <!-- Right Face -->
+                    <path d="M84 34 L50 52 L50 62 L84 44 Z" fill="#7C3AED"/>
+                    <!-- Left Face -->
+                    <path d="M16 34 L50 52 L50 62 L16 44 Z" fill="#A78BFA"/>
+                </svg>
+                <span style="font-size:28px; font-weight:700; color:#0f172a; letter-spacing:-0.5px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Pubilo</span>
+            </div>
+            <div class="pubilo-auth-shell" style="width:100%; max-width:1100px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:100vh;">
+                <div class="pubilo-auth-brand" style="flex:1; position:relative;">
+                    <div style="position:relative; max-width:480px;">
+                        
+                        <!-- Chat Bubbles -->
+                        <div style="position:absolute; top:-120px; right:-80px; display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+                            <div style="background:rgba(255,255,255,0.4); backdrop-filter:blur(4px); padding:8px 16px; border-radius:100px; font-size:12px; color:#94a3b8; filter:blur(1px);">Of course, John.</div>
+                            <div style="background:rgba(255,255,255,0.7); backdrop-filter:blur(8px); padding:8px 16px; border-radius:100px; font-size:12px; color:#475569; position:relative; right:10px;">I can help you with that.</div>
+                            <div style="background:#ffffff; padding:10px 16px; border-radius:100px; font-size:12px; font-weight:500; color:#1e293b; box-shadow:0 4px 12px rgba(0,0,0,0.05); position:relative; right:5px;">Give me just one second, okay?</div>
+                            <div style="background:#ffffff; padding:10px 16px; border-radius:100px; font-size:12px; font-weight:500; color:#1e293b; box-shadow:0 4px 12px rgba(0,0,0,0.05);">I'll need to verify your identity first, though.</div>
+                        </div>
+
+                        <!-- Dots -->
+                        <div style="position:absolute; width:6px; height:6px; background:#a5b4fc; border-radius:50%; top:20px; left:-20px;"></div>
+                        <div style="position:absolute; width:10px; height:10px; background:#bfdbfe; border-radius:50%; top:60px; left:-10px;"></div>
+                        <div style="position:absolute; width:4px; height:4px; background:#60a5fa; border-radius:50%; bottom:-10px; left:40px;"></div>
+
+                        <!-- Main Title -->
+                        <div style="margin-left:20px;">
+                            <div style="font-size:14px; letter-spacing:6px; color:#94a3b8; font-weight:600; margin-bottom:0px; text-transform:uppercase;">THE</div>
+                            <h1 style="font-size:80px; line-height:1; font-weight:400; color:#1e293b; letter-spacing:-4px; margin:0;">pubilo</h1>
+                            <div style="font-size:14px; letter-spacing:8px; color:#cbd5e1; font-weight:600; margin-top:0px; text-transform:uppercase; margin-left:4px;">FUTURE</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="pubilo-auth-card" id="pubiloAuthCard"></div>
+                <div class="pubilo-auth-card" id="pubiloAuthCard" style="flex:0 0 420px; z-index:10;"></div>
             </div>
         `;
         document.body.appendChild(overlay);
@@ -143,13 +180,17 @@
         const card = overlay.querySelector('#pubiloAuthCard');
         const loginUrl = `${window.API_BASE}/api/auth/login/line?returnTo=${encodeURIComponent(window.location.href)}`;
         card.innerHTML = `
-            <div class="pubilo-auth-panel">
-                <p class="pubilo-auth-label">Sign in</p>
-                <h2>ใช้ LINE account เข้า Pubilo</h2>
-                <p class="pubilo-auth-copy">ระบบใช้ LINE Login สำหรับ dashboard โดยตรง ไม่ต้องมี Cloudflare account และไม่ต้องพึ่ง Google แล้ว</p>
+            <div class="pubilo-auth-panel" style="padding: 40px;">
+                <h2 style="font-size: 22px; font-weight: 600; color: #1e293b; margin-bottom: 24px; text-align: center;">เข้าสู่ระบบจัดการบัญชี</h2>
+                <div style="display:flex; justify-content:center; gap: 16px; margin-bottom: 32px; font-size:14px; font-weight:500;">
+                    <span style="color: #3b82f6; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">บัญชี LINE ของคุณ</span>
+                </div>
                 ${message ? `<p class="pubilo-auth-error">${message}</p>` : ''}
-                <a class="pubilo-auth-provider-btn" href="${loginUrl}">
-                    <span>Continue with LINE</span>
+                <a class="pubilo-auth-provider-btn" href="${loginUrl}" style="background-color: #3b82f6; gap: 10px; width: 100%; border-radius: 8px;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M24 10.304C24 4.612 18.627 0 12 0C5.373 0 0 4.612 0 10.304C0 15.352 4.225 19.588 9.944 20.407C10.332 20.489 11.218 20.73 11.4 21.431C11.564 22.062 11.127 23.444 11.127 23.444C11.127 23.444 10.875 24.582 12.183 23.518C13.491 22.454 19.324 16.924 22.115 13.9C23.407 12.518 24 11.481 24 10.304ZM7.279 13.111H4.636C4.285 13.111 4 12.826 4 12.475V6.786C4 6.435 4.285 6.15 4.636 6.15H7.279C7.63 6.15 7.915 6.435 7.915 6.786C7.915 7.137 7.63 7.422 7.279 7.422H5.272V11.839H7.279C7.63 11.839 7.915 12.124 7.915 12.475C7.915 12.826 7.63 13.111 7.279 13.111ZM10.513 13.111H9.241C8.89 13.111 8.605 12.826 8.605 12.475V6.786C8.605 6.435 8.89 6.15 9.241 6.15H10.513C10.864 6.15 11.149 6.435 11.149 6.786V12.475C11.149 12.826 10.864 13.111 10.513 13.111ZM16.353 13.111H14.154C13.987 13.111 13.824 13.045 13.705 12.927C13.585 12.808 13.518 12.645 13.518 12.475V6.786C13.518 6.435 13.803 6.15 14.154 6.15C14.505 6.15 14.79 6.435 14.79 6.786V11.082L17.202 6.4C17.29 6.241 17.433 6.15 17.587 6.15H18.868C19.219 6.15 19.504 6.435 19.504 6.786V13.111C19.504 13.462 19.219 13.747 18.868 13.747C18.517 13.747 18.232 13.462 18.232 13.111V8.815L15.82 13.497C15.732 13.656 15.589 13.747 15.435 13.747C15.432 13.747 15.428 13.747 15.425 13.747C15.42 13.747 16.353 13.111 16.353 13.111Z" fill="white"/>
+                    </svg>
+                    <span style="font-weight: 500; letter-spacing: 0.5px;">เข้าสู่ระบบด้วย LINE</span>
                 </a>
             </div>
         `;
