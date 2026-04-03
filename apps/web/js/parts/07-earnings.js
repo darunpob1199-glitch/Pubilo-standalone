@@ -186,6 +186,126 @@ function getPublishedDateKey(value) {
     return `${year}-${month}-${day}`;
 }
 
+const dateRangeFilterUtils = (() => {
+    const RANGE_SEPARATOR = " to ";
+    const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+    const isDateKey = (value) => DATE_KEY_RE.test(String(value || "").trim());
+
+    const normalizeValue = (value) => {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+
+        const normalized = raw
+            .replace(/\s*(?:ถึง|to)\s*/gi, RANGE_SEPARATOR)
+            .replace(/\s+-\s+/g, RANGE_SEPARATOR);
+
+        const parts = normalized
+            .split(RANGE_SEPARATOR)
+            .map((part) => String(part || "").trim())
+            .filter(Boolean)
+            .filter(isDateKey);
+
+        if (!parts.length) return "";
+
+        let start = parts[0];
+        let end = parts[1] || "";
+        if (end && end < start) {
+            [start, end] = [end, start];
+        }
+
+        return end ? `${start}${RANGE_SEPARATOR}${end}` : start;
+    };
+
+    const parseRange = (value) => {
+        const normalized = normalizeValue(value);
+        if (!normalized) {
+            return { start: "", end: "", isRange: false };
+        }
+
+        const [start = "", explicitEnd = ""] = normalized.split(RANGE_SEPARATOR);
+        const end = explicitEnd || start;
+        return {
+            start,
+            end,
+            isRange: Boolean(explicitEnd && explicitEnd !== start),
+        };
+    };
+
+    const toDisplay = (dateKey) => {
+        if (!isDateKey(dateKey)) return "";
+        const [year, month, day] = dateKey.split("-");
+        return `${day}/${month}/${year}`;
+    };
+
+    const getLabel = (value) => {
+        const range = parseRange(value);
+        if (!range.start) return "";
+        return range.isRange
+            ? `ช่วงวันที่ ${toDisplay(range.start)} - ${toDisplay(range.end)}`
+            : `วันที่ ${toDisplay(range.start)}`;
+    };
+
+    const createBoundary = (dateKey, boundary = "start") => {
+        if (!isDateKey(dateKey)) return null;
+        const timePart = boundary === "end" ? "23:59:59.999" : "00:00:00.000";
+        const date = new Date(`${dateKey}T${timePart}`);
+        return Number.isNaN(date.getTime()) ? null : date;
+    };
+
+    const includes = (date, value) => {
+        const range = parseRange(value);
+        if (!range.start) return true;
+        if (!(date instanceof Date) || Number.isNaN(date.getTime())) return false;
+
+        const start = createBoundary(range.start, "start");
+        const end = createBoundary(range.end, "end");
+        if (!start || !end) return false;
+
+        return date >= start && date <= end;
+    };
+
+    const syncInputValue = (input, value) => {
+        if (!input) return;
+
+        const normalized = normalizeValue(value);
+        const picker = input._flatpickr;
+        if (!picker) {
+            input.value = normalized;
+            return;
+        }
+
+        if (!normalized) {
+            picker.clear(false);
+            input.value = "";
+            if (picker.altInput) picker.altInput.value = "";
+            return;
+        }
+
+        const range = parseRange(normalized);
+        const selectedDates = range.isRange ? [range.start, range.end] : [range.start];
+        picker.setDate(selectedDates, false, "Y-m-d");
+        input.value = normalized;
+
+        if (picker.altInput) {
+            picker.altInput.value = range.isRange
+                ? `${toDisplay(range.start)} - ${toDisplay(range.end)}`
+                : toDisplay(range.start);
+        }
+    };
+
+    return {
+        normalizeValue,
+        parseRange,
+        getLabel,
+        createBoundary,
+        includes,
+        syncInputValue,
+    };
+})();
+
+window.PubiloDateRangeFilter = dateRangeFilterUtils;
+
 function getPublishedPostTypeKey(log) {
     const raw = String(log.post_type || log.media_kind || "").toLowerCase();
     if (raw.includes("reel") || raw.includes("video")) return "reels";
@@ -311,10 +431,11 @@ function getPublishedFilterResult(logs) {
         }
 
         const date = parsePublishedDate(log.published_at || log.created_at);
-        const dateKey = getPublishedDateKey(date);
         if (publishedFilters.customDate) {
-            return dateKey === publishedFilters.customDate;
+            return dateRangeFilterUtils.includes(date, publishedFilters.customDate);
         }
+
+        const dateKey = getPublishedDateKey(date);
 
         switch (publishedFilters.day) {
             case "today":
@@ -342,10 +463,11 @@ function updatePublishedFilterMeta(filteredCount, totalCount) {
         return;
     }
 
-    if (publishedFilters.customDate) {
+    const rangeLabel = dateRangeFilterUtils.getLabel(publishedFilters.customDate);
+    if (rangeLabel) {
         metaEl.textContent = filteredCount === totalCount
-            ? `วันที่ ${publishedFilters.customDate} มี ${filteredCount} รายการ`
-            : `วันที่ ${publishedFilters.customDate} แสดง ${filteredCount} / ${totalCount} รายการ`;
+            ? `${rangeLabel} มี ${filteredCount} รายการ`
+            : `${rangeLabel} แสดง ${filteredCount} / ${totalCount} รายการ`;
         return;
     }
 
@@ -487,7 +609,7 @@ function syncPublishedFilterInputs() {
 
     if (searchInput) searchInput.value = publishedFilters.query;
     if (typeFilter) typeFilter.value = publishedFilters.type;
-    if (dateInput) dateInput.value = publishedFilters.customDate;
+    dateRangeFilterUtils.syncInputValue(dateInput, publishedFilters.customDate);
     syncPublishedDayFiltersUi();
 }
 
@@ -617,7 +739,7 @@ if (publishedDayFilters && !publishedDayFilters.dataset.bound) {
         if (!target) return;
         publishedFilters.day = target.dataset.filter || "all";
         publishedFilters.customDate = "";
-        if (publishedDateInput) publishedDateInput.value = "";
+        dateRangeFilterUtils.syncInputValue(publishedDateInput, "");
         syncPublishedDayFiltersUi();
         renderPublishedPostsWithFilters();
     });
@@ -626,7 +748,7 @@ if (publishedDayFilters && !publishedDayFilters.dataset.bound) {
 if (publishedDateInput && !publishedDateInput.dataset.bound) {
     publishedDateInput.dataset.bound = "true";
     publishedDateInput.addEventListener("change", (event) => {
-        publishedFilters.customDate = event.target.value || "";
+        publishedFilters.customDate = dateRangeFilterUtils.normalizeValue(event.target.value || "");
         syncPublishedDayFiltersUi();
         renderPublishedPostsWithFilters();
     });

@@ -24,6 +24,30 @@ const postToolStates = {
     delete: createPostToolState(),
 };
 
+const dateRangeFilterUtils = window.PubiloDateRangeFilter || {
+    normalizeValue: (value) => String(value || "").trim(),
+    parseRange: (value) => {
+        const normalized = String(value || "").trim();
+        return {
+            start: normalized,
+            end: normalized,
+            isRange: false,
+        };
+    },
+    getLabel: (value) => {
+        const normalized = String(value || "").trim();
+        return normalized ? `วันที่ ${normalized}` : "";
+    },
+    createBoundary: () => null,
+    includes: (date, value) => {
+        const normalized = String(value || "").trim();
+        return !normalized || getPostToolDateKey(date) === normalized;
+    },
+    syncInputValue: (input, value) => {
+        if (input) input.value = String(value || "").trim();
+    },
+};
+
 function createPostToolState() {
     return {
         pageId: "",
@@ -262,7 +286,8 @@ function syncDeletePostToolPageSelect() {
 
 function getPostToolCoverageTargetDate(state) {
     if (state.filters.customDate) {
-        const target = parsePostToolDate(`${state.filters.customDate}T23:59:59`);
+        const range = dateRangeFilterUtils.parseRange(state.filters.customDate);
+        const target = dateRangeFilterUtils.createBoundary(range.start, "start");
         return target ? target.getTime() : null;
     }
     if (state.filters.clearBefore) {
@@ -405,10 +430,11 @@ function getPostToolFilteredPosts(toolKey) {
         if (state.filters.type !== "all" && typeKey !== state.filters.type) return false;
 
         const date = parsePostToolDate(post.published_at || post.created_at);
-        const dateKey = getPostToolDateKey(date);
         if (state.filters.customDate) {
-            return dateKey === state.filters.customDate;
+            return dateRangeFilterUtils.includes(date, state.filters.customDate);
         }
+
+        const dateKey = getPostToolDateKey(date);
 
         switch (state.filters.day) {
             case "today":
@@ -513,10 +539,11 @@ function renderPostToolFilterMeta(toolKey, filteredCount, totalCount, eligibleCo
         return;
     }
 
-    if (postToolStates[toolKey].filters.customDate) {
+    const rangeLabel = dateRangeFilterUtils.getLabel(postToolStates[toolKey].filters.customDate);
+    if (rangeLabel) {
         dom.filterMeta.textContent = toolKey === "hide" && filteredCount !== eligibleCount
-            ? `วันที่ ${postToolStates[toolKey].filters.customDate} พบ ${eligibleCount} รายการ (กันไว้ ${filteredCount - eligibleCount})`
-            : `วันที่ ${postToolStates[toolKey].filters.customDate} พบ ${filteredCount} รายการ`;
+            ? `${rangeLabel} พบ ${eligibleCount} รายการ (กันไว้ ${filteredCount - eligibleCount})`
+            : `${rangeLabel} พบ ${filteredCount} รายการ`;
         return;
     }
 
@@ -948,7 +975,7 @@ function syncPostToolInputs(toolKey) {
     const dom = getPostToolDom(toolKey);
     if (dom.searchInput) dom.searchInput.value = state.filters.query;
     if (dom.typeFilter) dom.typeFilter.value = state.filters.type;
-    if (dom.dateInput) dom.dateInput.value = state.filters.customDate;
+    dateRangeFilterUtils.syncInputValue(dom.dateInput, state.filters.customDate);
     if (dom.clearBeforeInput) dom.clearBeforeInput.value = state.filters.clearBefore;
     if (dom.batchSizeInput) dom.batchSizeInput.value = String(getPostToolPositiveInt(state.filters.batchSize, 20) || 20);
     if (dom.keepLatestToggle) dom.keepLatestToggle.checked = Boolean(state.safeguards.keepLatestEnabled);
@@ -1425,14 +1452,14 @@ function bindPostToolEvents(toolKey) {
         state.filters.day = target.dataset.filter || "all";
         state.filters.customDate = "";
         state.filters.clearBefore = "";
-        if (dom.dateInput) dom.dateInput.value = "";
+        dateRangeFilterUtils.syncInputValue(dom.dateInput, "");
         if (dom.clearBeforeInput) dom.clearBeforeInput.value = "";
         renderPostToolDayFilters(toolKey);
         loadPostToolPosts(toolKey, { silent: true });
     });
 
     dom.dateInput?.addEventListener("change", (event) => {
-        state.filters.customDate = event.target.value || "";
+        state.filters.customDate = dateRangeFilterUtils.normalizeValue(event.target.value || "");
         if (state.filters.customDate) {
             state.filters.clearBefore = "";
             if (dom.clearBeforeInput) dom.clearBeforeInput.value = "";
@@ -1457,7 +1484,7 @@ function bindPostToolEvents(toolKey) {
         if (state.filters.clearBefore) {
             state.filters.customDate = "";
             state.filters.day = "all";
-            if (dom.dateInput) dom.dateInput.value = "";
+            dateRangeFilterUtils.syncInputValue(dom.dateInput, "");
         }
         renderPostToolDayFilters(toolKey);
         loadPostToolPosts(toolKey, { silent: true });
