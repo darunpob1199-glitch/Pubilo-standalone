@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/styles.css?v=8.0" />
+    <link rel="stylesheet" href="/css/styles.css?v=8.1" />
     <link rel="stylesheet" href="/css/premium-theme.css?v=7.1" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
@@ -2076,13 +2076,13 @@
     <script src="/js/parts/05-auto-post.js?v=7.1"></script>
     <script src="/js/parts/06-billing.js?v=1.7"></script>
     <script src="/js/parts/06-pending-posts.js?v=6.7"></script>
-    <script src="/js/parts/07-earnings.js?v=6.6"></script>
+    <script src="/js/parts/07-earnings.js?v=6.7"></script>
     <script src="/js/parts/08-quotes.js?v=6.1"></script>
-    <script src="/js/parts/08-post-tools.js?v=1.8"></script>
-    <script src="/js/parts/09-navigation.js?v=7.5"></script>
+    <script src="/js/parts/08-post-tools.js?v=1.9"></script>
+    <script src="/js/parts/09-navigation.js?v=7.6"></script>
     <script src="/js/parts/10-lazada.js?v=6.3"></script>
-    <script src="/js/parts/11-image-generation.js?v=9.2"></script>
-    <script src="/js/parts/12-publish.js?v=11.5"></script>
+    <script src="/js/parts/11-image-generation.js?v=9.3"></script>
+    <script src="/js/parts/12-publish.js?v=11.6"></script>
 
     <!-- Lightbox Modal -->
     <div class="lightbox-overlay" id="lightboxOverlay">
@@ -2160,7 +2160,13 @@
                         }
                     },
                     onChange: function(selectedDates, _, instance) {
-                        syncDateRangeFilter(instance, selectedDates, true);
+                        const isRangeComplete = selectedDates.length === 0 || selectedDates.length >= 2;
+                        syncDateRangeFilter(instance, selectedDates, isRangeComplete);
+                    },
+                    onClose: function(selectedDates, _, instance) {
+                        if (selectedDates.length === 1) {
+                            syncDateRangeFilter(instance, selectedDates, true);
+                        }
                     },
                 });
             });
