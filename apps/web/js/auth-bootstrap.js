@@ -83,6 +83,10 @@
         return messages[code] || 'เข้าสู่ระบบไม่สำเร็จ';
     }
 
+    function setAppShellAuthenticated(isAuthenticated) {
+        document.body.classList.toggle('pubilo-authenticated', !!isAuthenticated);
+    }
+
     function ensureOverlay() {
         let overlay = document.getElementById('pubiloAuthOverlay');
         if (overlay) return overlay;
@@ -171,6 +175,7 @@
 
     function renderLoginView(message) {
         const overlay = ensureOverlay();
+        setAppShellAuthenticated(false);
         setOverlayVariant('default');
         overlay.classList.remove('is-hidden');
         writeAuthFlowState('login');
@@ -226,6 +231,7 @@
 
     function renderOnboardingView(profile) {
         const overlay = ensureOverlay();
+        setAppShellAuthenticated(false);
         setOverlayVariant('default');
         overlay.classList.remove('is-hidden');
         writeAuthFlowState('onboarding');
@@ -320,6 +326,7 @@
 
     function renderPaymentView(orderId, options = {}) {
         const overlay = ensureOverlay();
+        setAppShellAuthenticated(false);
         setOverlayVariant('payment-only');
         overlay.classList.remove('is-hidden');
         writeAuthFlowState('payment', { orderId }, options.historyMode || 'push');
@@ -429,6 +436,7 @@
     // ===== Plan Selection View (pending_payment / expired / renewal) =====
     function renderPlanSelectionView(profile, options = {}) {
         const overlay = ensureOverlay();
+        setAppShellAuthenticated(false);
         setOverlayVariant('billing-gate');
         overlay.classList.remove('is-hidden');
         writeAuthFlowState('plan-selection', {}, options.historyMode || 'replace');
@@ -718,7 +726,7 @@
                 onboardingRequired: false
             };
             applyAuthState(mockPayload);
-            document.body.classList.add('pubilo-authenticated');
+            setAppShellAuthenticated(true);
             ensureOverlay().classList.add('is-hidden');
             ensureHeaderControls();
             resolveAuthReadyPromise?.(mockPayload);
@@ -734,7 +742,7 @@
         }
 
         if (SKIP_SIGNUP_AND_BILLING_GATE) {
-            document.body.classList.add('pubilo-authenticated');
+            setAppShellAuthenticated(true);
             ensureOverlay().classList.add('is-hidden');
             ensureHeaderControls();
             ensureBillingBanner();
@@ -762,7 +770,7 @@
             return new Promise(() => {});
         }
 
-        document.body.classList.add('pubilo-authenticated');
+        setAppShellAuthenticated(true);
         ensureOverlay().classList.add('is-hidden');
         clearAuthFlowState();
         ensureHeaderControls();
@@ -802,7 +810,7 @@
                 (subStatus === 'active' && isPeriodExpired);
 
             if (!needsPayment) {
-                document.body.classList.add('pubilo-authenticated');
+                setAppShellAuthenticated(true);
                 ensureOverlay().classList.add('is-hidden');
                 clearAuthFlowState();
                 ensureHeaderControls();
@@ -837,6 +845,7 @@
         state,
         refreshState,
         handleUnauthenticated() {
+            setAppShellAuthenticated(false);
             renderLoginView('Session หมดอายุ กรุณา login ใหม่');
         },
         handleSubscriptionRequired() {
@@ -847,5 +856,11 @@
     window.PUBILO_AUTH_READY_PROMISE = authReadyPromise;
     bootstrap().catch((error) => {
         console.warn('[PubiloAuth] bootstrap failed:', error);
+        try {
+            setAppShellAuthenticated(false);
+            renderLoginView('โหลดสถานะบัญชีไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+        } catch (renderError) {
+            console.warn('[PubiloAuth] failed to render fallback login view:', renderError);
+        }
     });
 })();

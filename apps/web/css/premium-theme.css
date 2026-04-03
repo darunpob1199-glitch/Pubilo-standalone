@@ -527,6 +527,11 @@ input[type="checkbox"] {
 
 /* --- AUTH UI --- */
 
+body:not(.pubilo-authenticated) > .header,
+body:not(.pubilo-authenticated) > .container {
+    display: none;
+}
+
 .pubilo-auth-overlay {
     position: fixed;
     inset: 0;

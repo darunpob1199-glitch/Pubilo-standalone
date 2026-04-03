@@ -137,6 +137,16 @@
         }
     }
 
+    async function rehydrateAuthGate() {
+        if (window.PubiloAuth?.refreshState) {
+            try {
+                await window.PubiloAuth.refreshState({ rehydrate: true });
+            } catch (err) {
+                console.warn('[billing] Failed to rehydrate auth gate:', err);
+            }
+        }
+    }
+
     function updatePlanCardState() {
         const subscription = billingState.subscription;
         const latestOrder = billingState.latestOrder;
@@ -285,6 +295,20 @@
         try {
             const res = await apiFetch('/api/billing/current');
             const data = await res.json();
+
+            if (res.status === 401 || res.status === 402 || res.status === 409) {
+                billingState.subscription = null;
+                billingState.latestOrder = null;
+                updateCurrentPlanCard();
+                renderPaymentHistory();
+                updatePlanCardState();
+                await rehydrateAuthGate();
+                return;
+            }
+
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || `โหลดข้อมูล billing ไม่สำเร็จ (${res.status})`);
+            }
 
             billingState.subscription = data.subscription || null;
             billingState.latestOrder = data.latestOrder || null;
