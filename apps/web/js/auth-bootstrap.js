@@ -259,7 +259,7 @@
     function renderOnboardingView(profile) {
         const overlay = ensureOverlay();
         setAppShellAuthenticated(false);
-        setOverlayVariant('default');
+        setOverlayVariant('onboarding');
         overlay.classList.remove('is-hidden');
         writeAuthFlowState('onboarding');
         const card = overlay.querySelector('#pubiloAuthCard');
