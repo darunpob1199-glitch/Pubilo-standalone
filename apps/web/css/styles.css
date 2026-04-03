@@ -2431,8 +2431,9 @@
             }
 
             .published-date-filter {
-                flex: 0 0 170px;
-                min-width: 170px;
+                flex: 1 1 280px;
+                min-width: 240px;
+                max-width: 320px;
                 position: relative;
             }
 

@@ -926,7 +926,7 @@
                         <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
                     </div>
                     <div class="pending-filter-search published-date-filter">
-                        <input class="pending-filter-input" id="publishedDateInput" type="date" />
+                        <input class="pending-filter-input" id="publishedDateInput" type="text" placeholder="เลือกช่วงวันที่" />
                     </div>
                     <div class="pending-filter-meta" id="publishedFilterMeta"></div>
                 </div>
@@ -982,7 +982,7 @@
                         <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
                     </div>
                     <div class="pending-filter-search published-date-filter">
-                        <input class="pending-filter-input" id="hidePostsDateInput" type="date" />
+                        <input class="pending-filter-input" id="hidePostsDateInput" type="text" placeholder="เลือกช่วงวันที่" />
                     </div>
                     <div class="pending-filter-meta" id="hidePostsFilterMeta"></div>
                 </div>
@@ -2113,21 +2113,54 @@
                 const input = document.getElementById(id);
                 if (!input) return;
 
+                const syncDateRangeFilter = (instance, selectedDates, shouldDispatchChange = true) => {
+                    const normalizedDates = Array.isArray(selectedDates) ? selectedDates : [];
+                    const storageValue = normalizedDates
+                        .map((date) => instance.formatDate(date, "Y-m-d"))
+                        .join(" to ");
+                    const displayValue = normalizedDates
+                        .map((date) => instance.formatDate(date, "d/m/Y"))
+                        .join(" - ");
+
+                    instance.input.value = storageValue || "";
+                    if (instance.altInput) {
+                        instance.altInput.value = displayValue || "";
+                    }
+
+                    if (shouldDispatchChange) {
+                        instance.input.dispatchEvent(new Event("change", { bubbles: true }));
+                    }
+                };
+
                 flatpickr(input, {
+                    mode: "range",
                     dateFormat: "Y-m-d",
                     altInput: true,
                     altFormat: "d/m/Y",
-                    allowInput: true,
+                    allowInput: false,
                     disableMobile: true,
+                    locale: "th",
                     onReady: function(_, __, instance) {
                         if (instance.altInput) {
-                            instance.altInput.placeholder = "เลือกวันที่";
+                            instance.altInput.placeholder = "เลือกช่วงวันที่";
                             instance.altInput.classList.add("pending-filter-input");
+                            instance.altInput.readOnly = true;
+                        }
+
+                        const existingValue = String(instance.input.value || "").trim();
+                        if (existingValue) {
+                            const selected = existingValue
+                                .split(/\s+to\s+/i)
+                                .map((item) => String(item || "").trim())
+                                .filter(Boolean);
+                            if (selected.length) {
+                                instance.setDate(selected, false, "Y-m-d");
+                                syncDateRangeFilter(instance, instance.selectedDates, false);
+                            }
                         }
                     },
-                    onChange: function(_, dateStr, instance) {
-                        instance.input.value = dateStr || "";
-                        instance.input.dispatchEvent(new Event("change", { bubbles: true }));
+                    onChange: function(selectedDates, _, instance) {
+                        syncDateRangeFilter(instance, selectedDates, true);
                     },
                 });
             });
