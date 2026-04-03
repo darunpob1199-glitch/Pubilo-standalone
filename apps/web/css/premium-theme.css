@@ -1046,28 +1046,28 @@ body:not(.pubilo-authenticated) > .container {
 .pubilo-upgrade-price-row {
     display: flex;
     align-items: flex-end;
-    gap: 12px;
-    margin-top: 4px;
+    gap: 8px;
+    margin-top: 8px;
 }
 
 .pubilo-upgrade-price-row strong {
-    font-size: clamp(4.4rem, 6vw, 5.6rem);
-    line-height: 0.88;
-    letter-spacing: -0.05em;
+    font-size: 3.2rem;
+    line-height: 1;
+    letter-spacing: -0.04em;
     color: #111827;
     font-weight: 900;
 }
 
 .pubilo-upgrade-card.is-compact .pubilo-upgrade-price-row strong {
-    font-size: clamp(2.8rem, 4vw, 3.4rem);
+    font-size: 2.2rem;
 }
 
 .pubilo-upgrade-price-suffix {
     color: #6b7280;
-    font-size: 1rem;
-    font-weight: 700;
-    line-height: 1.15;
-    padding-bottom: 0.7rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.2;
+    padding-bottom: 0.4rem;
 }
 
 .pubilo-upgrade-section-title {
