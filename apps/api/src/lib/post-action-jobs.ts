@@ -1,5 +1,6 @@
 import type { Env } from '../index';
 import { decryptSecret } from './encryption';
+import { encryptSecret } from './encryption';
 
 const FB_API = 'https://graph.facebook.com/v21.0';
 
@@ -56,19 +57,399 @@ function normalizeUrl(value?: string | null): string | null {
     return normalized || null;
 }
 
-async function runGraphAction(action: PostActionType, postId: string, token: string) {
-    const endpoint = action === 'hide'
-        ? `${FB_API}/${postId}?timeline_visibility=hidden&access_token=${encodeURIComponent(token)}`
-        : `${FB_API}/${postId}?access_token=${encodeURIComponent(token)}`;
+function buildFacebookHeaders(cookieData?: string): Record<string, string> | undefined {
+    const normalizedCookie = String(cookieData || '').trim();
+    if (!normalizedCookie) return undefined;
+    return {
+        Cookie: normalizedCookie,
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    };
+}
 
-    const response = await fetch(endpoint, {
-        method: action === 'hide' ? 'POST' : 'DELETE',
-    });
-    const data = await response.json() as any;
+async function getWorkspaceCookieCandidates(env: Env, organizationId: string): Promise<Array<Record<string, string>>> {
+    try {
+        const rows = await env.DB.prepare(`
+            SELECT cookie_encrypted
+            FROM facebook_credentials
+            WHERE workspace_id = ?
+            ORDER BY updated_at DESC
+            LIMIT 5
+        `).bind(organizationId).all<{ cookie_encrypted?: string | null }>();
 
-    if (!response.ok || data?.error || data?.success !== true) {
-        throw new Error(String(data?.error?.message || data?.message || `Graph API ${action} failed`));
+        const seen = new Set<string>();
+        const headersList: Array<Record<string, string>> = [];
+        for (const row of rows.results || []) {
+            const cookie = String(await decryptSecret(env, row?.cookie_encrypted) || '').trim();
+            if (!cookie || seen.has(cookie)) continue;
+            const headers = buildFacebookHeaders(cookie);
+            if (!headers) continue;
+            seen.add(cookie);
+            headersList.push(headers);
+        }
+        return headersList;
+    } catch (error) {
+        console.warn('[post-action-jobs] cookie candidates fetch failed:', error);
+        return [];
     }
+}
+
+function isSessionOrTokenInvalidError(message: string): boolean {
+    const normalized = String(message || '').toLowerCase();
+    return (
+        normalized.includes('error validating access token')
+        || normalized.includes('session has been invalidated')
+        || normalized.includes('oauthexception')
+        || normalized.includes('invalid oauth')
+        || normalized.includes('the access token')
+    );
+}
+
+function isPostGoneOrInvalidIdError(message: string): boolean {
+    const normalized = String(message || '').toLowerCase();
+    return (
+        (normalized.includes('invalid post id') && normalized.includes('code=100'))
+        || (normalized.includes('unsupported get request') && normalized.includes('code=100'))
+    );
+}
+
+async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieData?: string): Promise<string> {
+    const headers = buildFacebookHeaders(cookieData);
+    if (accessToken) {
+        try {
+            const accountsRes = await fetch(
+                `${FB_API}/me/accounts?access_token=${encodeURIComponent(accessToken)}&fields=id,access_token&limit=100`,
+                headers ? { headers } : undefined,
+            );
+            const accountsData = await accountsRes.json() as any;
+            const matchedPage = accountsData?.data?.find((page: any) => String(page.id) === String(pageId));
+            if (matchedPage?.access_token) return String(matchedPage.access_token).trim();
+        } catch (_) {
+            // Continue to next fallback.
+        }
+
+        try {
+            const tokenRes = await fetch(
+                `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(accessToken)}`,
+                headers ? { headers } : undefined,
+            );
+            const tokenData = await tokenRes.json() as any;
+            if (tokenData?.access_token) return String(tokenData.access_token).trim();
+        } catch (_) {
+            // Continue to next fallback.
+        }
+    }
+
+    if (headers) {
+        try {
+            const cookieRes = await fetch(
+                `${FB_API}/me/accounts?fields=id,access_token&limit=100`,
+                { headers },
+            );
+            const cookieData2 = await cookieRes.json() as any;
+            if (cookieData2?.data) {
+                const matchedPage = cookieData2.data.find((page: any) => String(page.id) === String(pageId));
+                if (matchedPage?.access_token) return String(matchedPage.access_token).trim();
+            }
+        } catch (_) {
+            // Ignore and return empty.
+        }
+    }
+
+    return '';
+}
+
+async function recoverActionTokenFromWorkspaceCredentials(
+    env: Env,
+    organizationId: string,
+    pageId: string,
+    action: PostActionType,
+): Promise<string> {
+    try {
+        const rows = await env.DB.prepare(`
+            SELECT ads_token_encrypted, cookie_encrypted
+            FROM facebook_credentials
+            WHERE workspace_id = ?
+            ORDER BY updated_at DESC
+            LIMIT 5
+        `).bind(organizationId).all<{ ads_token_encrypted?: string | null; cookie_encrypted?: string | null }>();
+
+        for (const row of rows.results || []) {
+            const accessToken = String(await decryptSecret(env, row?.ads_token_encrypted) || '').trim();
+            const cookie = String(await decryptSecret(env, row?.cookie_encrypted) || '').trim();
+            const freshToken = await fetchFreshPageToken(pageId, accessToken, cookie);
+            if (!freshToken) continue;
+
+            await env.DB.prepare(`
+                INSERT INTO page_settings (organization_id, page_id, post_token_encrypted, hide_token_encrypted, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(organization_id, page_id) DO UPDATE SET
+                    post_token_encrypted = COALESCE(excluded.post_token_encrypted, page_settings.post_token_encrypted),
+                    hide_token_encrypted = COALESCE(excluded.hide_token_encrypted, page_settings.hide_token_encrypted),
+                    updated_at = CURRENT_TIMESTAMP
+            `).bind(
+                organizationId,
+                pageId,
+                await encryptSecret(env, freshToken),
+                action === 'hide' ? await encryptSecret(env, freshToken) : null,
+            ).run();
+
+            return freshToken;
+        }
+    } catch (error) {
+        console.warn('[post-action-jobs] token recovery failed:', error);
+    }
+
+    return '';
+}
+
+async function graphDeleteWithToken(targetId: string, token: string): Promise<{ ok: boolean; error?: string }> {
+    const endpoint = `${FB_API}/${encodeURIComponent(targetId)}?access_token=${encodeURIComponent(token)}`;
+    const response = await fetch(endpoint, { method: 'DELETE' });
+    const data = await response.json() as any;
+    if (response.ok && data?.success === true) {
+        return { ok: true };
+    }
+    const code = data?.error?.code ? ` code=${data.error.code}` : '';
+    const type = data?.error?.type ? ` type=${data.error.type}` : '';
+    const subcode = data?.error?.error_subcode ? ` subcode=${data.error.error_subcode}` : '';
+    return {
+        ok: false,
+        error: String(data?.error?.message || data?.message || 'Graph delete failed') + code + type + subcode,
+    };
+}
+
+async function graphHideWithToken(targetId: string, token: string): Promise<{ ok: boolean; error?: string }> {
+    const hideAttempts = [
+        new URLSearchParams({ access_token: token, is_hidden: 'true' }),
+        new URLSearchParams({ access_token: token, timeline_visibility: 'hidden' }),
+        new URLSearchParams({ access_token: token, is_published: 'false' }),
+        new URLSearchParams({ access_token: token, published: 'false' }),
+    ];
+    let lastError = '';
+    for (const body of hideAttempts) {
+        const response = await fetch(`${FB_API}/${encodeURIComponent(targetId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+        });
+        const data = await response.json() as any;
+        if (response.ok && !data?.error) {
+            return { ok: true };
+        }
+        const code = data?.error?.code ? ` code=${data.error.code}` : '';
+        const type = data?.error?.type ? ` type=${data.error.type}` : '';
+        const subcode = data?.error?.error_subcode ? ` subcode=${data.error.error_subcode}` : '';
+        lastError = String(data?.error?.message || data?.message || 'Graph hide failed') + code + type + subcode;
+    }
+    return { ok: false, error: lastError || 'Graph hide failed' };
+}
+
+async function graphDeleteWithCookie(
+    targetId: string,
+    headers: Record<string, string>,
+    token?: string,
+): Promise<{ ok: boolean; error?: string }> {
+    const authToken = String(token || '').trim();
+    const endpoint = authToken
+        ? `${FB_API}/${encodeURIComponent(targetId)}?access_token=${encodeURIComponent(authToken)}`
+        : `${FB_API}/${encodeURIComponent(targetId)}`;
+    const response = await fetch(endpoint, { method: 'DELETE', headers });
+    const data = await response.json() as any;
+    if (response.ok && data?.success === true) {
+        return { ok: true };
+    }
+    const code = data?.error?.code ? ` code=${data.error.code}` : '';
+    const type = data?.error?.type ? ` type=${data.error.type}` : '';
+    const subcode = data?.error?.error_subcode ? ` subcode=${data.error.error_subcode}` : '';
+    return {
+        ok: false,
+        error: String(data?.error?.message || data?.message || 'Graph delete (cookie) failed') + code + type + subcode,
+    };
+}
+
+async function graphHideWithCookie(
+    targetId: string,
+    headers: Record<string, string>,
+    token?: string,
+): Promise<{ ok: boolean; error?: string }> {
+    const authToken = String(token || '').trim();
+    const hideAttempts = [
+        new URLSearchParams({
+            ...(authToken ? { access_token: authToken } : {}),
+            is_hidden: 'true',
+        }),
+        new URLSearchParams({
+            ...(authToken ? { access_token: authToken } : {}),
+            timeline_visibility: 'hidden',
+        }),
+        new URLSearchParams({
+            ...(authToken ? { access_token: authToken } : {}),
+            is_published: 'false',
+        }),
+        new URLSearchParams({
+            ...(authToken ? { access_token: authToken } : {}),
+            published: 'false',
+        }),
+    ];
+    let lastError = '';
+    for (const body of hideAttempts) {
+        const response = await fetch(`${FB_API}/${encodeURIComponent(targetId)}`, {
+            method: 'POST',
+            headers: {
+                ...headers,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body.toString(),
+        });
+        const data = await response.json() as any;
+        if (response.ok && !data?.error) {
+            return { ok: true };
+        }
+        const code = data?.error?.code ? ` code=${data.error.code}` : '';
+        const type = data?.error?.type ? ` type=${data.error.type}` : '';
+        const subcode = data?.error?.error_subcode ? ` subcode=${data.error.error_subcode}` : '';
+        lastError = String(data?.error?.message || data?.message || 'Graph hide (cookie) failed') + code + type + subcode;
+    }
+    return { ok: false, error: lastError || 'Graph hide (cookie) failed' };
+}
+
+async function resolveDeleteObjectCandidates(postId: string, token: string): Promise<string[]> {
+    const candidates: string[] = [];
+    const seen = new Set<string>();
+    const pushCandidate = (value?: string | null) => {
+        const normalized = String(value || '').trim();
+        if (!normalized || seen.has(normalized)) return;
+        seen.add(normalized);
+        candidates.push(normalized);
+    };
+
+    const normalizedPostId = String(postId || '').trim();
+    pushCandidate(normalizedPostId);
+    if (normalizedPostId.includes('_')) {
+        pushCandidate(normalizedPostId.split('_').pop() || '');
+    }
+
+    try {
+        const fields = 'id,object_id,attachments{target{id},subattachments{target{id}}}';
+        const response = await fetch(
+            `${FB_API}/${encodeURIComponent(normalizedPostId)}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`,
+        );
+        const data = await response.json() as any;
+        if (!data?.error) {
+            pushCandidate(data?.object_id);
+            pushCandidate(data?.attachments?.data?.[0]?.target?.id);
+            const sub = Array.isArray(data?.attachments?.data?.[0]?.subattachments?.data)
+                ? data.attachments.data[0].subattachments.data
+                : [];
+            sub.forEach((item: any) => pushCandidate(item?.target?.id));
+        }
+    } catch (_) {
+        // Ignore lookup failures and keep existing candidates.
+    }
+
+    return candidates;
+}
+
+async function resolveTimelineHideTarget(
+    postId: string,
+    token: string,
+    cookieHeadersCandidates: Array<Record<string, string>> = [],
+): Promise<string> {
+    const normalizedPostId = String(postId || '').trim();
+    if (!normalizedPostId) return '';
+    if (normalizedPostId.includes('_')) return normalizedPostId;
+
+    const extractPostId = (payload: any): string => {
+        const postIdValue = String(payload?.post_id || '').trim();
+        if (postIdValue) return postIdValue;
+        const idValue = String(payload?.id || '').trim();
+        if (idValue.includes('_')) return idValue;
+        return '';
+    };
+
+    try {
+        const response = await fetch(
+            `${FB_API}/${encodeURIComponent(normalizedPostId)}?fields=id,post_id&access_token=${encodeURIComponent(token)}`,
+        );
+        const data = await response.json() as any;
+        const resolved = extractPostId(data);
+        if (resolved) return resolved;
+    } catch (_) {
+        // Continue cookie lookup.
+    }
+
+    for (const headers of cookieHeadersCandidates) {
+        try {
+            const response = await fetch(
+                `${FB_API}/${encodeURIComponent(normalizedPostId)}?fields=id,post_id`,
+                { headers },
+            );
+            const data = await response.json() as any;
+            const resolved = extractPostId(data);
+            if (resolved) return resolved;
+        } catch (_) {
+            // Continue.
+        }
+    }
+
+    return normalizedPostId;
+}
+
+async function runGraphAction(
+    action: PostActionType,
+    postId: string,
+    token: string,
+    cookieHeadersCandidates: Array<Record<string, string>> = [],
+) {
+    const normalizedPostId = String(postId || '').trim();
+    if (!normalizedPostId) {
+        throw new Error('Missing post id');
+    }
+
+    if (action === 'hide') {
+        const hideTarget = await resolveTimelineHideTarget(normalizedPostId, token, cookieHeadersCandidates);
+        const hideResult = await graphHideWithToken(hideTarget, token);
+        if (hideResult.ok) return;
+        let hideError = hideResult.error || '';
+        for (const headers of cookieHeadersCandidates) {
+            const cookieHide = await graphHideWithCookie(hideTarget, headers, token);
+            if (cookieHide.ok) return;
+            hideError = cookieHide.error || hideError;
+        }
+        throw new Error(hideError || 'Graph API hide failed');
+    }
+
+    const deleteCandidates = await resolveDeleteObjectCandidates(normalizedPostId, token);
+
+    let lastError = '';
+    for (const candidate of deleteCandidates) {
+        const deleteResult = await graphDeleteWithToken(candidate, token);
+        if (deleteResult.ok) return;
+        lastError = deleteResult.error || lastError;
+    }
+
+    // Token fallback: if hard delete denied, attempt hide with token.
+    const hideTarget = await resolveTimelineHideTarget(normalizedPostId, token, cookieHeadersCandidates);
+    const hideFallback = await graphHideWithToken(hideTarget, token);
+    if (hideFallback.ok) {
+        return;
+    }
+    lastError = lastError || hideFallback.error || '';
+
+    // Cookie fallback: try delete first, then hide.
+    for (const headers of cookieHeadersCandidates) {
+        for (const candidate of deleteCandidates) {
+            const cookieDelete = await graphDeleteWithCookie(candidate, headers, token);
+            if (cookieDelete.ok) return;
+            lastError = cookieDelete.error || lastError;
+        }
+
+        const cookieHide = await graphHideWithCookie(hideTarget, headers, token);
+        if (cookieHide.ok) return;
+        lastError = cookieHide.error || lastError;
+    }
+
+    throw new Error(lastError || 'Graph API delete failed');
 }
 
 export async function ensurePostActionTables(env: Env): Promise<void> {
@@ -505,6 +886,7 @@ export async function processPendingPostActionJobs(env: Env, options?: {
         : await env.DB.prepare(jobsQuery).bind(maxJobs).all<PostActionJobRow>();
 
     for (const job of jobRows.results || []) {
+        const cookieHeadersCandidates = await getWorkspaceCookieCandidates(env, job.organization_id);
         if (job.status === 'pending') {
             const claim = await env.DB.prepare(`
                 UPDATE post_action_jobs
@@ -519,7 +901,15 @@ export async function processPendingPostActionJobs(env: Env, options?: {
             }
         }
 
-        const token = await resolvePageActionToken(env, job.organization_id, job.page_id, job.action);
+        let token = await resolvePageActionToken(env, job.organization_id, job.page_id, job.action);
+        if (!token) {
+            token = await recoverActionTokenFromWorkspaceCredentials(
+                env,
+                job.organization_id,
+                job.page_id,
+                job.action,
+            );
+        }
         if (!token) {
             await env.DB.prepare(`
                 UPDATE post_action_items
@@ -558,7 +948,7 @@ export async function processPendingPostActionJobs(env: Env, options?: {
 
         for (const item of itemRows.results || []) {
             try {
-                await runGraphAction(job.action, item.post_id, token);
+                await runGraphAction(job.action, item.post_id, token, cookieHeadersCandidates);
                 await env.DB.prepare(`
                     UPDATE post_action_items
                     SET status = 'success',
@@ -567,7 +957,52 @@ export async function processPendingPostActionJobs(env: Env, options?: {
                     WHERE id = ?
                 `).bind(nowSql(), item.id).run();
             } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
+                let message = error instanceof Error ? error.message : String(error);
+                if (isPostGoneOrInvalidIdError(message)) {
+                    // Treat already-removed/invalid IDs as success so bulk jobs don't fail whole batches.
+                    await env.DB.prepare(`
+                        UPDATE post_action_items
+                        SET status = 'success',
+                            error_message = NULL,
+                            processed_at = ?
+                        WHERE id = ?
+                    `).bind(nowSql(), item.id).run();
+                    continue;
+                }
+                if (isSessionOrTokenInvalidError(message)) {
+                    const recoveredToken = await recoverActionTokenFromWorkspaceCredentials(
+                        env,
+                        job.organization_id,
+                        job.page_id,
+                        job.action,
+                    );
+                    if (recoveredToken) {
+                        token = recoveredToken;
+                        try {
+                            await runGraphAction(job.action, item.post_id, token, cookieHeadersCandidates);
+                            await env.DB.prepare(`
+                                UPDATE post_action_items
+                                SET status = 'success',
+                                    error_message = NULL,
+                                    processed_at = ?
+                                WHERE id = ?
+                            `).bind(nowSql(), item.id).run();
+                            continue;
+                        } catch (retryError) {
+                            message = retryError instanceof Error ? retryError.message : String(retryError);
+                            if (isPostGoneOrInvalidIdError(message)) {
+                                await env.DB.prepare(`
+                                    UPDATE post_action_items
+                                    SET status = 'success',
+                                        error_message = NULL,
+                                        processed_at = ?
+                                    WHERE id = ?
+                                `).bind(nowSql(), item.id).run();
+                                continue;
+                            }
+                        }
+                    }
+                }
                 await env.DB.prepare(`
                     UPDATE post_action_items
                     SET status = 'failed',

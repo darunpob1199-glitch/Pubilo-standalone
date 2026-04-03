@@ -3,7 +3,7 @@ const PUBILO_API_STORAGE_KEY = 'pubilo_api_base';
 const PUBILO_WEB_ONLY_MODE = false;
 
 window.PUBILO_WEB_ONLY_MODE = PUBILO_WEB_ONLY_MODE;
-window.PUBILO_HIDDEN_HASHES = ['quotes', 'earnings', 'hide-posts', 'delete-posts'];
+window.PUBILO_HIDDEN_HASHES = ['quotes', 'earnings'];
 
 // Old production preview URLs stay frozen on older deploys and keep causing stale-client issues.
 // Always move users back to the stable production hostname.
@@ -74,13 +74,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const hiddenIds = [
         'earningsNavItem',
-        'deletePostsNavItem',
         'pendingQuotesTab',
         'quotesPostsTab',
         'quotesQuotesTab',
         'quotesPanel',
         'earningsPanel',
-        'deletePostsPanel',
         'textQuoteSubmitBtn',
         'addQuoteBtn',
     ];

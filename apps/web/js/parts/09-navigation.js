@@ -3,15 +3,12 @@
 function getAllowedHash(rawHash) {
     const fallbackMap = {
         quotes: "pending",
-        "hide-posts": "news",
-        "delete-posts": "news",
+        earnings: "news",
     };
 
     if (
         rawHash === "link"
         || rawHash === "earnings"
-        || rawHash === "hide-posts"
-        || rawHash === "delete-posts"
     ) {
         return "news";
     }
@@ -46,6 +43,24 @@ function handleNavigation() {
     } else if (hash === "published") {
         publishedNavItem.classList.add("active");
         showPublishedPanel();
+    } else if (hash === "hide-posts") {
+        if (typeof hidePostsNavItem !== "undefined" && hidePostsNavItem) {
+            hidePostsNavItem.classList.add("active");
+        }
+        if (typeof showHidePostsPanel === "function") {
+            showHidePostsPanel();
+        } else {
+            showPendingPanel(false, "posts");
+        }
+    } else if (hash === "delete-posts") {
+        if (typeof deletePostsNavItem !== "undefined" && deletePostsNavItem) {
+            deletePostsNavItem.classList.add("active");
+        }
+        if (typeof showDeletePostsPanel === "function") {
+            showDeletePostsPanel();
+        } else {
+            showPendingPanel(false, "posts");
+        }
     } else if (hash === "quotes") {
         pendingNavItem.classList.add("active");
         showQuotesPanel();
@@ -102,6 +117,22 @@ publishedNavItem.addEventListener("click", (e) => {
     e.preventDefault();
     navigateTo("published");
 });
+
+// Hide posts nav click
+if (typeof hidePostsNavItem !== "undefined" && hidePostsNavItem) {
+    hidePostsNavItem.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo("hide-posts");
+    });
+}
+
+// Delete posts nav click
+if (typeof deletePostsNavItem !== "undefined" && deletePostsNavItem) {
+    deletePostsNavItem.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo("delete-posts");
+    });
+}
 
 // Settings nav item click
 document.getElementById("settingsNavBtn").addEventListener("click", (e) => {

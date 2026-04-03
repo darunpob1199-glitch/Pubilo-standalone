@@ -85,37 +85,57 @@ function buildFacebookHeaders(cookieData?: string): Record<string, string> | und
 }
 
 async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieData?: string): Promise<string> {
-    if (!accessToken) return '';
-
     const headers = buildFacebookHeaders(cookieData);
 
-    try {
-        const accountsRes = await fetch(
-            `${FB_API}/me/accounts?access_token=${encodeURIComponent(accessToken)}&fields=id,access_token&limit=100`,
-            headers ? { headers } : undefined,
-        );
-        const accountsData = await accountsRes.json() as any;
-        const matchedPage = accountsData?.data?.find((page: any) => String(page.id) === String(pageId));
+    if (accessToken) {
+        try {
+            const accountsRes = await fetch(
+                `${FB_API}/me/accounts?access_token=${encodeURIComponent(accessToken)}&fields=id,access_token&limit=100`,
+                headers ? { headers } : undefined,
+            );
+            const accountsData = await accountsRes.json() as any;
+            const matchedPage = accountsData?.data?.find((page: any) => String(page.id) === String(pageId));
 
-        if (matchedPage?.access_token) {
-            return matchedPage.access_token;
+            if (matchedPage?.access_token) {
+                return matchedPage.access_token;
+            }
+        } catch (error) {
+            console.warn('[published-posts] /me/accounts page token fetch failed:', error);
         }
-    } catch (error) {
-        console.warn('[published-posts] /me/accounts page token fetch failed:', error);
+
+        try {
+            const tokenRes = await fetch(
+                `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(accessToken)}`,
+                headers ? { headers } : undefined,
+            );
+            const tokenData = await tokenRes.json() as any;
+
+            if (tokenData?.access_token) {
+                return tokenData.access_token;
+            }
+        } catch (error) {
+            console.warn('[published-posts] direct page token fetch failed:', error);
+        }
     }
 
-    try {
-        const tokenRes = await fetch(
-            `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(accessToken)}`,
-            headers ? { headers } : undefined,
-        );
-        const tokenData = await tokenRes.json() as any;
-
-        if (tokenData?.access_token) {
-            return tokenData.access_token;
+    // Cookie-only token discovery fallback.
+    if (headers) {
+        try {
+            const cookieRes = await fetch(
+                `${FB_API}/me/accounts?fields=id,access_token&limit=100`,
+                { headers },
+            );
+            const cookieData2 = await cookieRes.json() as any;
+            if (cookieData2?.data) {
+                const matchedPage = cookieData2.data.find((page: any) => String(page.id) === String(pageId));
+                if (matchedPage?.access_token) {
+                    console.log('[published-posts] Recovered page token from cookie-only auth');
+                    return matchedPage.access_token;
+                }
+            }
+        } catch (error) {
+            console.warn('[published-posts] cookie-only page token fetch failed:', error);
         }
-    } catch (error) {
-        console.warn('[published-posts] direct page token fetch failed:', error);
     }
 
     return '';
@@ -287,6 +307,92 @@ async function getStoredPageToken(env: Env, workspaceId: string, pageId: string)
     return String(await decryptSecret(env, result?.post_token_encrypted) || '').trim();
 }
 
+async function getWorkspaceCookieCandidates(env: Env, workspaceId: string): Promise<string[]> {
+    try {
+        const rows = await env.DB.prepare(`
+            SELECT cookie_encrypted
+            FROM facebook_credentials
+            WHERE workspace_id = ?
+            ORDER BY updated_at DESC
+            LIMIT 5
+        `).bind(workspaceId).all<{ cookie_encrypted?: string | null }>();
+
+        const seen = new Set<string>();
+        const cookies: string[] = [];
+        for (const row of rows.results || []) {
+            const cookie = String(await decryptSecret(env, row?.cookie_encrypted) || '').trim();
+            if (!cookie || seen.has(cookie)) continue;
+            seen.add(cookie);
+            cookies.push(cookie);
+        }
+        return cookies;
+    } catch (error) {
+        console.warn('[published-posts] workspace cookie candidates fetch failed:', error);
+        return [];
+    }
+}
+
+async function fetchFacebookPublishedPostsCookieOnly(params: {
+    pageId: string;
+    limit: number;
+    after?: string;
+    headers: Record<string, string>;
+}): Promise<{ success: boolean; logs?: Array<Record<string, any>>; meta?: Record<string, any>; error?: string }> {
+    const { pageId, limit, after, headers } = params;
+    let lastError = '';
+    const endpointsToTry = [
+        { edge: 'posts', metaSource: 'facebook-cookie' },
+        { edge: 'feed', metaSource: 'facebook-cookie-feed' },
+    ];
+
+    for (const endpoint of endpointsToTry) {
+        const query = new URLSearchParams({
+            fields: 'id,message,story,created_time,full_picture,permalink_url,status_type,from,is_hidden,timeline_visibility,attachments{media_type,type,url,target,media,subattachments}',
+            limit: String(Math.min(limit, 100)),
+        });
+        if (String(after || '').trim()) {
+            query.set('after', String(after).trim());
+        }
+
+        try {
+            const response = await fetch(
+                `${FB_API}/${pageId}/${endpoint.edge}?${query.toString()}`,
+                { headers },
+            );
+            const data = await response.json() as any;
+            if (data?.error) {
+                lastError = data.error?.message || 'Facebook API error';
+                continue;
+            }
+
+            const logs: Array<Record<string, any>> = mapFacebookPosts(data).map((row) => ({
+                ...row,
+                page_id: pageId,
+            }));
+            const nextCursor = String(data?.paging?.cursors?.after || '').trim();
+            const hasMore = Boolean(data?.paging?.next && nextCursor);
+
+            if (endpoint.edge === 'posts' && logs.length === 0 && !String(after || '').trim()) {
+                continue;
+            }
+
+            return {
+                success: true,
+                logs,
+                meta: {
+                    source: endpoint.metaSource,
+                    hasMore,
+                    nextCursor: hasMore ? nextCursor : null,
+                },
+            };
+        } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
+        }
+    }
+
+    return { success: false, error: lastError || 'Facebook API error (cookie-only)' };
+}
+
 async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput) {
     const { workspaceId, pageId, limit, after, pageToken, accessToken, cookieData } = input;
 
@@ -296,17 +402,26 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
 
     const storedPageToken = pageToken?.trim() || await getStoredPageToken(env, workspaceId, pageId);
     const freshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
+    const workspaceCookieCandidates = await getWorkspaceCookieCandidates(env, workspaceId);
+    const cookieHeaderCandidates: Array<Record<string, string>> = [];
+    const seenCookies = new Set<string>();
+    const addCookieCandidate = (rawCookie?: string) => {
+        const normalized = String(rawCookie || '').trim();
+        if (!normalized || seenCookies.has(normalized)) return;
+        const candidateHeaders = buildFacebookHeaders(normalized);
+        if (!candidateHeaders) return;
+        seenCookies.add(normalized);
+        cookieHeaderCandidates.push(candidateHeaders);
+    };
+    addCookieCandidate(cookieData);
+    workspaceCookieCandidates.forEach((cookie) => addCookieCandidate(cookie));
+
     const authCandidates = buildAuthCandidates([
         freshPageToken,
         storedPageToken,
         accessToken,
     ]);
-
-    if (!authCandidates.length) {
-        return { success: false, error: 'Missing page token', errorType: 'MissingPageToken' };
-    }
-
-    const headers = buildFacebookHeaders(cookieData);
+    const headers = cookieHeaderCandidates[0];
     let lastFacebookError: any = null;
 
     for (const authToken of authCandidates) {
@@ -319,44 +434,83 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
             params.set('after', String(after).trim());
         }
 
-        const response = await fetch(
-            `${FB_API}/${pageId}/posts?${params.toString()}`,
-            headers ? { headers } : undefined,
-        );
-        const data = await response.json() as any;
+        const endpointsToTry = [
+            { edge: 'posts', metaSource: 'facebook' },
+            // Some pages return empty on /posts but still return timeline items on /feed.
+            { edge: 'feed', metaSource: 'facebook-feed' },
+        ];
 
-        if (data?.error) {
-            lastFacebookError = data.error;
-            if (
-                Number(data.error?.code) === 190 ||
-                (Number(data.error?.code) === 1 && data.error?.type === 'OAuthException')
-            ) {
+        for (const endpoint of endpointsToTry) {
+            const response = await fetch(
+                `${FB_API}/${pageId}/${endpoint.edge}?${params.toString()}`,
+                headers ? { headers } : undefined,
+            );
+            const data = await response.json() as any;
+
+            if (data?.error) {
+                lastFacebookError = data.error;
+                if (
+                    Number(data.error?.code) === 190 ||
+                    (Number(data.error?.code) === 1 && data.error?.type === 'OAuthException')
+                ) {
+                    // Token invalid for this candidate; try next candidate token.
+                    break;
+                }
                 continue;
             }
-            continue;
+
+            const logs: Array<Record<string, any>> = mapFacebookPosts(data).map((row) => ({
+                ...row,
+                page_id: pageId,
+            }));
+            const nextCursor = String(data?.paging?.cursors?.after || '').trim();
+            const hasMore = Boolean(data?.paging?.next && nextCursor);
+
+            // If /posts is empty for the first page, try /feed before concluding no data.
+            if (endpoint.edge === 'posts' && logs.length === 0 && !String(after || '').trim()) {
+                continue;
+            }
+
+            const pinnedIds = await fetchPinnedPostIds(pageId, authToken, headers);
+            const normalizedLogs = logs.map((row) => ({
+                ...row,
+                is_pinned: pinnedIds.has(String(row.facebook_post_id || '').trim()),
+            }));
+
+            return {
+                success: true,
+                logs: normalizedLogs,
+                meta: {
+                    source: endpoint.metaSource,
+                    hasMore,
+                    nextCursor: hasMore ? nextCursor : null,
+                },
+            };
         }
 
-        const logs: Array<Record<string, any>> = mapFacebookPosts(data).map((row) => ({
-            ...row,
-            page_id: pageId,
-        }));
-        const pinnedIds = await fetchPinnedPostIds(pageId, authToken, headers);
-        const normalizedLogs = logs.map((row) => ({
-            ...row,
-            is_pinned: pinnedIds.has(String(row.facebook_post_id || '').trim()),
-        }));
-        const nextCursor = String(data?.paging?.cursors?.after || '').trim();
-        const hasMore = Boolean(data?.paging?.next && nextCursor);
+        // Move to next token candidate.
+        continue;
+    }
 
-        return {
-            success: true,
-            logs: normalizedLogs,
-            meta: {
-                source: 'facebook',
-                hasMore,
-                nextCursor: hasMore ? nextCursor : null,
-            },
-        };
+    // Last resort: cookie-only listing (no access_token in query).
+    for (const cookieHeaders of cookieHeaderCandidates) {
+        const cookieOnlyResult = await fetchFacebookPublishedPostsCookieOnly({
+            pageId,
+            limit,
+            after,
+            headers: cookieHeaders,
+        });
+        if (cookieOnlyResult.success) {
+            return {
+                success: true,
+                logs: cookieOnlyResult.logs || [],
+                meta: cookieOnlyResult.meta || {
+                    source: 'facebook-cookie',
+                    hasMore: false,
+                    nextCursor: null,
+                },
+            };
+        }
     }
 
     return {
