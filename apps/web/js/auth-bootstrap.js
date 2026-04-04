@@ -116,33 +116,45 @@
         overlay.className = 'pubilo-auth-overlay is-hidden';
         overlay.innerHTML = `
             <div class="pubilo-auth-shell">
-                <div class="pubilo-auth-brand">
-                    <!-- Top Left Logo -->
-                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:auto;">
-                        <svg width="36" height="36" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M50 68 L80 84 L50 100 L20 84 Z" stroke="#C084FC" stroke-width="8" stroke-linejoin="round"/>
-                            <path d="M50 50 L80 66 L50 82 L20 66 Z" stroke="#94A3B8" stroke-width="8" stroke-linejoin="round"/>
-                            <path d="M50 16 L84 34 L50 52 L16 34 Z" fill="#8B5CF6"/>
-                            <path d="M84 34 L50 52 L50 62 L84 44 Z" fill="#7C3AED"/>
-                            <path d="M16 34 L50 52 L50 62 L16 44 Z" fill="#A78BFA"/>
-                        </svg>
-                        <span style="font-size:24px; font-weight:700; color:white; font-family:'Montserrat', sans-serif; letter-spacing:-0.5px;">Pubilo</span>
-                    </div>
-
-                    <!-- Welcome Text at Bottom -->
-                    <div style="margin-top:auto;" id="pubiloBrandTextWrap">
-                        <h1 style="font-size:52px; font-weight:800; margin-bottom:20px; color:white; line-height:1.15; letter-spacing:-1.5px; font-family:'Montserrat', sans-serif;">Work Smarter.<br>Organize Faster.<br>Manage Anywhere.</h1>
-                        <p style="font-size:16px; opacity:0.85; margin-bottom:40px; line-height:1.6; color:white; max-width: 440px; font-weight: 500; font-family:'Montserrat', sans-serif;">From quick team updates to full-length policies, our powerful platform lets you collaborate seamlessly across devices.</p>
-                        <div style="display:flex; gap:12px; align-items:center;">
-                          <div style="width:32px; height:6px; border-radius:6px; background:white;"></div>
-                          <div style="width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.3);"></div>
-                          <div style="width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.3);"></div>
+                <!-- Top Navigation -->
+                <div style="display:flex; justify-content:center; align-items:center; height:80px; gap:40px; font-weight:600; color:#64748b; font-size:14px; position:relative; z-index:2; font-family:'Inter', sans-serif;">
+                    <span style="color:#1e293b; cursor:pointer;">Home</span>
+                    <span style="cursor:pointer;">Who We Are</span>
+                    <span style="cursor:pointer;">What We Build</span>
+                    <span style="cursor:pointer;">Advertisements</span>
+                    <span style="cursor:pointer;">Careers</span>
+                    <span style="cursor:pointer;">Business</span>
+                </div>
+                
+                <div style="display:flex; flex:1; width:100%; max-width:1200px; margin:0 auto; position:relative; z-index:2;">
+                    <!-- Left Side Content -->
+                    <div class="pubilo-auth-brand" style="flex:1; display:flex; flex-direction:column; justify-content:center; padding:0 60px;">
+                        <h1 style="font-size:72px; font-weight:800; margin-bottom:24px; line-height:1.1; letter-spacing:-2.5px; font-family:'Montserrat', sans-serif;">
+                            <span style="background: linear-gradient(90deg, #f59e0b, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Simple</span><br>
+                            <span style="color:#1e293b;">Secure &</span><br>
+                            <span style="color:#1e293b;">Reliable</span>
+                        </h1>
+                        <p id="pubiloLeftSubtitle" style="font-size:22px; color:#475569; margin-bottom:40px; line-height:1.6; max-width: 440px; font-weight: 500; font-family:'Montserrat', sans-serif;">
+                            Keep Connected with People through seamless workspace management and easy tools.
+                        </p>
+                        
+                        <!-- Store Buttons -->
+                        <div style="display:flex; gap:16px;">
+                            <a href="#" style="display:flex; align-items:center; gap:12px; padding:12px 24px; border:2px solid #e2e8f0; border-radius:12px; background:rgba(255,255,255,0.8); backdrop-filter:blur(10px); color:#0f172a; text-decoration:none; font-weight:600; font-family:'Inter', sans-serif; transition:all 0.2s;">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M16.365 21.43c-1.393.99-2.775 1.018-4.053.037-1.314-.997-2.673-.97-4.015.01-1.619 1.157-3.238.169-4.832-1.928C.486 15.65.045 11.238 2.502 6.643c1.246-2.316 3.123-3.665 5.568-3.722 1.408-.032 2.89.914 4.09.914 1.258 0 2.871-1.042 4.417-.923 2.128.163 3.823 1.066 4.908 2.76-4.148 2.548-3.268 8.01 1.04 9.771-1.047 2.685-2.73 5.485-6.16 6.014v-.025-.002zm-4.135-21.43c-.15 2.518-2.129 4.887-4.898 4.79.034-2.85 2.56-5.187 4.898-4.79z"></path></svg>
+                                App store
+                            </a>
+                            <a href="#" style="display:flex; align-items:center; gap:12px; padding:12px 24px; border:2px solid #e2e8f0; border-radius:12px; background:rgba(255,255,255,0.8); backdrop-filter:blur(10px); color:#0f172a; text-decoration:none; font-weight:600; font-family:'Inter', sans-serif; transition:all 0.2s;">
+                                <svg width="24" height="24" viewBox="0 0 256 256" fill="none"><path d="M128 256C198.7 256 256 198.7 256 128C256 57.3 198.7 0 128 0C57.3 0 0 57.3 0 128C0 198.7 57.3 256 128 256Z" fill="url(#paint0_linear)"/><path d="M128 256C198.7 256 256 198.7 256 128C256 57.3 198.7 0 128 0C57.3 0 0 57.3 0 128C0 198.7 57.3 256 128 256Z" fill="url(#paint1_linear)"/><path d="M128 256C198.7 256 256 198.7 256 128C256 57.3 198.7 0 128 0C57.3 0 0 57.3 0 128C0 198.7 57.3 256 128 256Z" fill="url(#paint2_linear)"/><path d="M69.5 73.8L165.7 128L69.5 182.2V73.8Z" fill="white"/><defs><linearGradient id="paint0_linear" x1="128" y1="0" x2="128" y2="256" gradientUnits="userSpaceOnUse"><stop stop-color="#4CAF50"/><stop offset="1" stop-color="#388E3C"/></linearGradient><linearGradient id="paint1_linear" x1="128" y1="0" x2="128" y2="256" gradientUnits="userSpaceOnUse"><stop stop-color="#FFEB3B"/><stop offset="1" stop-color="#FBC02D"/></linearGradient><linearGradient id="paint2_linear" x1="128" y1="0" x2="128" y2="256" gradientUnits="userSpaceOnUse"><stop stop-color="#2196F3"/><stop offset="1" stop-color="#1976D2"/></linearGradient></defs></svg>
+                                Play store
+                            </a>
                         </div>
                     </div>
-                </div>
-                <!-- Right Side Container -->
-                <div id="pubiloRightContainer">
-                    <div class="pubilo-auth-card" id="pubiloAuthCard"></div>
+                    
+                    <!-- Right Side Container (Card) -->
+                    <div id="pubiloRightContainer" style="flex:1; display:flex; justify-content:center; align-items:center;">
+                        <div class="pubilo-auth-card" id="pubiloAuthCard" style="background:rgba(255,255,255,0.7); backdrop-filter:blur(30px); -webkit-backdrop-filter:blur(30px); border-radius:32px; box-shadow:0 20px 60px rgba(0,0,0,0.08); border:1px solid rgba(255,255,255,0.8); padding:40px; width:100%; max-width:440px;"></div>
+                    </div>
                 </div>
             </div>
         `;
@@ -152,56 +164,17 @@
 
     function setOverlayVariant(variant) {
         const overlay = ensureOverlay();
-        const shell = overlay.querySelector('.pubilo-auth-shell');
         const brand = overlay.querySelector('.pubilo-auth-brand');
         const card = overlay.querySelector('#pubiloAuthCard');
         const rightContainer = overlay.querySelector('#pubiloRightContainer');
 
-        overlay.classList.remove('pubilo-auth-overlay--billing-gate', 'pubilo-auth-overlay--onboarding');
-        shell?.classList.remove('pubilo-auth-shell--billing-gate', 'pubilo-auth-shell--payment-only', 'pubilo-auth-shell--onboarding');
-        card?.classList.remove('pubilo-auth-card--billing-gate', 'pubilo-auth-card--payment-only', 'pubilo-auth-card--onboarding');
-
-        if (variant === 'billing-gate') {
-            overlay.classList.add('pubilo-auth-overlay--billing-gate');
-            shell?.classList.add('pubilo-auth-shell--billing-gate');
-            card?.classList.add('pubilo-auth-card--billing-gate');
+        if (variant === 'billing-gate' || variant === 'payment-only') {
             if (brand) brand.style.display = 'none';
             if (rightContainer) rightContainer.style.flex = '1';
-            return;
-        }
-
-        if (variant === 'payment-only') {
-            shell?.classList.add('pubilo-auth-shell--payment-only');
-            card?.classList.add('pubilo-auth-card--payment-only');
-            if (brand) brand.style.display = 'none';
-            if (rightContainer) rightContainer.style.flex = '1';
-            return;
-        }
-
-        if (variant === 'onboarding') {
-            overlay.classList.add('pubilo-auth-overlay--onboarding');
-            shell?.classList.add('pubilo-auth-shell--onboarding');
-            card?.classList.add('pubilo-auth-card--onboarding');
-            if (brand) {
-                brand.style.display = '';
-                brand.querySelector('h1').innerHTML = "Upgrade Your<br>Workspace.";
-                brand.querySelector('p').innerHTML = "Select a plan that fits your team's needs.<br>Start managing everything in one place with Pubilo.";
+            if (card) {
+                card.style.maxWidth = '900px';
+                card.style.background = '#ffffff';
             }
-            if (rightContainer) {
-                rightContainer.style.flex = '5';
-                rightContainer.style.position = 'relative';
-            }
-            return;
-        }
-
-        if (brand) {
-            brand.style.display = '';
-            brand.querySelector('h1').innerHTML = "Work Smarter.<br>Organize Faster.<br>Manage Anywhere.";
-            brand.querySelector('p').innerHTML = "From quick team updates to full-length policies, our powerful platform lets you collaborate seamlessly across devices.";
-        }
-        if (rightContainer) rightContainer.style.flex = '4.5';
-    }
-
     function renderLoginView(message) {
         const overlay = ensureOverlay();
         setAppShellAuthenticated(false);
@@ -210,58 +183,52 @@
         writeAuthFlowState('login');
         const card = overlay.querySelector('#pubiloAuthCard');
         const loginUrl = `${window.API_BASE}/api/auth/login/line?returnTo=${encodeURIComponent(getSafeReturnToUrl())}`;
+        
         card.innerHTML = `
-            <div class="pubilo-auth-panel" style="width:100%; border:none; box-shadow:none; background:transparent;">
-                <h2 style="font-size:36px; font-weight:800; color:#0f172a; margin-bottom:12px; font-family:'Montserrat', sans-serif;">Welcome Back!</h2>
-                <p style="font-size:15px; color:#64748b; margin-bottom:40px; line-height:1.6; font-family:'Montserrat', sans-serif;">
-                    Log in to start creating stunning workspaces with ease.
-                </p>
+            <div style="width:100%; border:none; box-shadow:none; background:transparent;">
+                <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:32px;">
+                    <!-- Pubilo Logo -->
+                    <div style="display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:8px;">
+                        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M50 20 L80 35 L50 50 L20 35 Z" fill="#7c3aed"/>
+                            <path d="M50 35 L80 50 L50 65 L20 50 Z" stroke="#94a3b8" stroke-width="6" stroke-linejoin="round"/>
+                            <path d="M50 50 L80 65 L50 80 L20 65 Z" stroke="#c4b5fd" stroke-width="6" stroke-linejoin="round"/>
+                        </svg>
+                        <span style="font-size:28px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; letter-spacing:-0.5px;">Pubilo</span>
+                    </div>
+                </div>
+
                 ${message ? `<p class="pubilo-auth-error" style="background:#fff1f1; color:#da1e28; padding:16px; border-radius:12px; margin-bottom:24px; font-size:14px; font-weight:500;">${message}</p>` : ''}
                 
-                <!-- Line Inputs for aesthetics (VidPro style) -->
-                <div style="margin-bottom:24px;">
-                    <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 8px; display: block;">Email</label>
-                    <input type="text" placeholder="Input your email" disabled style="width:100%; border:2px solid #e2e8f0; border-radius:12px; padding:16px; font-size:15px; color:#111827; background:#ffffff; outline:none; font-family:'Montserrat', sans-serif;" />
+                <div style="margin-bottom:16px; position:relative;">
+                    <div style="position:absolute; left:16px; top:16px; color:#94a3b8;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                    </div>
+                    <input type="text" placeholder="Enter your Mail" disabled style="width:100%; border:2px solid #e2e8f0; border-radius:8px; padding:16px 16px 16px 48px; font-size:14px; color:#111827; background:#ffffff; outline:none; font-family:'Inter', sans-serif; transition:all 0.2s;" />
                 </div>
                 
-                <div style="margin-bottom:32px; position:relative;">
-                    <label style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 8px; display: block;">Password</label>
-                    <input type="password" placeholder="Input your password" disabled style="width:100%; border:2px solid #e2e8f0; border-radius:12px; padding:16px; font-size:15px; color:#111827; background:#ffffff; outline:none; font-family:'Montserrat', sans-serif;" />
-                    <svg style="position:absolute; right:16px; top:42px;" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a0aabf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>
-                    </svg>
+                <div style="margin-bottom:16px; position:relative;">
+                    <div style="position:absolute; left:16px; top:16px; color:#94a3b8;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    </div>
+                    <input type="password" placeholder="Enter your Password" disabled style="width:100%; border:2px solid #e2e8f0; border-radius:8px; padding:16px 16px 16px 48px; font-size:14px; color:#111827; background:#ffffff; outline:none; font-family:'Inter', sans-serif; transition:all 0.2s;" />
                 </div>
                 
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:32px;">
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:500; color:#64748b; font-family:'Montserrat', sans-serif;">
-                        <input type="checkbox" checked style="accent-color:#0f172a; width:18px; height:18px; border-radius:4px;" />
-                        Remember Me
-                    </label>
-                    <a href="#" style="color:#64748b; font-size:13px; text-decoration:none; font-weight:500; font-family:'Montserrat', sans-serif;">Forgot Password?</a>
+                <div style="display:flex; justify-content:flex-start; margin-bottom:24px;">
+                    <a href="#" style="color:#2563eb; font-size:13px; text-decoration:none; font-weight:600; font-family:'Inter', sans-serif;">Forget Password?</a>
                 </div>
 
-                <a class="pubilo-auth-provider-btn" href="${loginUrl}" style="background-color: #0f172a; color: white; display:flex; justify-content:center; align-items:center; width: 100%; border-radius: 100px; height: 56px; font-size:16px; font-weight:700; text-decoration:none; font-family:'Montserrat', sans-serif; border:none; box-shadow:none;">
-                    Login with LINE
+                <a class="pubilo-auth-provider-btn" href="${loginUrl}" style="background:linear-gradient(90deg, #0f40d6, #0e30aa); color:white; display:flex; justify-content:center; align-items:center; width:100%; border-radius:8px; height:52px; font-size:15px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; box-shadow:0 10px 20px rgba(15, 64, 214, 0.2); letter-spacing:0.5px;">
+                    LOGIN
                 </a>
 
-                <div style="display:flex; align-items:center; gap:16px; margin: 32px 0;">
-                    <div style="flex:1; height:1px; background:#e2e8f0;"></div>
-                    <span style="font-size:13px; color:#94a3b8; font-weight:500;">Or continue with</span>
-                    <div style="flex:1; height:1px; background:#e2e8f0;"></div>
+                <div style="display:flex; justify-content:center; margin-top:32px; gap:8px;">
+                    <button style="border:none; border-bottom:2px solid #e2e8f0; background:transparent; padding:0 0 4px 0; color:#94a3b8; font-size:12px; font-weight:500; font-family:'Inter', sans-serif;">New User?</button>
+                    <button style="border:none; border-bottom:2px solid #0f172a; background:transparent; padding:0 0 4px 0; color:#0f172a; font-size:12px; font-weight:700; font-family:'Inter', sans-serif; cursor:pointer;" onclick="window.location.href='${loginUrl}'">Sign Up</button>
                 </div>
 
-                <a href="${loginUrl}" style="background-color: #ffffff; color: #0f172a; border: 2px solid #e2e8f0; display:flex; justify-content:center; align-items:center; gap: 8px; width: 100%; border-radius: 100px; height: 56px; font-size:15px; font-weight:700; text-decoration:none; font-family:'Montserrat', sans-serif;">
-                    <svg width="20" height="20" viewBox="0 0 24 24">
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                    </svg>
-                    Continue with Google
-                </a>
-
-                <div style="text-align:center; margin-top:32px;">
-                    <p style="color:#64748b; font-size:14px; font-weight:500; font-family:'Montserrat', sans-serif;">Don't have an account? <a href="${loginUrl}" style="color:#0f172a; text-decoration:none; font-weight:700;">Sign up here</a></p>
+                <div style="text-align:center; margin-top:24px;">
+                    <a href="#" style="color:#0f172a; font-size:13px; font-weight:700; font-family:'Inter', sans-serif; text-decoration:none;">Frequently Asked Questions(FAQ) ?</a>
                 </div>
             </div>
         `;
@@ -388,24 +355,57 @@
     function renderPaymentView(orderId, options = {}) {
         const overlay = ensureOverlay();
         setAppShellAuthenticated(false);
-        setOverlayVariant('payment-only');
+        setOverlayVariant('default');
         overlay.classList.remove('is-hidden');
         writeAuthFlowState('payment', { orderId }, options.historyMode || 'push');
+        
+        const shell = overlay.querySelector('.pubilo-auth-shell');
+        const brand = overlay.querySelector('.pubilo-auth-brand');
         const card = overlay.querySelector('#pubiloAuthCard');
+        
+        if (brand) {
+            brand.querySelector('h1').innerHTML = `<span style="background: linear-gradient(90deg, #f59e0b, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Simple</span><br><span style="color:#1e293b;">Secure &</span><br><span style="color:#1e293b;">Reliable</span>`;
+            const subtitle = brand.querySelector('#pubiloLeftSubtitle');
+            if (subtitle) {
+                subtitle.innerHTML = "Complete your payment to unlock all premium features and seamless workspace management.";
+            }
+        }
+
         const amount = state.latestPaymentOrder?.amount_thb || 0;
         const planLabel = state.plans?.find((p) => p.code === state.latestPaymentOrder?.plan_code)?.label || '';
 
         card.innerHTML = `
-            <div class="pubilo-auth-panel pubilo-payment-panel">
-                <p class="pubilo-auth-label">ชำระเงิน</p>
-                <h2>สแกน QR เพื่อชำระ &#3647;${Number(amount).toLocaleString('th-TH')}</h2>
-                <p class="pubilo-auth-copy">${planLabel} — สแกนผ่านแอปธนาคารหรือ e-wallet</p>
-                <div class="pubilo-qr-area" id="pubiloQrArea">
-                    <p>กำลังสร้าง QR code...</p>
+            <div style="width:100%; border:none; box-shadow:none; background:transparent;">
+                <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:24px;">
+                    <!-- Pubilo Logo -->
+                    <div style="display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:8px;">
+                        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M50 20 L80 35 L50 50 L20 35 Z" fill="#7c3aed"/>
+                            <path d="M50 35 L80 50 L50 65 L20 50 Z" stroke="#94a3b8" stroke-width="6" stroke-linejoin="round"/>
+                            <path d="M50 50 L80 65 L50 80 L20 65 Z" stroke="#c4b5fd" stroke-width="6" stroke-linejoin="round"/>
+                        </svg>
+                        <span style="font-size:28px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; letter-spacing:-0.5px;">Pubilo</span>
+                    </div>
                 </div>
-                <div class="pubilo-payment-status" id="pubiloPaymentStatus"></div>
-                <p class="pubilo-auth-note" id="pubiloPaymentNote"></p>
-                <button type="button" class="pubilo-logout-link" id="pubiloPaymentLogout">Logout</button>
+
+                <div style="text-align:center; margin-bottom:24px;">
+                    <p style="font-size:14px; font-weight:700; color:#64748b; letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; font-family:'Inter', sans-serif;">Payment Required</p>
+                    <h2 style="font-size:32px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; margin-bottom:8px;">&#3647;${Number(amount).toLocaleString('th-TH')}</h2>
+                    <p style="font-size:15px; color:#475569; font-weight:500; font-family:'Inter', sans-serif;">${planLabel}</p>
+                </div>
+
+                <div style="background:#ffffff; border-radius:24px; padding:24px; display:flex; flex-direction:column; align-items:center; box-shadow:0 10px 30px rgba(0,0,0,0.05); border:1px solid #e2e8f0; margin-bottom:24px;">
+                    <div id="pubiloQrArea" style="min-height:200px; display:flex; flex-direction:column; justify-content:center; align-items:center; width:100%;">
+                        <div style="width:40px; height:40px; border:3px solid #e2e8f0; border-top-color:#0f172a; border-radius:50%; animation:spin 1s linear infinite;"></div>
+                        <p style="margin-top:16px; font-size:14px; color:#64748b; font-weight:500; font-family:'Inter', sans-serif;">Generating QR Code...</p>
+                        <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+                    </div>
+                    
+                    <div id="pubiloPaymentStatus" style="margin-top:16px; text-align:center; width:100%;"></div>
+                    <p id="pubiloPaymentNote" style="font-size:13px; color:#ef4444; font-weight:600; font-family:'Inter', sans-serif; margin-top:8px; text-align:center;"></p>
+                </div>
+
+                <button type="button" id="pubiloPaymentLogout" style="width:100%; border:2px solid #e2e8f0; background:transparent; color:#64748b; padding:16px; border-radius:12px; font-size:15px; font-weight:700; font-family:'Inter', sans-serif; cursor:pointer; transition:all 0.2s;">Cancel & Logout</button>
             </div>
         `;
 
