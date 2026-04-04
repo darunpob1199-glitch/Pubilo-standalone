@@ -24,7 +24,7 @@ const postToolStates = {
     delete: createPostToolState(),
 };
 
-const dateRangeFilterUtils = window.PubiloDateRangeFilter || {
+const postToolDateRangeFilterUtils = window.PubiloDateRangeFilter || {
     normalizeValue: (value) => String(value || "").trim(),
     parseRange: (value) => {
         const normalized = String(value || "").trim();
@@ -286,8 +286,8 @@ function syncDeletePostToolPageSelect() {
 
 function getPostToolCoverageTargetDate(state) {
     if (state.filters.customDate) {
-        const range = dateRangeFilterUtils.parseRange(state.filters.customDate);
-        const target = dateRangeFilterUtils.createBoundary(range.start, "start");
+        const range = postToolDateRangeFilterUtils.parseRange(state.filters.customDate);
+        const target = postToolDateRangeFilterUtils.createBoundary(range.start, "start");
         return target ? target.getTime() : null;
     }
     if (state.filters.clearBefore) {
@@ -431,7 +431,7 @@ function getPostToolFilteredPosts(toolKey) {
 
         const date = parsePostToolDate(post.published_at || post.created_at);
         if (state.filters.customDate) {
-            return dateRangeFilterUtils.includes(date, state.filters.customDate);
+            return postToolDateRangeFilterUtils.includes(date, state.filters.customDate);
         }
 
         const dateKey = getPostToolDateKey(date);
@@ -539,7 +539,7 @@ function renderPostToolFilterMeta(toolKey, filteredCount, totalCount, eligibleCo
         return;
     }
 
-    const rangeLabel = dateRangeFilterUtils.getLabel(postToolStates[toolKey].filters.customDate);
+    const rangeLabel = postToolDateRangeFilterUtils.getLabel(postToolStates[toolKey].filters.customDate);
     if (rangeLabel) {
         dom.filterMeta.textContent = toolKey === "hide" && filteredCount !== eligibleCount
             ? `${rangeLabel} พบ ${eligibleCount} รายการ (กันไว้ ${filteredCount - eligibleCount})`
@@ -975,7 +975,7 @@ function syncPostToolInputs(toolKey) {
     const dom = getPostToolDom(toolKey);
     if (dom.searchInput) dom.searchInput.value = state.filters.query;
     if (dom.typeFilter) dom.typeFilter.value = state.filters.type;
-    dateRangeFilterUtils.syncInputValue(dom.dateInput, state.filters.customDate);
+    postToolDateRangeFilterUtils.syncInputValue(dom.dateInput, state.filters.customDate);
     if (dom.clearBeforeInput) dom.clearBeforeInput.value = state.filters.clearBefore;
     if (dom.batchSizeInput) dom.batchSizeInput.value = String(getPostToolPositiveInt(state.filters.batchSize, 20) || 20);
     if (dom.keepLatestToggle) dom.keepLatestToggle.checked = Boolean(state.safeguards.keepLatestEnabled);
@@ -1452,14 +1452,14 @@ function bindPostToolEvents(toolKey) {
         state.filters.day = target.dataset.filter || "all";
         state.filters.customDate = "";
         state.filters.clearBefore = "";
-        dateRangeFilterUtils.syncInputValue(dom.dateInput, "");
+        postToolDateRangeFilterUtils.syncInputValue(dom.dateInput, "");
         if (dom.clearBeforeInput) dom.clearBeforeInput.value = "";
         renderPostToolDayFilters(toolKey);
         loadPostToolPosts(toolKey, { silent: true });
     });
 
     dom.dateInput?.addEventListener("change", (event) => {
-        state.filters.customDate = dateRangeFilterUtils.normalizeValue(event.target.value || "");
+        state.filters.customDate = postToolDateRangeFilterUtils.normalizeValue(event.target.value || "");
         if (state.filters.customDate) {
             state.filters.clearBefore = "";
             if (dom.clearBeforeInput) dom.clearBeforeInput.value = "";
@@ -1484,7 +1484,7 @@ function bindPostToolEvents(toolKey) {
         if (state.filters.clearBefore) {
             state.filters.customDate = "";
             state.filters.day = "all";
-            dateRangeFilterUtils.syncInputValue(dom.dateInput, "");
+            postToolDateRangeFilterUtils.syncInputValue(dom.dateInput, "");
         }
         renderPostToolDayFilters(toolKey);
         loadPostToolPosts(toolKey, { silent: true });
@@ -1543,7 +1543,7 @@ function bindPostToolEvents(toolKey) {
     dom.runBtn?.addEventListener("click", () => runPostToolAction(toolKey));
 }
 
-function showPostToolPanel(toolKey) {
+async function showPostToolPanel(toolKey) {
     document.querySelectorAll(".mode-container").forEach((container) => {
         container.classList.remove("active");
         container.style.display = "none";
@@ -1570,7 +1570,8 @@ function showPostToolPanel(toolKey) {
     bindPostToolEvents(toolKey);
     if (toolKey === "delete") {
         syncDeletePostToolPageSelect();
-        hydrateDeletePostToolPageOptions();
+        await hydrateDeletePostToolPageOptions();
+        syncDeletePostToolPageSelect();
     }
     loadPostToolPosts(toolKey);
     loadPostToolJobs(toolKey);
