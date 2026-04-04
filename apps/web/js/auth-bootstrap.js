@@ -129,6 +129,16 @@
                 <div style="display:flex; flex:1; width:100%; max-width:1200px; margin:0 auto; position:relative; z-index:2;">
                     <!-- Left Side Content -->
                     <div class="pubilo-auth-brand" style="flex:1; display:flex; flex-direction:column; justify-content:center; padding:0 60px;">
+                        <!-- Pubilo Logo -->
+                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:48px;">
+                            <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M50 20 L80 35 L50 50 L20 35 Z" fill="#7c3aed"/>
+                                <path d="M50 35 L80 50 L50 65 L20 50 Z" stroke="#94a3b8" stroke-width="6" stroke-linejoin="round"/>
+                                <path d="M50 50 L80 65 L50 80 L20 65 Z" stroke="#c4b5fd" stroke-width="6" stroke-linejoin="round"/>
+                            </svg>
+                            <span style="font-size:28px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; letter-spacing:-0.5px;">Pubilo</span>
+                        </div>
+
                         <h1 style="font-size:72px; font-weight:800; margin-bottom:24px; line-height:1.1; letter-spacing:-2.5px; font-family:'Montserrat', sans-serif;">
                             <span style="background: linear-gradient(90deg, #f59e0b, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Simple</span><br>
                             <span style="color:#1e293b;">Secure &</span><br>
@@ -518,9 +528,10 @@
         const card = overlay.querySelector('#pubiloAuthCard');
 
         // Custom text for the left panel specifically for Plan Selection
+        // Custom text for the left panel specifically for Plan Selection
         if (brand) {
-            brand.style.display = '';
-            brand.querySelector('h1').innerHTML = "Choose Your<br>Perfect Plan.";
+            brand.style.display = 'flex';
+            brand.querySelector('h1').innerHTML = `<span style="background: linear-gradient(90deg, #f59e0b, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Choose Your</span><br><span style="color:#1e293b;">Perfect</span><br><span style="color:#1e293b;">Plan.</span>`;
             brand.querySelector('p').innerHTML = "Select a plan that fits your team's needs to unlock all premium features and start managing seamlessly.";
         }
 
@@ -557,55 +568,67 @@
         const plansHtml = visiblePlans.map((plan) => {
             const isSelected = plan.code === defaultPlanCode;
             const isYearly = plan.interval === 'yearly';
-            const isTestPlan = plan.code === 'test_1';
             const intervalTag = plan.code === 'test_1' ? 'TEST' : (isYearly ? 'YEARLY' : 'MONTHLY');
             const featureList = (features[plan.code] || []).map((feature) => `
-                <li style="display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px; color:#64748b; font-weight:500;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <li style="display:flex; align-items:flex-start; gap:12px; margin-bottom:12px; font-size:14px; color:#475569; font-weight:500;">
+                    <div style="background:#f1f5f9; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
                     <span>${feature.replace(/^✓\s*/, '')}</span>
                 </li>
             `).join('');
 
             return `
-                <label class="pubilo-plan-card ${isSelected ? 'selected' : ''}" data-plan-card="${plan.code}" style="display:block; position:relative; border:2px solid ${isSelected ? '#0f172a' : '#e2e8f0'}; border-radius:16px; padding:20px; cursor:pointer; transition:all 0.2s; background:${isSelected ? '#f8fafc' : '#ffffff'}; margin-bottom:16px;">
-                    ${isYearly ? '<div style="position:absolute; top:-10px; right:20px; background:linear-gradient(135deg, #8B5CF6, #7C3AED); color:white; font-size:11px; font-weight:800; padding:4px 12px; border-radius:100px; font-family:\'Montserrat\', sans-serif;">SAVE ฿589</div>' : ''}
+                <label class="pubilo-plan-card ${isSelected ? 'selected' : ''}" data-plan-card="${plan.code}" style="display:block; position:relative; border:2px solid ${isSelected ? '#0f172a' : 'rgba(255,255,255,0.5)'}; border-radius:24px; padding:24px; cursor:pointer; transition:all 0.3s; background:${isSelected ? '#ffffff' : 'rgba(255,255,255,0.4)'}; box-shadow:${isSelected ? '0 20px 40px rgba(0,0,0,0.08)' : 'none'}; margin-bottom:20px;">
+                    ${isYearly ? '<div style="position:absolute; top:-12px; right:24px; background:linear-gradient(135deg, #f59e0b, #d97706); color:white; font-size:12px; font-weight:800; padding:6px 16px; border-radius:100px; box-shadow:0 4px 12px rgba(245,158,11,0.3); font-family:\'Montserrat\', sans-serif; letter-spacing:0.5px;">RECOMMENDED</div>' : ''}
                     <input type="radio" name="selectPlanCode" value="${plan.code}" ${isSelected ? 'checked' : ''} style="display:none;" />
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid rgba(0,0,0,0.05);">
                         <div>
-                            <div style="font-size:16px; font-weight:700; color:#0f172a; margin-bottom:4px; font-family:\'Montserrat\', sans-serif;">${plan.label} <span style="font-size:11px; font-weight:700; background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:100px; margin-left:4px;">${intervalTag}</span></div>
-                            <div style="font-size:24px; font-weight:800; color:#0f172a; font-family:\'Montserrat\', sans-serif;">฿${plan.amountThb.toLocaleString('th-TH')} <span style="font-size:14px; font-weight:500; color:#64748b;">${isYearly ? '/ yr' : '/ mo'}</span></div>
+                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                <h3 style="font-size:18px; font-weight:800; color:#0f172a; font-family:\'Montserrat\', sans-serif; margin:0;">${plan.label}</h3> 
+                                <span style="font-size:11px; font-weight:800; background:${isSelected ? '#e2e8f0' : '#f1f5f9'}; color:#475569; padding:4px 10px; border-radius:100px; letter-spacing:0.5px;">${intervalTag}</span>
+                            </div>
+                            <div style="font-size:32px; font-weight:800; color:#0f172a; font-family:\'Montserrat\', sans-serif; display:flex; align-items:baseline; gap:4px;">
+                                ฿${plan.amountThb.toLocaleString('th-TH')} <span style="font-size:15px; font-weight:600; color:#64748b;">${isYearly ? '/ yr' : '/ mo'}</span>
+                            </div>
                         </div>
-                        <div style="width:24px; height:24px; border-radius:50%; border:2px solid ${isSelected ? '#0f172a' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center; background:${isSelected ? '#0f172a' : 'transparent'};">
-                            ${isSelected ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}
+                        <div style="width:28px; height:28px; border-radius:50%; border:2px solid ${isSelected ? '#0f172a' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center; background:${isSelected ? '#0f172a' : '#ffffff'}; transition:all 0.2s; box-shadow:${isSelected ? '0 4px 10px rgba(15,23,42,0.2)' : 'none'};">
+                            ${isSelected ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}
                         </div>
                     </div>
-                    <ul style="list-style:none; padding:0; margin:0; font-family:\'Montserrat\', sans-serif;">${featureList}</ul>
+                    <ul style="list-style:none; padding:0; margin:0; font-family:\'Inter\', sans-serif;">${featureList}</ul>
                 </label>
             `;
         }).join('');
 
         card.innerHTML = `
             <form id="pubiloSelectPlanForm" class="pubilo-auth-panel" style="width:100%; border:none; box-shadow:none; background:transparent;">
-                <p style="background: #f1f5f9; color: #64748b; font-size: 11px; letter-spacing: 1.5px; border-radius: 100px; padding: 6px 14px; display: inline-block; font-weight: 800; margin-bottom: 20px; text-transform: uppercase;">${wsName}</p>
-                <h2 style="font-size:36px; font-weight:800; color:#0f172a; margin-bottom:12px; font-family:'Montserrat', sans-serif;">${heading}</h2>
-                <p style="font-size:15px; color:#64748b; margin-bottom:40px; line-height:1.6; font-family:'Montserrat', sans-serif;">
-                    ${subText}
-                </p>
+                <div style="text-align:center; margin-bottom:32px;">
+                    <p style="background: rgba(255,255,255,0.8); color: #0f172a; font-size: 11px; letter-spacing: 2px; border-radius: 100px; padding: 6px 16px; display: inline-block; font-weight: 800; margin-bottom: 24px; text-transform: uppercase; border:1px solid #e2e8f0; font-family:'Inter', sans-serif;">${wsName}</p>
+                    <h2 style="font-size:40px; font-weight:800; color:#0f172a; margin-bottom:12px; font-family:'Montserrat', sans-serif; letter-spacing:-1px;">${heading}</h2>
+                    <p style="font-size:16px; color:#475569; line-height:1.6; font-family:'Inter', sans-serif; font-weight:500;">
+                        ${subText}
+                    </p>
+                </div>
                 
-                <div style="margin-bottom:32px;">
+                <div style="margin-bottom:40px; display:flex; flex-direction:column; gap:16px;">
                     ${plansHtml}
                 </div>
 
-                <button type="submit" style="background-color: #0f172a; color: white; display:flex; justify-content:center; align-items:center; width: 100%; border-radius: 100px; height: 56px; font-size:16px; font-weight:700; text-decoration:none; font-family:'Montserrat', sans-serif; border:none; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
-                    Continue to Payment
-                </button>
-                <p id="pubiloSelectPlanNote" style="color:#ef4444; font-size:14px; margin-top:16px; text-align:center; font-family:'Montserrat', sans-serif;"></p>
+                <div style="position:relative;">
+                    <button type="submit" style="background: linear-gradient(135deg, #1e293b, #0f172a); color: white; display:flex; justify-content:center; align-items:center; width: 100%; border-radius: 100px; height: 60px; font-size:16px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; cursor:pointer; transition:all 0.3s; box-shadow:0 10px 25px rgba(15,23,42,0.2);" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 15px 30px rgba(15,23,42,0.3)';" onmouseout="this.style.transform='none'; this.style.boxShadow='0 10px 25px rgba(15,23,42,0.2)';">
+                        Continue to Payment
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:8px;"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                    </button>
+                </div>
+                <p id="pubiloSelectPlanNote" style="color:#ef4444; font-size:14px; margin-top:16px; text-align:center; font-family:'Inter', sans-serif; font-weight:500;"></p>
                 
                 <div style="text-align:center; margin-top:24px;">
-                    <button type="button" id="pubiloSelectPlanLogout" style="background:none; border:none; color:#64748b; font-size:14px; font-weight:600; cursor:pointer; font-family:'Montserrat', sans-serif; text-decoration:underline;">Cancel & Logout</button>
+                    <button type="button" id="pubiloSelectPlanLogout" style="background:none; border:none; color:#94a3b8; font-size:14px; font-weight:600; cursor:pointer; font-family:'Inter', sans-serif; transition:all 0.2s;" onmouseover="this.style.color='#0f172a';" onmouseout="this.style.color='#94a3b8';">Cancel & Logout</button>
                 </div>
             </form>
         `;
+
 
         card.querySelectorAll('[data-plan-card]').forEach((node) => {
             node.addEventListener('click', () => {
