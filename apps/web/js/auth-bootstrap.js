@@ -175,6 +175,17 @@
                 card.style.maxWidth = '900px';
                 card.style.background = '#ffffff';
             }
+            return;
+        }
+
+        if (brand) brand.style.display = 'flex';
+        if (rightContainer) rightContainer.style.flex = '1';
+        if (card) {
+            card.style.maxWidth = '440px';
+            card.style.background = 'rgba(255,255,255,0.7)';
+        }
+    }
+
     function renderLoginView(message) {
         const overlay = ensureOverlay();
         setAppShellAuthenticated(false);
