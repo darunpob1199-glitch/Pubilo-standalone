@@ -1543,7 +1543,7 @@ function bindPostToolEvents(toolKey) {
     dom.runBtn?.addEventListener("click", () => runPostToolAction(toolKey));
 }
 
-function showPostToolPanel(toolKey) {
+async function showPostToolPanel(toolKey) {
     document.querySelectorAll(".mode-container").forEach((container) => {
         container.classList.remove("active");
         container.style.display = "none";
@@ -1570,7 +1570,8 @@ function showPostToolPanel(toolKey) {
     bindPostToolEvents(toolKey);
     if (toolKey === "delete") {
         syncDeletePostToolPageSelect();
-        hydrateDeletePostToolPageOptions();
+        await hydrateDeletePostToolPageOptions();
+        syncDeletePostToolPageSelect();
     }
     loadPostToolPosts(toolKey);
     loadPostToolJobs(toolKey);

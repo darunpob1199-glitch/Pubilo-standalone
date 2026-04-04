@@ -356,7 +356,17 @@ window.deletePendingItem = async function (id) {
 
 // Navigate to a specific page (updates URL hash)
 function navigateTo(page) {
-    window.location.hash = page;
+    const nextPage = String(page || "").trim();
+    if (!nextPage) return;
+
+    if (window.location.hash.slice(1) === nextPage) {
+        if (typeof handleNavigation === "function") {
+            handleNavigation();
+        }
+        return;
+    }
+
+    window.location.hash = nextPage;
 }
 
 // ============================================
