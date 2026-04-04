@@ -498,17 +498,25 @@
     function renderPlanSelectionView(profile, options = {}) {
         const overlay = ensureOverlay();
         setAppShellAuthenticated(false);
-        setOverlayVariant('billing-gate');
+        // Use default variant to keep the split-screen design from Login page
+        setOverlayVariant('default');
         overlay.classList.remove('is-hidden');
         writeAuthFlowState('plan-selection', {}, options.historyMode || 'replace');
         const shell = overlay.querySelector('.pubilo-auth-shell');
         const brand = overlay.querySelector('.pubilo-auth-brand');
         const card = overlay.querySelector('#pubiloAuthCard');
 
+        // Custom text for the left panel specifically for Plan Selection
+        if (brand) {
+            brand.style.display = '';
+            brand.querySelector('h1').innerHTML = "Choose Your<br>Perfect Plan.";
+            brand.querySelector('p').innerHTML = "Select a plan that fits your team's needs to unlock all premium features and start managing seamlessly.";
+        }
+
         const isExpired = profile.workspace?.subscriptionStatus !== 'pending_payment';
         const wsName = profile.workspace?.name || profile.user?.name || 'Pubilo';
-        const heading = isExpired ? 'แพ็กเกจหมดอายุแล้ว' : 'เลือกแพ็กเกจ';
-        const subText = isExpired ? 'เลือกแพ็กเกจเพื่อต่ออายุการใช้งาน และปลดล็อกการใช้งานต่อทันทีหลังชำระเงิน' : 'เลือกแพ็กเกจแล้วชำระผ่าน QR PromptPay ได้เลย';
+        const heading = isExpired ? 'แพ็กเกจหมดอายุแล้ว' : 'Choose a Plan';
+        const subText = isExpired ? 'เลือกแพ็กเกจเพื่อต่ออายุการใช้งาน และปลดล็อกการใช้งานต่อทันทีหลังชำระเงิน' : 'Select a plan below and pay via QR PromptPay to get started.';
 
         const features = {
             test_1: ['✓ ทดสอบระบบ', '✓ 30 วัน'],
@@ -540,67 +548,76 @@
             const isYearly = plan.interval === 'yearly';
             const isTestPlan = plan.code === 'test_1';
             const intervalTag = plan.code === 'test_1' ? 'TEST' : (isYearly ? 'YEARLY' : 'MONTHLY');
-            const helperText = plan.code === 'test_1'
-                ? 'ใช้ทดสอบ flow จ่ายเงินจริง'
-                : (isYearly ? 'คุ้มกว่ารายเดือน ประหยัด ฿589' : 'เริ่มใช้งานได้ทันที');
-            const featureIntro = plan.code === 'yearly_4499'
-                ? 'สิ่งที่จะได้รับเหมือนรายเดือน และ:'
-                : isTestPlan
-                    ? 'สำหรับลอง flow payment:'
-                : 'สิ่งที่คุณจะได้รับ:';
-            const ctaText = isTestPlan
-                ? 'ลองโอน 1 บาท'
-                : (plan.code === currentPlanCode && isExpired ? 'เปิดใช้งานใหม่' : 'เลือกแพ็กเกจนี้');
             const featureList = (features[plan.code] || []).map((feature) => `
-                <li class="pubilo-upgrade-feature-item">
-                    <span class="pubilo-upgrade-feature-check">✓</span>
+                <li style="display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px; color:#64748b; font-weight:500;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                     <span>${feature.replace(/^✓\s*/, '')}</span>
                 </li>
             `).join('');
 
             return `
-                <label class="pubilo-upgrade-card ${isSelected ? 'selected' : ''} ${isTestPlan ? 'is-compact' : ''}" data-plan-card="${plan.code}">
-                    ${isYearly ? '<div class="pubilo-upgrade-badge">ประหยัด ฿589</div>' : ''}
-                    <input type="radio" name="selectPlanCode" value="${plan.code}" ${isSelected ? 'checked' : ''} />
-                    <div class="pubilo-upgrade-top">
-                        <span class="pubilo-upgrade-title">${plan.label}</span>
-                        <span class="pubilo-upgrade-tag">${intervalTag}</span>
+                <label class="pubilo-plan-card ${isSelected ? 'selected' : ''}" data-plan-card="${plan.code}" style="display:block; position:relative; border:2px solid ${isSelected ? '#0f172a' : '#e2e8f0'}; border-radius:16px; padding:20px; cursor:pointer; transition:all 0.2s; background:${isSelected ? '#f8fafc' : '#ffffff'}; margin-bottom:16px;">
+                    ${isYearly ? '<div style="position:absolute; top:-10px; right:20px; background:linear-gradient(135deg, #8B5CF6, #7C3AED); color:white; font-size:11px; font-weight:800; padding:4px 12px; border-radius:100px; font-family:\'Montserrat\', sans-serif;">SAVE ฿589</div>' : ''}
+                    <input type="radio" name="selectPlanCode" value="${plan.code}" ${isSelected ? 'checked' : ''} style="display:none;" />
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+                        <div>
+                            <div style="font-size:16px; font-weight:700; color:#0f172a; margin-bottom:4px; font-family:\'Montserrat\', sans-serif;">${plan.label} <span style="font-size:11px; font-weight:700; background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:100px; margin-left:4px;">${intervalTag}</span></div>
+                            <div style="font-size:24px; font-weight:800; color:#0f172a; font-family:\'Montserrat\', sans-serif;">฿${plan.amountThb.toLocaleString('th-TH')} <span style="font-size:14px; font-weight:500; color:#64748b;">${isYearly ? '/ yr' : '/ mo'}</span></div>
+                        </div>
+                        <div style="width:24px; height:24px; border-radius:50%; border:2px solid ${isSelected ? '#0f172a' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center; background:${isSelected ? '#0f172a' : 'transparent'};">
+                            ${isSelected ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}
+                        </div>
                     </div>
-                    <div class="pubilo-upgrade-price-row">
-                        <strong>฿${plan.amountThb.toLocaleString('th-TH')}</strong>
-                        <span class="pubilo-upgrade-price-suffix">${isYearly ? '/ บัญชี<br>ต่อปี' : '/ บัญชี<br>ต่อเดือน'}</span>
-                    </div>
-                    <p class="pubilo-upgrade-section-title">${featureIntro}</p>
-                    <ul class="pubilo-upgrade-features">${featureList}</ul>
-                    <div class="pubilo-upgrade-footer">
-                        <button type="submit" class="pubilo-upgrade-cta" data-plan-submit="${plan.code}">
-                            ${ctaText}
-                        </button>
-                        <p class="pubilo-upgrade-helper">${helperText}</p>
-                    </div>
+                    <ul style="list-style:none; padding:0; margin:0; font-family:\'Montserrat\', sans-serif;">${featureList}</ul>
                 </label>
             `;
         }).join('');
 
         card.innerHTML = `
-            <form id="pubiloSelectPlanForm" class="pubilo-upgrade-panel">
-                <div style="margin-bottom:4px;">
-                    <span class="pubilo-auth-label">${wsName}</span>
+            <form id="pubiloSelectPlanForm" class="pubilo-auth-panel" style="width:100%; border:none; box-shadow:none; background:transparent;">
+                <p style="background: #f1f5f9; color: #64748b; font-size: 11px; letter-spacing: 1.5px; border-radius: 100px; padding: 6px 14px; display: inline-block; font-weight: 800; margin-bottom: 20px; text-transform: uppercase;">${wsName}</p>
+                <h2 style="font-size:36px; font-weight:800; color:#0f172a; margin-bottom:12px; font-family:'Montserrat', sans-serif;">${heading}</h2>
+                <p style="font-size:15px; color:#64748b; margin-bottom:40px; line-height:1.6; font-family:'Montserrat', sans-serif;">
+                    ${subText}
+                </p>
+                
+                <div style="margin-bottom:32px;">
+                    ${plansHtml}
                 </div>
-                <h2 class="pubilo-upgrade-heading">${heading}</h2>
-                <p class="pubilo-upgrade-subtext">${subText}</p>
-                <div class="pubilo-upgrade-grid">${plansHtml}</div>
-                <p class="pubilo-auth-note" id="pubiloSelectPlanNote" style="margin:0;"></p>
-                <button type="button" class="pubilo-logout-link" id="pubiloSelectPlanLogout">Logout</button>
+
+                <button type="submit" style="background-color: #0f172a; color: white; display:flex; justify-content:center; align-items:center; width: 100%; border-radius: 100px; height: 56px; font-size:16px; font-weight:700; text-decoration:none; font-family:'Montserrat', sans-serif; border:none; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
+                    Continue to Payment
+                </button>
+                <p id="pubiloSelectPlanNote" style="color:#ef4444; font-size:14px; margin-top:16px; text-align:center; font-family:'Montserrat', sans-serif;"></p>
+                
+                <div style="text-align:center; margin-top:24px;">
+                    <button type="button" id="pubiloSelectPlanLogout" style="background:none; border:none; color:#64748b; font-size:14px; font-weight:600; cursor:pointer; font-family:'Montserrat', sans-serif; text-decoration:underline;">Cancel & Logout</button>
+                </div>
             </form>
         `;
 
         card.querySelectorAll('[data-plan-card]').forEach((node) => {
             node.addEventListener('click', () => {
                 card.querySelectorAll('[data-plan-card]').forEach((item) => {
-                    item.classList.remove('selected');
+                    item.style.borderColor = '#e2e8f0';
+                    item.style.backgroundColor = '#ffffff';
+                    const icon = item.querySelector('div[style*="width:24px"]');
+                    if (icon) {
+                        icon.style.borderColor = '#cbd5e1';
+                        icon.style.backgroundColor = 'transparent';
+                        icon.innerHTML = '';
+                    }
                 });
-                node.classList.add('selected');
+                
+                node.style.borderColor = '#0f172a';
+                node.style.backgroundColor = '#f8fafc';
+                const icon = node.querySelector('div[style*="width:24px"]');
+                if (icon) {
+                    icon.style.borderColor = '#0f172a';
+                    icon.style.backgroundColor = '#0f172a';
+                    icon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+                }
+                
                 const input = node.querySelector('input');
                 if (input) input.checked = true;
             });
