@@ -161,13 +161,13 @@
             card.style.boxShadow = '0 10px 40px rgba(0,0,0,0.06)';
             button.disabled = false;
             button.style.opacity = '1';
-            button.textContent = 'เลือกแพ็กเกจนี้';
+            button.textContent = 'เริ่มต้นใช้งาน';
 
             if (subscription?.plan_code === planCode) {
                 card.style.borderColor = 'var(--primary)';
                 card.style.background = '#faf8ff';
                 if (subscription.status === 'active') {
-                    button.textContent = 'ต่ออายุแพ็กเกจนี้';
+                    button.textContent = 'ต่ออายุแพ็กเกจ';
                 } else if (subscription.status === 'pending_payment') {
                     button.textContent = 'ชำระเพื่อเปิดใช้งาน';
                 } else if (subscription.status === 'cancelled') {
@@ -566,7 +566,7 @@
         } finally {
             if (triggerButton && !completed) {
                 triggerButton.disabled = false;
-                triggerButton.textContent = originalText || 'เลือกแพ็กเกจนี้';
+                triggerButton.textContent = originalText || 'เริ่มต้นใช้งาน';
             }
         }
     }
