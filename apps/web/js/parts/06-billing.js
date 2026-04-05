@@ -527,7 +527,6 @@
         }
 
         const planLabel = planCode === 'monthly_500' ? 'รายเดือน ฿299' : (planCode === 'yearly_4499' ? 'รายปี ฿2,999' : planCode);
-        if (!options?.skipConfirm && !confirm(`ยืนยันเลือกแพ็กเกจ ${planLabel} ?`)) return;
 
         const originalText = triggerButton?.textContent || '';
         let completed = false;
