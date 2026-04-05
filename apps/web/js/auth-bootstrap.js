@@ -116,15 +116,7 @@
         overlay.className = 'pubilo-auth-overlay is-hidden';
         overlay.innerHTML = `
             <div class="pubilo-auth-shell">
-                <!-- Top Navigation -->
-                <div style="display:flex; justify-content:center; align-items:center; height:80px; gap:40px; font-weight:600; color:#64748b; font-size:14px; position:relative; z-index:2; font-family:'Inter', sans-serif;">
-                    <span style="color:#1e293b; cursor:pointer;">Home</span>
-                    <span style="cursor:pointer;">Who We Are</span>
-                    <span style="cursor:pointer;">What We Build</span>
-                    <span style="cursor:pointer;">Advertisements</span>
-                    <span style="cursor:pointer;">Careers</span>
-                    <span style="cursor:pointer;">Business</span>
-                </div>
+
                 
                 <div style="display:flex; flex:1; width:100%; max-width:1200px; margin:0 auto; position:relative; z-index:2;">
                     <!-- Left Side Content -->
@@ -148,17 +140,7 @@
                             Keep Connected with People through seamless workspace management and easy tools.
                         </p>
                         
-                        <!-- Store Buttons -->
-                        <div style="display:flex; gap:16px;">
-                            <a href="#" style="display:flex; align-items:center; gap:12px; padding:12px 24px; border:2px solid #e2e8f0; border-radius:12px; background:rgba(255,255,255,0.8); backdrop-filter:blur(10px); color:#0f172a; text-decoration:none; font-weight:600; font-family:'Inter', sans-serif; transition:all 0.2s;">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M16.365 21.43c-1.393.99-2.775 1.018-4.053.037-1.314-.997-2.673-.97-4.015.01-1.619 1.157-3.238.169-4.832-1.928C.486 15.65.045 11.238 2.502 6.643c1.246-2.316 3.123-3.665 5.568-3.722 1.408-.032 2.89.914 4.09.914 1.258 0 2.871-1.042 4.417-.923 2.128.163 3.823 1.066 4.908 2.76-4.148 2.548-3.268 8.01 1.04 9.771-1.047 2.685-2.73 5.485-6.16 6.014v-.025-.002zm-4.135-21.43c-.15 2.518-2.129 4.887-4.898 4.79.034-2.85 2.56-5.187 4.898-4.79z"></path></svg>
-                                App store
-                            </a>
-                            <a href="#" style="display:flex; align-items:center; gap:12px; padding:12px 24px; border:2px solid #e2e8f0; border-radius:12px; background:rgba(255,255,255,0.8); backdrop-filter:blur(10px); color:#0f172a; text-decoration:none; font-weight:600; font-family:'Inter', sans-serif; transition:all 0.2s;">
-                                <svg width="24" height="24" viewBox="0 0 256 256" fill="none"><path d="M128 256C198.7 256 256 198.7 256 128C256 57.3 198.7 0 128 0C57.3 0 0 57.3 0 128C0 198.7 57.3 256 128 256Z" fill="url(#paint0_linear)"/><path d="M128 256C198.7 256 256 198.7 256 128C256 57.3 198.7 0 128 0C57.3 0 0 57.3 0 128C0 198.7 57.3 256 128 256Z" fill="url(#paint1_linear)"/><path d="M128 256C198.7 256 256 198.7 256 128C256 57.3 198.7 0 128 0C57.3 0 0 57.3 0 128C0 198.7 57.3 256 128 256Z" fill="url(#paint2_linear)"/><path d="M69.5 73.8L165.7 128L69.5 182.2V73.8Z" fill="white"/><defs><linearGradient id="paint0_linear" x1="128" y1="0" x2="128" y2="256" gradientUnits="userSpaceOnUse"><stop stop-color="#4CAF50"/><stop offset="1" stop-color="#388E3C"/></linearGradient><linearGradient id="paint1_linear" x1="128" y1="0" x2="128" y2="256" gradientUnits="userSpaceOnUse"><stop stop-color="#FFEB3B"/><stop offset="1" stop-color="#FBC02D"/></linearGradient><linearGradient id="paint2_linear" x1="128" y1="0" x2="128" y2="256" gradientUnits="userSpaceOnUse"><stop stop-color="#2196F3"/><stop offset="1" stop-color="#1976D2"/></linearGradient></defs></svg>
-                                Play store
-                            </a>
-                        </div>
+
                     </div>
                     
                     <!-- Right Side Container (Card) -->
