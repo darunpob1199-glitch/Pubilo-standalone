@@ -357,15 +357,18 @@
         const card = overlay.querySelector('#pubiloAuthCard');
         
         if (brand) {
-            brand.querySelector('h1').innerHTML = `<span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Simple</span><br><span style="color:#1e293b;">Secure &</span><br><span style="color:#1e293b;">Reliable</span>`;
+            brand.querySelector('h1').innerHTML = `<span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ใช้งานง่าย</span><br><span style="color:#1e293b;">ปลอดภัย &</span><br><span style="color:#1e293b;">มั่นใจได้</span>`;
             const subtitle = brand.querySelector('#pubiloLeftSubtitle');
             if (subtitle) {
-                subtitle.innerHTML = "Complete your payment to unlock all premium features and seamless workspace management.";
+                subtitle.innerHTML = "ชำระเงินเพื่อปลดล็อกฟีเจอร์พรีเมียมและเริ่มต้นจัดการพื้นที่ทำงานของคุณได้อย่างราบรื่น";
             }
         }
 
         const amount = state.latestPaymentOrder?.amount_thb || 0;
-        const planLabel = state.plans?.find((p) => p.code === state.latestPaymentOrder?.plan_code)?.label || '';
+        const rawPlanCode = state.latestPaymentOrder?.plan_code;
+        let planLabel = state.plans?.find((p) => p.code === rawPlanCode)?.label || '';
+        if (rawPlanCode === 'monthly_500') planLabel = 'รายเดือน (Basic)';
+        else if (rawPlanCode === 'yearly_4499') planLabel = 'รายปี (Professional)';
 
         card.innerHTML = `
             <div style="width:100%; border:none; box-shadow:none; background:transparent;">
@@ -382,7 +385,7 @@
                 </div>
 
                 <div style="text-align:center; margin-bottom:24px;">
-                    <p style="font-size:14px; font-weight:700; color:#64748b; letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; font-family:'Inter', sans-serif;">Payment Required</p>
+                    <p style="font-size:14px; font-weight:700; color:#64748b; letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; font-family:'Inter', sans-serif;">รอการชำระเงิน</p>
                     <h2 style="font-size:32px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; margin-bottom:8px;">&#3647;${Number(amount).toLocaleString('th-TH')}</h2>
                     <p style="font-size:15px; color:#475569; font-weight:500; font-family:'Inter', sans-serif;">${planLabel}</p>
                 </div>
@@ -390,7 +393,7 @@
                 <div style="background:#ffffff; border-radius:24px; padding:24px; display:flex; flex-direction:column; align-items:center; box-shadow:0 10px 30px rgba(0,0,0,0.05); border:1px solid #e2e8f0; margin-bottom:24px;">
                     <div id="pubiloQrArea" style="min-height:200px; display:flex; flex-direction:column; justify-content:center; align-items:center; width:100%;">
                         <div style="width:40px; height:40px; border:3px solid #e2e8f0; border-top-color:#0f172a; border-radius:50%; animation:spin 1s linear infinite;"></div>
-                        <p style="margin-top:16px; font-size:14px; color:#64748b; font-weight:500; font-family:'Inter', sans-serif;">Generating QR Code...</p>
+                        <p style="margin-top:16px; font-size:14px; color:#64748b; font-weight:500; font-family:'Inter', sans-serif;">ระบบกำลังสร้างคิวอาร์โค้ด...</p>
                         <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
                     </div>
                     
@@ -398,7 +401,7 @@
                     <p id="pubiloPaymentNote" style="font-size:13px; color:#ef4444; font-weight:600; font-family:'Inter', sans-serif; margin-top:8px; text-align:center;"></p>
                 </div>
 
-                <button type="button" id="pubiloPaymentLogout" style="width:100%; border:2px solid #e2e8f0; background:transparent; color:#64748b; padding:16px; border-radius:12px; font-size:15px; font-weight:700; font-family:'Inter', sans-serif; cursor:pointer; transition:all 0.2s;">Cancel & Logout</button>
+                <button type="button" id="pubiloPaymentLogout" style="width:100%; border:2px solid #e2e8f0; background:transparent; color:#64748b; padding:16px; border-radius:12px; font-size:15px; font-weight:700; font-family:'Inter', sans-serif; cursor:pointer; transition:all 0.2s;">ยกเลิกรายการและออกจากระบบ</button>
             </div>
         `;
 
@@ -570,20 +573,15 @@
 
             return `
                 <div class="pubilo-plan-card" data-plan-card="${plan.code}" style="flex:1; min-width:280px; max-width:380px; background:white; border-radius:20px; padding:36px 32px; box-shadow:0 20px 50px ${shadowColor}; border:2px solid ${borderColor}; position:relative; display:flex; flex-direction:column; cursor:pointer; transition:all 0.3s;">
-                    ${isYearly ? '<div style="position:absolute; top:36px; right:32px; background:#a855f7; color:white; padding:4px 12px; border-radius:100px; font-weight:700; font-size:10px; letter-spacing:0.03em;">Most popular</div>' : ''}
+                    ${isYearly ? '<div style="position:absolute; top:36px; right:32px; background:#a855f7; color:white; padding:4px 12px; border-radius:100px; font-weight:700; font-size:10px; letter-spacing:0.03em;">ยอดนิยม</div>' : ''}
                     <input type="radio" name="selectPlanCode" value="${plan.code}" ${isSelected ? 'checked' : ''} style="display:none;" />
                     <h3 style="font-size:20px; font-weight:700; color:#111827; margin:0 0 12px 0;">${planLabel}</h3>
                     <p style="font-size:14px; color:#6b7280; font-weight:500; margin:0 0 32px 0; line-height:1.5; min-height:42px; padding-right:20px;">${planDesc}</p>
                     <div style="display:flex; align-items:baseline; gap:4px; margin-bottom:24px;">
                         <span style="font-size:44px; font-weight:800; color:#111827; letter-spacing:-0.04em; line-height:1;">฿${plan.amountThb.toLocaleString('th-TH')}</span>
                     </div>
-                    <div style="font-size:14px; font-weight:500; color:#9ca3af; margin-bottom:24px;">${isYearly ? 'per year' : 'per month'}</div>
-                    <button type="button" data-plan-submit="${plan.code}" style="width:100%; background:${btnBg}; color:white; border:none; padding:14px; border-radius:10px; font-size:15px; font-weight:${isYearly ? '700' : '600'}; cursor:pointer; margin-bottom:32px; transition:opacity 0.2s;">Get started</button>
-                    <div style="display:flex; flex-direction:column; gap:16px; margin-bottom:32px; flex:1;">${specsHtml}</div>
-                    <div style="border-top:1px solid #f3f4f6; padding-top:24px;">
-                        <p style="font-size:13px; font-weight:700; color:#111827; margin:0 0 16px 0;">${extrasLabel}</p>
-                        <div style="display:flex; flex-direction:column; gap:12px;">${extrasHtml}</div>
-                    </div>
+                    <div style="font-size:14px; font-weight:500; color:#9ca3af; margin-bottom:24px;">${isYearly ? 'ต่อปี' : 'ต่อเดือน'}</div>
+                    <button type="button" data-plan-submit="${plan.code}" style="width:100%; background:${btnBg}; color:white; border:none; padding:14px; border-radius:10px; font-size:15px; font-weight:${isYearly ? '700' : '600'}; cursor:pointer; margin-bottom:0; transition:opacity 0.2s;">เริ่มต้นใช้งาน</button>
                 </div>
             `;
         }).join('');
@@ -597,17 +595,17 @@
                     <!-- Header -->
                     <div style="text-align:center; margin-bottom:48px; max-width:650px; margin-left:auto; margin-right:auto;">
                         <h2 style="font-size:46px; font-weight:800; color:#111827; margin:0 0 16px 0; letter-spacing:-0.04em; line-height:1.1; font-family:'Montserrat', sans-serif;">
-                            Choose a plan that <span style="color:#a855f7;">works</span> for you.
+                            เลือกแพ็กเกจที่ <span style="color:#a855f7;">ตอบโจทย์</span> คุณ
                         </h2>
                         <p style="font-size:16px; font-weight:500; color:#6b7280; margin:0; line-height:1.6; font-family:'Inter', sans-serif;">
-                            ${isExpired ? 'แพ็กเกจของคุณหมดอายุแล้ว เลือกแพ็กเกจเพื่อกลับมาใช้งานต่อทันที' : 'Trusted by millions. Select a plan below and pay via QR PromptPay to get started.'}
+                            ${isExpired ? 'แพ็กเกจของคุณหมดอายุแล้ว เลือกแพ็กเกจเพื่อกลับมาใช้งานต่อทันที' : 'ให้เราช่วยจัดการโพสต์ของคุณ เลือกแพ็กเกจด้านล่างและชำระเงินผ่าน QR PromptPay เพื่อเริ่มใช้งาน'}
                         </p>
 
                         <div style="display:inline-flex; align-items:center; background:#ffffff; border-radius:100px; padding:4px; box-shadow:0 2px 10px rgba(0,0,0,0.05); border:1px solid #e2e8f0; margin-top:32px;">
-                            <div style="padding:8px 24px; background:#a855f7; color:white; border-radius:100px; font-size:13px; font-weight:700; letter-spacing:0.02em;">Monthly</div>
+                            <div style="padding:8px 24px; background:#a855f7; color:white; border-radius:100px; font-size:13px; font-weight:700; letter-spacing:0.02em;">รายเดือน</div>
                             <div style="padding:8px 24px; color:#64748b; font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px;">
-                                Annually
-                                <span style="background:#f3e8ff; color:#7c3aed; padding:2px 8px; border-radius:100px; font-size:11px; font-weight:800;">Save 20%</span>
+                                รายปี
+                                <span style="background:#f3e8ff; color:#7c3aed; padding:2px 8px; border-radius:100px; font-size:11px; font-weight:800;">ประหยัด 20%</span>
                             </div>
                         </div>
                     </div>
