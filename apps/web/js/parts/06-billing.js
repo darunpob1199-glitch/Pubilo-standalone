@@ -117,13 +117,13 @@
                             <span style="font-size:28px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; letter-spacing:-0.5px;">Pubilo</span>
                         </div>
 
-                        <h1 style="font-size:72px; font-weight:800; margin-bottom:24px; line-height:1.1; letter-spacing:-2.5px; font-family:'Montserrat', sans-serif;">
-                            <span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Upgrade</span><br>
-                            <span style="color:#1e293b;">Your</span><br>
-                            <span style="color:#1e293b;">Workflow</span>
+                        <h1 style="font-size:62px; font-weight:800; margin-bottom:24px; line-height:1.15; letter-spacing:-1px; font-family:'Iter', 'Prompt', sans-serif;">
+                            <span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ยกระดับ</span><br>
+                            <span style="color:#1e293b;">การทำงาน</span><br>
+                            <span style="color:#1e293b;">ของคุณ</span>
                         </h1>
-                        <p style="font-size:22px; color:#475569; margin-bottom:40px; line-height:1.6; max-width: 440px; font-weight: 500; font-family:'Montserrat', sans-serif;">
-                            สแกน QR ผ่านแอปธนาคารหรือ e-wallet ของคุณเพื่อปรับแต่งประสบการณ์ใหม่บน Pubilo
+                        <p style="font-size:20px; color:#475569; margin-bottom:40px; line-height:1.6; max-width: 440px; font-weight: 500;">
+                            สแกน QR ผ่านแอปธนาคารหรือ e-wallet ของคุณเพื่อเปิดประสบการณ์พรีเมียมบน Pubilo
                         </p>
                     </div>
 
@@ -365,7 +365,7 @@
         card.innerHTML = `
             <div class="token-modal-header" style="display:flex; justify-content:space-between; align-items:flex-start; padding:0; border-bottom:none; margin-bottom:1rem;">
                 <div style="display:flex; flex-direction:column; gap:0.4rem;">
-                    <span style="font-size:0.75rem; font-weight:700; color:#8b5cf6; text-transform:uppercase; letter-spacing:0.05em; background:#f5f3ff; padding:0.25rem 0.6rem; border-radius:999px; width:fit-content;">Billing Payment</span>
+                    <span style="font-size:0.75rem; font-weight:700; color:#8b5cf6; text-transform:uppercase; letter-spacing:0.05em; background:#f5f3ff; padding:0.25rem 0.6rem; border-radius:999px; width:fit-content;">ชำระเงินแพ็กเกจ</span>
                     <h2 class="token-modal-title" style="font-size:1.6rem; margin:0.2rem 0 0;">ชำระ ${getPlanPrice(order.plan_code, amount)}</h2>
                     <p style="color:#64748b; font-size:0.9rem; margin:0;">${escapeHtml(planLabel)} · order ${escapeHtml(orderId.slice(0, 8))}...</p>
                 </div>
@@ -393,9 +393,18 @@
 
         card.querySelector('#billingClosePaymentBtn')?.addEventListener('click', closePaymentOverlay);
         card.querySelector('#billingCancelOrderBtn')?.addEventListener('click', async () => {
-            if (!confirm('ยืนยันยกเลิกออเดอร์นี้?')) return;
-            await cancelPaymentOrder(orderId);
-            closePaymentOverlay();
+            const btn = card.querySelector('#billingCancelOrderBtn');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'กำลังยกเลิก...';
+            }
+            const success = await cancelPaymentOrder(orderId);
+            if (success) {
+                closePaymentOverlay();
+            } else if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'ยกเลิกออเดอร์นี้';
+            }
         });
         card.querySelector('#billingRefreshQrBtn')?.addEventListener('click', async () => {
             await restartCheckout(order.plan_code);
