@@ -1,3 +1,4 @@
+/* Pubilo Auth Bootstrap — Build 2026-04-05T22:52 */
 (function () {
     const SHOW_BILLING_BANNER = false;
     const SKIP_SIGNUP_AND_BILLING_GATE = false;
