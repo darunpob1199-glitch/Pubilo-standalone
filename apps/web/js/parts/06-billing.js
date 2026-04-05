@@ -101,11 +101,16 @@
 
         const overlay = document.createElement('div');
         overlay.id = 'billingPaymentOverlay';
-        overlay.className = 'pubilo-auth-overlay is-hidden';
+        overlay.className = 'token-modal-overlay is-hidden';
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.zIndex = '9999';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.padding = '20px';
         overlay.innerHTML = `
-            <div class="pubilo-auth-shell" style="grid-template-columns: minmax(320px, 560px); max-width: 560px;">
-                <div class="pubilo-auth-card" id="billingPaymentCard"></div>
-            </div>
+            <div class="token-modal" id="billingPaymentCard" style="width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 0;"></div>
         `;
 
         overlay.addEventListener('click', (event) => {
@@ -336,24 +341,29 @@
             : 'สแกน QR ผ่านแอปธนาคารหรือ e-wallet เพื่อเปิดใช้แพ็กเกจทันที';
 
         card.innerHTML = `
-            <div class="pubilo-auth-panel pubilo-payment-panel">
-                <div style="display:flex; justify-content:space-between; gap:1rem; align-items:flex-start;">
-                    <div style="display:grid; gap:0.5rem;">
-                        <p class="pubilo-auth-label">Billing Payment</p>
-                        <h2>ชำระ ${getPlanPrice(order.plan_code, amount)}</h2>
-                        <p class="pubilo-auth-copy">${escapeHtml(planLabel)} · order ${escapeHtml(orderId.slice(0, 8))}...</p>
-                    </div>
-                    <button type="button" id="billingClosePaymentBtn" style="border:none; background:none; color:#98a2b3; font-size:1.8rem; line-height:1; cursor:pointer;">&times;</button>
+            <div class="token-modal-header" style="display:flex; justify-content:space-between; align-items:flex-start; padding:0; border-bottom:none; margin-bottom:1rem;">
+                <div style="display:flex; flex-direction:column; gap:0.4rem;">
+                    <span style="font-size:0.75rem; font-weight:700; color:#8b5cf6; text-transform:uppercase; letter-spacing:0.05em; background:#f5f3ff; padding:0.25rem 0.6rem; border-radius:999px; width:fit-content;">Billing Payment</span>
+                    <h2 class="token-modal-title" style="font-size:1.6rem; margin:0.2rem 0 0;">ชำระ ${getPlanPrice(order.plan_code, amount)}</h2>
+                    <p style="color:#64748b; font-size:0.9rem; margin:0;">${escapeHtml(planLabel)} · order ${escapeHtml(orderId.slice(0, 8))}...</p>
                 </div>
-                <div class="pubilo-qr-area" id="billingQrArea">
-                    <p>กำลังสร้าง QR code...</p>
-                </div>
-                <div class="pubilo-payment-status" id="billingPaymentStatus"></div>
-                <p class="pubilo-auth-note" id="billingPaymentNote">${escapeHtml(note)}</p>
-                <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
-                    <button type="button" class="pubilo-primary-btn" id="billingRefreshQrBtn" style="display:none;">สร้าง QR ใหม่</button>
-                    <button type="button" id="billingCancelOrderBtn" style="min-height:56px; border-radius:16px; border:1px solid #fecaca; background:#fff5f5; color:#b42318; font-weight:700; cursor:pointer;">ยกเลิกออเดอร์นี้</button>
-                </div>
+                <button type="button" class="token-modal-close" id="billingClosePaymentBtn" style="border:none; cursor:pointer;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="pubilo-qr-area" id="billingQrArea" style="background:#fafafa; border-radius:16px; padding:1.5rem; text-align:center; min-height:220px; display:flex; flex-direction:column; align-items:center; justify-content:center; border:1px dashed #e2e8f0; margin-bottom:1.25rem;">
+                <p style="color:#64748b; font-size:0.95rem;">กำลังสร้าง QR code...</p>
+            </div>
+            
+            <div style="text-align:center; margin-bottom:1.5rem;">
+                <div class="pubilo-payment-status" id="billingPaymentStatus" style="font-weight:600; margin-bottom:0.4rem;"></div>
+                <p class="pubilo-auth-note" id="billingPaymentNote" style="color:#64748b; font-size:0.85rem; margin:0;">${escapeHtml(note)}</p>
+            </div>
+            
+            <div style="display:flex; flex-direction:column; gap:0.75rem;">
+                <button type="button" class="btn-publish" id="billingRefreshQrBtn" style="display:none; padding:0.8rem; font-size:0.95rem;">สร้าง QR ใหม่</button>
+                <button type="button" class="token-clear-btn" id="billingCancelOrderBtn" style="border:1px solid #fecaca; border-radius:12px; padding:0.8rem; font-weight:600; font-size:0.95rem; cursor:pointer; width:100%; transition:all 0.2s;">ยกเลิกออเดอร์นี้</button>
             </div>
         `;
 
