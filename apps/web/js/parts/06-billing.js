@@ -101,16 +101,38 @@
 
         const overlay = document.createElement('div');
         overlay.id = 'billingPaymentOverlay';
-        overlay.className = 'token-modal-overlay is-hidden';
-        overlay.style.position = 'fixed';
-        overlay.style.inset = '0';
-        overlay.style.zIndex = '9999';
-        overlay.style.display = 'flex';
-        overlay.style.alignItems = 'center';
-        overlay.style.justifyContent = 'center';
-        overlay.style.padding = '20px';
+        overlay.className = 'pubilo-auth-overlay is-hidden';
         overlay.innerHTML = `
-            <div class="token-modal" id="billingPaymentCard" style="width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 0;"></div>
+            <div class="pubilo-auth-shell">
+                <div style="display:flex; flex:1; width:100%; max-width:1200px; margin:0 auto; position:relative; z-index:2;">
+                    <!-- Left Side Content -->
+                    <div class="pubilo-auth-brand" style="flex:1; display:flex; flex-direction:column; justify-content:center; padding:0 60px;">
+                        <!-- Pubilo Logo -->
+                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:48px;">
+                            <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M50 20 L80 35 L50 50 L20 35 Z" fill="#7c3aed"/>
+                                <path d="M50 35 L80 50 L50 65 L20 50 Z" stroke="#94a3b8" stroke-width="6" stroke-linejoin="round"/>
+                                <path d="M50 50 L80 65 L50 80 L20 65 Z" stroke="#c4b5fd" stroke-width="6" stroke-linejoin="round"/>
+                            </svg>
+                            <span style="font-size:28px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; letter-spacing:-0.5px;">Pubilo</span>
+                        </div>
+
+                        <h1 style="font-size:72px; font-weight:800; margin-bottom:24px; line-height:1.1; letter-spacing:-2.5px; font-family:'Montserrat', sans-serif;">
+                            <span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Upgrade</span><br>
+                            <span style="color:#1e293b;">Your</span><br>
+                            <span style="color:#1e293b;">Workflow</span>
+                        </h1>
+                        <p style="font-size:22px; color:#475569; margin-bottom:40px; line-height:1.6; max-width: 440px; font-weight: 500; font-family:'Montserrat', sans-serif;">
+                            สแกน QR ผ่านแอปธนาคารหรือ e-wallet ของคุณเพื่อปรับแต่งประสบการณ์ใหม่บน Pubilo
+                        </p>
+                    </div>
+
+                    <!-- Right Side Card -->
+                    <div id="pubiloRightContainer" style="flex: 0 0 600px; display: flex; align-items: center; justify-content: center; padding: 24px 24px 24px 0;">
+                        <div class="pubilo-auth-card" id="billingPaymentCard" style="display:flex; flex-direction:column; padding:2rem 3rem;"></div>
+                    </div>
+                </div>
+            </div>
         `;
 
         overlay.addEventListener('click', (event) => {
