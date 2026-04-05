@@ -7,14 +7,13 @@ window.PUBILO_HIDDEN_HASHES = ['quotes', 'earnings'];
 window.PUBILO_DISABLED_HASHES = ['hide-posts'];
 window.PUBILO_RECURRING_AUTO_SCHEDULE_ENABLED = false;
 
-// Old production preview URLs stay frozen on older deploys and keep causing stale-client issues.
-// Always move users back to the stable production hostname.
+// Redirect all prod pages.dev traffic to pubilo.com
 if (
-    window.location.hostname.endsWith('.pubilo-web-prod.pages.dev') &&
-    window.location.hostname !== 'pubilo-web-prod.pages.dev'
+    window.location.hostname === 'pubilo-web-prod.pages.dev' ||
+    window.location.hostname.endsWith('.pubilo-web-prod.pages.dev')
 ) {
-    const stableUrl = `https://pubilo-web-prod.pages.dev${window.location.pathname}${window.location.search}${window.location.hash}`;
-    window.location.replace(stableUrl);
+    const prodUrl = `https://pubilo.com${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.location.replace(prodUrl);
 }
 
 
