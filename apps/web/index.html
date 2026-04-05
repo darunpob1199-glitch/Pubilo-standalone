@@ -1796,133 +1796,154 @@
             </div>
 
             <!-- Billing Panel -->
-            <div class="pending-panel" id="billingPanel" style="display: none">
-                <div class="pending-panel-header" style="align-items: baseline;">
-                    <h2 style="margin: 0; line-height: 1;">Billing</h2>
-                    <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">จัดการแพ็กเกจและการชำระเงิน</p>
-                </div>
-                <div class="settings-content" style="padding: 1.5rem;">
-
-                    <!-- Current Plan Status Card -->
-                    <div id="billingCurrentPlan" class="settings-section" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
-                            <div>
-                                <p style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 0.5rem;">แพ็กเกจปัจจุบัน</p>
-                                <h3 id="billingPlanName" style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin: 0;">-</h3>
-                                <p id="billingPlanPrice" style="color: var(--primary); font-weight: 700; font-size: 1.1rem; margin-top: 0.25rem;">-</p>
-                            </div>
-                            <div id="billingStatusBadge" style="padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600;">
-                                -
-                            </div>
-                        </div>
-                        <div style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color); display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem;">
-                            <div>
-                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">เริ่มใช้งาน</p>
-                                <p id="billingStartDate" style="font-weight: 600; color: var(--text-main);">-</p>
-                            </div>
-                            <div>
-                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">หมดอายุ</p>
-                                <p id="billingEndDate" style="font-weight: 600; color: var(--text-main);">-</p>
-                            </div>
-                            <div>
-                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">รอบบิล</p>
-                                <p id="billingInterval" style="font-weight: 600; color: var(--text-main);">-</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Plan Selection Cards -->
-                    <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1rem;">เลือกแพ็กเกจ</h3>
-                    <div id="billingPlanCards" style="display: flex; flex-direction: column; gap: 1.5rem; margin-bottom: 2rem;">
-                        <!-- Monthly -->
-                        <div class="billing-plan-card" data-plan="monthly_500" style="background: #fff; border-radius: 24px; padding: 2rem 2.5rem; box-shadow: 0 10px 40px rgba(0,0,0,0.04); cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; border: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; gap: 2rem; flex-wrap: wrap;">
-                            <div style="flex: 1; min-width: 200px;">
-                                <div style="display: inline-block; padding: 0.35rem 1rem; background: #f3e8ff; color: #7c3aed; border-radius: 999px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">Monthly</div>
-                                <h4 style="font-size: 1.5rem; font-weight: 800; color: #111827; margin: 0 0 0.5rem 0; letter-spacing: -0.02em;">รายเดือน</h4>
-                                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                                    <span style="font-size: 3rem; font-weight: 800; color: #111827; line-height: 1; letter-spacing: -0.03em;">฿299</span>
-                                    <div style="display: flex; flex-direction: column; line-height: 1.2;">
-                                        <span style="color: #6b7280; font-size: 0.85rem; font-weight: 500;">/ บัญชี</span>
-                                        <span style="color: #6b7280; font-size: 0.85rem; font-weight: 500;">ต่อเดือน</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div style="flex: 2; min-width: 280px; padding-left: 2rem; border-left: 2px solid #f3f4f6;">
-                                <div style="font-size: 0.95rem; font-weight: 700; color: #374151; margin-bottom: 1rem;">สิ่งที่ท่านจะได้รับ:</div>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; color: #4b5563; font-size: 0.95rem; font-weight: 500;">
-                                    <div style="display: flex; align-items: center; gap: 0.6rem;"><svg style="width: 20px; height: 20px; color: #8b5cf6;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span><strong style="color: #111827;">โพสต์</strong> ไม่จำกัด</span></div>
-                                    <div style="display: flex; align-items: center; gap: 0.6rem;"><svg style="width: 20px; height: 20px; color: #8b5cf6;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span><strong style="color: #111827;">ตั้งเวลา</strong> อัตโนมัติ</span></div>
-                                    <div style="display: flex; align-items: center; gap: 0.6rem;"><svg style="width: 20px; height: 20px; color: #8b5cf6;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span><strong style="color: #111827;">จัดการคิว</strong> โพสต์</span></div>
-                                    <div style="display: flex; align-items: center; gap: 0.6rem;"><svg style="width: 20px; height: 20px; color: #8b5cf6;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span><strong style="color: #111827;">Auto Hide</strong> Posts</span></div>
-                                    <div style="display: flex; align-items: center; gap: 0.6rem;"><svg style="width: 20px; height: 20px; color: #8b5cf6;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span>รองรับ <strong style="color: #111827;">หลายเพจ</strong></span></div>
-                                </div>
-                            </div>
-
-                            <div style="flex: 1; min-width: 150px; display: flex; flex-direction: column; justify-content: center; align-items: flex-end;">
-                                <button class="btn-save billing-select-plan-btn" data-plan="monthly_500" style="width: 100%; padding: 1.1rem; border-radius: 999px; font-weight: 700; font-size: 1rem; background: var(--primary); color: #fff; border: none; outline: none; margin-bottom: 0.75rem; cursor: pointer; transition: all 0.2s ease;">
-                                    เลือกแพ็กเกจ
-                                </button>
-                                <div style="color: #9ca3af; font-size: 0.8rem; font-weight: 500; text-align: center; width: 100%;">เริ่มใช้งานได้ทันที</div>
-                            </div>
-                        </div>
-
-                        <!-- Yearly -->
-                        <div class="billing-plan-card" data-plan="yearly_4499" style="background: #fff; border-radius: 24px; padding: 2rem 2.5rem; box-shadow: 0 10px 40px rgba(0,0,0,0.04); cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; border: 1px solid #f3f4f6; border-left: 6px solid var(--primary); display: flex; align-items: center; justify-content: space-between; gap: 2rem; flex-wrap: wrap; position: relative;">
-                            
-                            <div style="position: absolute; top: -14px; left: 2.5rem; background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%); color: white; padding: 0.4rem 1.25rem; border-radius: 999px; font-weight: 700; font-size: 0.85rem; box-shadow: 0 6px 12px rgba(124, 58, 237, 0.25);">
-                                ✨ ยอดนิยม - ประหยัด ฿589
-                            </div>
-
-                            <div style="flex: 1; min-width: 200px; margin-top: 0.5rem;">
-                                <div style="display: inline-block; padding: 0.35rem 1rem; background: #f3e8ff; color: #7c3aed; border-radius: 999px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">Yearly</div>
-                                <h4 style="font-size: 1.5rem; font-weight: 800; color: #111827; margin: 0 0 0.5rem 0; letter-spacing: -0.02em;">รายปี</h4>
-                                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                                    <span style="font-size: 3rem; font-weight: 800; color: #111827; line-height: 1; letter-spacing: -0.03em;">฿2,999</span>
-                                    <div style="display: flex; flex-direction: column; line-height: 1.2;">
-                                        <span style="color: #6b7280; font-size: 0.85rem; font-weight: 500;">/ บัญชี</span>
-                                        <span style="color: #6b7280; font-size: 0.85rem; font-weight: 500;">ต่อปี</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div style="flex: 2; min-width: 280px; padding-left: 2rem; border-left: 2px solid #f3f4f6; margin-top: 0.5rem;">
-                                <div style="font-size: 0.95rem; font-weight: 700; color: #374151; margin-bottom: 1rem;">สิ่งที่ท่านจะได้รับเหมือนรายเดือน และ:</div>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; color: #4b5563; font-size: 0.95rem; font-weight: 500;">
-                                    <div style="display: flex; align-items: center; gap: 0.6rem;"><svg style="width: 20px; height: 20px; color: #8b5cf6;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span><strong style="color: #111827;">ทุกอย่าง</strong> ใน Monthly</span></div>
-                                    <div style="display: flex; align-items: center; gap: 0.6rem;"><svg style="width: 20px; height: 20px; color: #8b5cf6;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span>ประหยัด <strong style="color: #111827;">฿589</strong> ต่อปี</span></div>
-                                    <div style="display: flex; align-items: center; gap: 0.6rem;"><svg style="width: 20px; height: 20px; color: #8b5cf6;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span><strong style="color: #111827;">Priority</strong> Support</span></div>
-                                    <div style="display: flex; align-items: center; gap: 0.6rem;"><svg style="width: 20px; height: 20px; color: #8b5cf6;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span><strong style="color: #111827;">Early Access</strong> ฟีเจอร์ใหม่</span></div>
-                                </div>
-                            </div>
-                            
-                            <div style="flex: 1; min-width: 150px; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; margin-top: 0.5rem;">
-                                <button class="btn-save billing-select-plan-btn" data-plan="yearly_4499" style="width: 100%; padding: 1.1rem; border-radius: 999px; font-weight: 700; font-size: 1rem; background: var(--primary); color: #fff; border: none; outline: none; margin-bottom: 0.75rem; cursor: pointer; transition: all 0.2s ease;">
-                                    เลือกแพ็กเกจ
-                                </button>
-                                <div style="color: #9ca3af; font-size: 0.8rem; font-weight: 500; text-align: center; width: 100%;">คุ้มสุด แนะนำเลย!</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Payment History -->
-                    <div class="settings-section collapsible" style="border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 1rem;">
-                        <h3 class="settings-section-title" onclick="this.parentElement.classList.toggle('open')" style="padding: 1.25rem 1.5rem; margin: 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                            📋 ประวัติการชำระเงิน
-                            <span class="collapse-icon">›</span>
-                        </h3>
-                        <div class="settings-section-content" style="padding: 1.5rem;">
-                            <div id="billingPaymentHistory">
-                                <p style="color: var(--text-muted); text-align: center; padding: 2rem 0;">ยังไม่มีประวัติการชำระเงิน</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Cancel Subscription -->
-                    <div style="text-align: center; margin-top: 1.5rem;">
-                        <button id="billingCancelBtn" style="background: none; border: none; color: #d92d20; font-size: 0.85rem; cursor: pointer; padding: 0.5rem 1rem; border-radius: 8px; transition: background 0.2s ease;">
-                            ยกเลิกแพ็กเกจ
+            <div class="pending-panel" id="billingPanel" style="display: none; position: fixed; inset: 0; z-index: 10000; background: #fff; width: 100vw; height: 100vh; padding: 0;">
+                <div class="split-billing-container" style="display: flex; width: 100%; height: 100%;">
+                    
+                    <!-- Left Panel -->
+                    <div class="left-panel" style="flex: 1; background: #fdfcff; color: #000; padding: 60px; display: flex; flex-direction: column; position: relative;">
+                        <!-- X CLOSE BUTTON -->
+                        <button onclick="window.location.hash=''" style="position: absolute; top: 40px; right: 40px; background: rgba(0,0,0,0.03); border: none; color: #64748b; padding: 10px; border-radius: 100px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                         </button>
+
+                        <div class="logo" style="display: flex; gap: 12px; align-items: center;">
+                            <svg width="36" height="36" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M50 68 L80 84 L50 100 L20 84 Z" stroke="#C084FC" stroke-width="8" stroke-linejoin="round"/>
+                                <path d="M50 50 L80 66 L50 82 L20 66 Z" stroke="#94A3B8" stroke-width="8" stroke-linejoin="round"/>
+                                <path d="M50 16 L84 34 L50 52 L16 34 Z" fill="#8B5CF6"/>
+                                <path d="M84 34 L50 52 L50 62 L84 44 Z" fill="#7C3AED"/>
+                                <path d="M16 34 L50 52 L50 62 L16 44 Z" fill="#A78BFA"/>
+                            </svg>
+                            <span class="logo-text" style="color:#0f172a; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Pubilo</span>
+                        </div>
+                        
+                        <div class="welcome-text" style="margin-top: auto; margin-bottom: auto; max-width: 440px;">
+                            <h1 style="font-size: 52px; font-weight: 800; margin: 0 0 12px 0; letter-spacing: -1.5px; line-height: 1.15; color:#0f172a;">
+                                <span style="background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">Choose Your</span><br>Perfect Plan.
+                            </h1>
+                            <p style="font-size: 16px; font-weight: 500; color: #64748b; line-height: 1.6; margin: 0;">Unlock full access to team features and automate your daily tasks instantly.</p>
+                        </div>
+                    </div>
+
+                    <!-- Right Panel Form -->
+                    <div class="right-panel" style="flex: 1; background: #faf5ff; display: flex; align-items: center; justify-content: center; padding: 40px; position: relative;">
+                        <!-- Right-side close button (optional if left takes up space, but let's keep one at left) -->
+                        <div class="form-container" style="width: 100%; max-width: 500px; background: #ffffff; border-radius: 32px; padding: 40px; box-shadow: 0 24px 60px rgba(0,0,0,0.05); overflow-y: auto; max-height: calc(100vh - 80px);">
+                            
+                            <div style="text-align: center; margin-bottom: 32px;">
+                                <div style="display: inline-block; background: #fdfce8; color: #a16207; padding: 6px 14px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 20px; border: 1px solid #fef08a;">
+                                    CHART 👑 WORKSPACE
+                                </div>
+                                <h2 style="font-size: 36px; font-weight: 800; color: #0f172a; margin: 0 0 12px 0; letter-spacing: -0.02em;">Choose a Plan</h2>
+                                <p style="color: #64748b; font-size: 15px; margin: 0; line-height: 1.6; padding: 0 20px;">Select a plan below and pay via QR PromptPay to get started.</p>
+                            </div>
+
+                            <!-- Current Plan Status (Hidden mostly unless active) -->
+                            <div id="billingCurrentPlan" style="margin-bottom: 24px; background: #f8fafc; border-radius: 16px; padding: 16px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Current Plan</div>
+                                    <div id="billingPlanName" style="font-size: 16px; font-weight: 700; color: #0f172a;">-</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div id="billingStatusBadge" style="display: inline-block; padding: 4px 10px; border-radius: 100px; font-size: 12px; font-weight: 700; margin-bottom: 4px;">-</div>
+                                    <div style="font-size: 13px; font-weight: 600; color: #10b981;" id="billingEndDate">-</div>
+                                </div>
+                                <!-- hidden fields for JS backward comp -->
+                                <span id="billingPlanPrice" style="display:none"></span>
+                                <span id="billingStartDate" style="display:none"></span>
+                                <span id="billingInterval" style="display:none"></span>
+                            </div>
+
+                            <!-- Plan Selection Cards -->
+                            <div id="billingPlanCards" style="display: flex; flex-direction: column; gap: 20px; margin-bottom: 32px;">
+                                
+                                <!-- Monthly Card -->
+                                <div class="billing-plan-card" data-plan="monthly_500" style="position: relative; border: 2px solid #e2e8f0; border-radius: 24px; padding: 24px; transition: all 0.3s ease; cursor: pointer; background: #fff;">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+                                        <div>
+                                            <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                                                รายเดือน 
+                                                <span style="color: #a855f7; background: #f3e8ff; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em;">MONTHLY</span>
+                                            </div>
+                                            <div style="font-size: 32px; font-weight: 800; color: #0f172a; letter-spacing: -0.03em;">฿299 <span style="font-size: 14px; font-weight: 600; color: #64748b;">/ mo</span></div>
+                                        </div>
+                                        <div style="width: 24px; height: 24px; border-radius: 50%; background: #a855f7; display: flex; align-items: center; justify-content: center; color: white;">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
+                                        <div style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #334155; font-weight: 500;">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>
+                                            <strong style="color: #0f172a;">โพสต์</strong> ไม่จำกัด
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #334155; font-weight: 500;">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>
+                                            <strong style="color: #0f172a;">ตั้งเวลา</strong> อัตโนมัติ
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #334155; font-weight: 500;">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>
+                                            <strong style="color: #0f172a;">จัดการคิว</strong> โพสต์
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #334155; font-weight: 500;">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>
+                                            รองรับ <strong style="color: #0f172a;">หลายเพจ</strong>
+                                        </div>
+                                    </div>
+                                    <button class="billing-select-plan-btn" data-plan="monthly_500" style="width: 100%; padding: 14px; border-radius: 12px; font-size: 15px; font-weight: 700; border: 2px solid #e2e8f0; background: transparent; color: #0f172a; cursor: pointer; transition: all 0.2s;">เริ่มใช้งานรายเดือน</button>
+                                </div>
+
+                                <!-- Yearly Card -->
+                                <div class="billing-plan-card" data-plan="yearly_4499" style="position: relative; border: 2px solid #a855f7; border-radius: 24px; padding: 24px; transition: all 0.3s ease; cursor: pointer; background: #faf5ff; box-shadow: 0 10px 25px rgba(168, 85, 247, 0.15);">
+                                    <div style="position: absolute; top: -14px; right: 24px; background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%); color: white; padding: 4px 14px; border-radius: 100px; font-weight: 800; font-size: 11px; letter-spacing: 0.05em; box-shadow: 0 4px 10px rgba(124, 58, 237, 0.3);">RECOMMENDED</div>
+                                    
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+                                        <div>
+                                            <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                                                รายปี 
+                                                <span style="color: white; background: #a855f7; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em;">YEARLY</span>
+                                            </div>
+                                            <div style="font-size: 32px; font-weight: 800; color: #0f172a; letter-spacing: -0.03em;">฿2,999 <span style="font-size: 14px; font-weight: 600; color: #64748b;">/ yr</span></div>
+                                        </div>
+                                        <div style="width: 24px; height: 24px; border-radius: 50%; background: #a855f7; display: flex; align-items: center; justify-content: center; color: white;">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
+                                        <div style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #334155; font-weight: 600;">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+                                            <strong style="color: #0f172a;">ทุกอย่าง</strong> ในแบบรายเดือน
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #334155; font-weight: 600;">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+                                            ประหยัดคุ้มกว่า <strong style="color: #0f172a;">฿589 / ปี</strong>
+                                        </div>
+                                    </div>
+                                    
+                                    <button class="billing-select-plan-btn" data-plan="yearly_4499" style="width: 100%; padding: 14px; border-radius: 12px; font-size: 15px; font-weight: 700; border: none; background: #a855f7; color: white; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(168, 85, 247, 0.25);">เลือกแพ็กเกจสุดคุ้ม</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Payment History -->
+                            <details style="margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 16px; background: #f8fafc;">
+                                <summary style="padding: 16px 20px; font-weight: 700; font-size: 14px; color: #475569; cursor: pointer; display: flex; justify-content: space-between; align-items: center; outline: none; list-style: none;">
+                                    📋 ประวัติการชำระเงิน
+                                    <span style="color: #a0aec0;">+</span>
+                                </summary>
+                                <div id="billingPaymentHistory" style="padding: 0 20px 20px 20px;">
+                                    <p style="color: #94a3b8; text-align: center; padding: 16px 0; margin: 0; font-size: 14px;">ยังไม่มีประวัติการชำระเงิน</p>
+                                </div>
+                            </details>
+
+                            <!-- Cancel Button -->
+                            <div style="text-align: center;">
+                                <button id="billingCancelBtn" style="background: none; border: none; color: #ef4444; font-size: 13px; font-weight: 600; cursor: pointer; padding: 8px 16px; border-radius: 8px; transition: background 0.2s ease;">
+                                    ยกเลิกแพ็กเกจ
+                                </button>
+                            </div>
+
+                        </div>
                     </div>
                 </div>
             </div>
