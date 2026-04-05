@@ -219,37 +219,27 @@
                     </div>
                 </div>
 
+                <div style="text-align:center; margin-bottom:32px;">
+                    <h2 style="font-size:24px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; margin-bottom:8px;">Welcome Back</h2>
+                    <p style="font-size:14px; color:#64748b; font-family:'Inter', sans-serif;">Log in to your workspace securely.</p>
+                </div>
+
                 ${message ? `<p class="pubilo-auth-error" style="background:#fff1f1; color:#da1e28; padding:16px; border-radius:12px; margin-bottom:24px; font-size:14px; font-weight:500;">${message}</p>` : ''}
                 
-                <div style="margin-bottom:16px; position:relative;">
-                    <div style="position:absolute; left:16px; top:16px; color:#94a3b8;">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                    </div>
-                    <input type="text" placeholder="Enter your Mail" disabled style="width:100%; border:2px solid #e2e8f0; border-radius:8px; padding:16px 16px 16px 48px; font-size:14px; color:#111827; background:#ffffff; outline:none; font-family:'Inter', sans-serif; transition:all 0.2s;" />
-                </div>
-                
-                <div style="margin-bottom:16px; position:relative;">
-                    <div style="position:absolute; left:16px; top:16px; color:#94a3b8;">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                    </div>
-                    <input type="password" placeholder="Enter your Password" disabled style="width:100%; border:2px solid #e2e8f0; border-radius:8px; padding:16px 16px 16px 48px; font-size:14px; color:#111827; background:#ffffff; outline:none; font-family:'Inter', sans-serif; transition:all 0.2s;" />
-                </div>
-                
-                <div style="display:flex; justify-content:flex-start; margin-bottom:24px;">
-                    <a href="#" style="color:#2563eb; font-size:13px; text-decoration:none; font-weight:600; font-family:'Inter', sans-serif;">Forget Password?</a>
-                </div>
-
-                <a class="pubilo-auth-provider-btn" href="${loginUrl}" style="background:linear-gradient(90deg, #8b5cf6, #7c3aed); color:white; display:flex; justify-content:center; align-items:center; width:100%; border-radius:8px; height:52px; font-size:15px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; box-shadow:0 10px 20px rgba(139,92,246,0.3); letter-spacing:0.5px;">
-                    LOGIN
+                <a class="pubilo-auth-provider-btn" href="${loginUrl}" style="background:#06C755; color:white; display:flex; justify-content:center; align-items:center; width:100%; border-radius:12px; height:56px; font-size:16px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; box-shadow:0 10px 25px rgba(6,199,85,0.3); transition:all 0.2s; gap:12px;" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.5 10.3c0-4.4-4.8-8-10.5-8S1.5 5.9 1.5 10.3c0 3.9 3.6 7.2 8.4 7.9l-1.4 3.3c-.1.3-.1.6 0 .8.1.2.4.3.6.3.1 0 .3 0 .4-.1l4.9-3.2c.8.2 1.6.3 2.5.3 5.7 0 10.5-3.6 10.5-8z"/>
+                    </svg>
+                    Log in with LINE
                 </a>
 
-                <div style="display:flex; justify-content:center; margin-top:32px; gap:8px;">
-                    <button style="border:none; border-bottom:2px solid #e2e8f0; background:transparent; padding:0 0 4px 0; color:#94a3b8; font-size:12px; font-weight:500; font-family:'Inter', sans-serif;">New User?</button>
-                    <button style="border:none; border-bottom:2px solid #0f172a; background:transparent; padding:0 0 4px 0; color:#0f172a; font-size:12px; font-weight:700; font-family:'Inter', sans-serif; cursor:pointer;" onclick="window.location.href='${loginUrl}'">Sign Up</button>
+                <div style="display:flex; justify-content:center; margin-top:40px; gap:8px;">
+                    <span style="color:#64748b; font-size:14px; font-weight:500; font-family:'Inter', sans-serif;">New User?</span>
+                    <a href="${loginUrl}" style="color:#0f172a; font-size:14px; font-weight:700; font-family:'Inter', sans-serif; text-decoration:none; border-bottom:2px solid #0f172a; padding-bottom:2px;">Create an Account</a>
                 </div>
 
                 <div style="text-align:center; margin-top:24px;">
-                    <a href="#" style="color:#0f172a; font-size:13px; font-weight:700; font-family:'Inter', sans-serif; text-decoration:none;">Frequently Asked Questions(FAQ) ?</a>
+                    <a href="#" style="color:#94a3b8; font-size:13px; font-weight:600; font-family:'Inter', sans-serif; text-decoration:none; transition:color 0.2s;" onmouseover="this.style.color='#0f172a';" onmouseout="this.style.color='#94a3b8';">Frequently Asked Questions (FAQ)</a>
                 </div>
             </div>
         `;
