@@ -171,6 +171,13 @@ function showSettingsPanel() {
     if (tp) tp.style.display = "none";
     const textModePanel = document.getElementById("textModePanel");
     if (textModePanel) textModePanel.style.display = "none";
+    
+    // Hide post tool panels
+    const hp = document.getElementById("hidePostsPanel");
+    if (hp) hp.style.display = "none";
+    const dp = document.getElementById("deletePostsPanel");
+    if (dp) dp.style.display = "none";
+    
     settingsPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
     document.body.style.overflow = "";
@@ -179,7 +186,6 @@ function showSettingsPanel() {
     }
 }
 
-// showBillingPanel function
 function showBillingPanel() {
     document.querySelectorAll(".mode-container").forEach((c) => {
         c.classList.remove("active");
@@ -194,6 +200,13 @@ function showBillingPanel() {
     if (tp) tp.style.display = "none";
     const textModePanel = document.getElementById("textModePanel");
     if (textModePanel) textModePanel.style.display = "none";
+    
+    // Hide post tool panels
+    const hp = document.getElementById("hidePostsPanel");
+    if (hp) hp.style.display = "none";
+    const dp = document.getElementById("deletePostsPanel");
+    if (dp) dp.style.display = "none";
+    
     const bp = document.getElementById("billingPanel");
     if (bp) bp.style.display = "flex";
     appLayout.classList.add("pending-mode");
