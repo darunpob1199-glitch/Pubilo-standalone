@@ -17,10 +17,7 @@ if (
     window.location.replace(stableUrl);
 }
 
-if (window.location.hostname === 'pubilo.com') {
-    const appUrl = `https://app.pubilo.com${window.location.pathname}${window.location.search}${window.location.hash}`;
-    window.location.replace(appUrl);
-}
+
 
 if (window.location.pathname.startsWith('/api/')) {
     const safeAppUrl = new URL('/', window.location.origin);
@@ -30,12 +27,10 @@ if (window.location.pathname.startsWith('/api/')) {
 }
 
 const HOST_API_MAP = {
-    'app.pubilo.com': 'https://api.pubilo.com',
-    'pubilo-web-prod.pages.dev': 'https://pubilo-api-prod.lungnuek.workers.dev',
+    'pubilo.com': 'https://api.pubilo.com',
+    'www.pubilo.com': 'https://api.pubilo.com',
+    'pubilo-web-prod.pages.dev': 'https://api.pubilo.com',
     'pubilo-web-dev.pages.dev': 'https://pubilo-api-dev.lungnuek.workers.dev',
-    'pubilo.com': 'https://pubilo-api-prod.lungnuek.workers.dev',
-    'www.pubilo.com': 'https://pubilo-api-prod.lungnuek.workers.dev',
-    'pubilo.lslly.com': 'https://pubilo-api-prod.lungnuek.workers.dev',
 };
 
 function resolveHostApiBase(hostname) {

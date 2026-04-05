@@ -6,8 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 NODE_ENV = "production"
-APP_ORIGIN = "https://pubilo-web-prod.pages.dev"
-API_ORIGIN = "https://pubilo-api-prod.lungnuek.workers.dev"
+APP_ORIGIN = "https://pubilo.com"
+API_ORIGIN = "https://api.pubilo.com"
 
 [[d1_databases]]
 binding = "DB"

@@ -114,14 +114,14 @@ chrome.runtime.onStartup.addListener(() => {
 const APP_URLS = [
   "http://localhost:3000/*",
   "http://localhost:3005/*",
+  "https://pubilo.com/*",
+  "https://www.pubilo.com/*",
   "https://pubilo-web-dev.pages.dev/*",
   "https://*.pubilo-web-dev.pages.dev/*",
   "https://pubilo-web-prod.pages.dev/*",
-  "https://*.pubilo-web-prod.pages.dev/*",
-  "https://pubilo.lslly.com/*",
-  "https://www.pubilo.com/*"
+  "https://*.pubilo-web-prod.pages.dev/*"
 ];
-const PRODUCTION_URL = "https://pubilo-web-prod.pages.dev/";
+const PRODUCTION_URL = "https://pubilo.com/";
 const FB_TAB_URLS = [
   "https://www.facebook.com/*",
   "https://business.facebook.com/*",

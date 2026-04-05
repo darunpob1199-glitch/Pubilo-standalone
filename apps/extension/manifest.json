@@ -17,12 +17,12 @@
     "https://business.facebook.com/*",
     "http://localhost:3000/*",
     "http://localhost:3005/*",
+    "https://pubilo.com/*",
+    "https://www.pubilo.com/*",
     "https://pubilo-web-dev.pages.dev/*",
     "https://*.pubilo-web-dev.pages.dev/*",
     "https://pubilo-web-prod.pages.dev/*",
     "https://*.pubilo-web-prod.pages.dev/*",
-    "https://pubilo.lslly.com/*",
-    "https://www.pubilo.com/*",
     "https://*.lazada.co.th/*",
     "https://api.lazada.co.th/*",
     "https://acs-m.lazada.co.th/*",
@@ -36,12 +36,12 @@
       "matches": [
         "http://localhost:3000/*",
         "http://localhost:3005/*",
+        "https://pubilo.com/*",
+        "https://www.pubilo.com/*",
         "https://pubilo-web-dev.pages.dev/*",
         "https://*.pubilo-web-dev.pages.dev/*",
         "https://pubilo-web-prod.pages.dev/*",
-        "https://*.pubilo-web-prod.pages.dev/*",
-        "https://pubilo.lslly.com/*",
-        "https://www.pubilo.com/*"
+        "https://*.pubilo-web-prod.pages.dev/*"
       ],
       "js": [
         "content.js"
