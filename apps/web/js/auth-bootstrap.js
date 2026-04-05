@@ -140,7 +140,7 @@
                         </div>
 
                         <h1 style="font-size:72px; font-weight:800; margin-bottom:24px; line-height:1.1; letter-spacing:-2.5px; font-family:'Montserrat', sans-serif;">
-                            <span style="background: linear-gradient(90deg, #f59e0b, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Simple</span><br>
+                            <span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Simple</span><br>
                             <span style="color:#1e293b;">Secure &</span><br>
                             <span style="color:#1e293b;">Reliable</span>
                         </h1>
@@ -239,7 +239,7 @@
                     <a href="#" style="color:#2563eb; font-size:13px; text-decoration:none; font-weight:600; font-family:'Inter', sans-serif;">Forget Password?</a>
                 </div>
 
-                <a class="pubilo-auth-provider-btn" href="${loginUrl}" style="background:linear-gradient(90deg, #0f40d6, #0e30aa); color:white; display:flex; justify-content:center; align-items:center; width:100%; border-radius:8px; height:52px; font-size:15px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; box-shadow:0 10px 20px rgba(15, 64, 214, 0.2); letter-spacing:0.5px;">
+                <a class="pubilo-auth-provider-btn" href="${loginUrl}" style="background:linear-gradient(90deg, #8b5cf6, #7c3aed); color:white; display:flex; justify-content:center; align-items:center; width:100%; border-radius:8px; height:52px; font-size:15px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; box-shadow:0 10px 20px rgba(139,92,246,0.3); letter-spacing:0.5px;">
                     LOGIN
                 </a>
 
@@ -385,7 +385,7 @@
         const card = overlay.querySelector('#pubiloAuthCard');
         
         if (brand) {
-            brand.querySelector('h1').innerHTML = `<span style="background: linear-gradient(90deg, #f59e0b, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Simple</span><br><span style="color:#1e293b;">Secure &</span><br><span style="color:#1e293b;">Reliable</span>`;
+            brand.querySelector('h1').innerHTML = `<span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Simple</span><br><span style="color:#1e293b;">Secure &</span><br><span style="color:#1e293b;">Reliable</span>`;
             const subtitle = brand.querySelector('#pubiloLeftSubtitle');
             if (subtitle) {
                 subtitle.innerHTML = "Complete your payment to unlock all premium features and seamless workspace management.";
@@ -531,7 +531,7 @@
         // Custom text for the left panel specifically for Plan Selection
         if (brand) {
             brand.style.display = 'flex';
-            brand.querySelector('h1').innerHTML = `<span style="background: linear-gradient(90deg, #f59e0b, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Choose Your</span><br><span style="color:#1e293b;">Perfect</span><br><span style="color:#1e293b;">Plan.</span>`;
+            brand.querySelector('h1').innerHTML = `<span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Choose Your</span><br><span style="color:#1e293b;">Perfect</span><br><span style="color:#1e293b;">Plan.</span>`;
             brand.querySelector('p').innerHTML = "Select a plan that fits your team's needs to unlock all premium features and start managing seamlessly.";
         }
 
@@ -579,20 +579,20 @@
             `).join('');
 
             return `
-                <label class="pubilo-plan-card ${isSelected ? 'selected' : ''}" data-plan-card="${plan.code}" style="display:block; position:relative; border:2px solid ${isSelected ? '#0f172a' : 'rgba(255,255,255,0.5)'}; border-radius:24px; padding:24px; cursor:pointer; transition:all 0.3s; background:${isSelected ? '#ffffff' : 'rgba(255,255,255,0.4)'}; box-shadow:${isSelected ? '0 20px 40px rgba(0,0,0,0.08)' : 'none'}; margin-bottom:20px;">
-                    ${isYearly ? '<div style="position:absolute; top:-12px; right:24px; background:linear-gradient(135deg, #f59e0b, #d97706); color:white; font-size:12px; font-weight:800; padding:6px 16px; border-radius:100px; box-shadow:0 4px 12px rgba(245,158,11,0.3); font-family:\'Montserrat\', sans-serif; letter-spacing:0.5px;">RECOMMENDED</div>' : ''}
+                <label class="pubilo-plan-card ${isSelected ? 'selected' : ''}" data-plan-card="${plan.code}" style="display:block; position:relative; border:2px solid ${isSelected ? '#8b5cf6' : 'rgba(255,255,255,0.5)'}; border-radius:24px; padding:24px; cursor:pointer; transition:all 0.3s; background:${isSelected ? '#ffffff' : 'rgba(255,255,255,0.4)'}; box-shadow:${isSelected ? '0 20px 40px rgba(139,92,246,0.1)' : 'none'}; margin-bottom:20px;">
+                    ${isYearly ? '<div style="position:absolute; top:-12px; right:24px; background:linear-gradient(135deg, #8b5cf6, #7c3aed); color:white; font-size:12px; font-weight:800; padding:6px 16px; border-radius:100px; box-shadow:0 4px 12px rgba(139,92,246,0.3); font-family:\'Montserrat\', sans-serif; letter-spacing:0.5px;">RECOMMENDED</div>' : ''}
                     <input type="radio" name="selectPlanCode" value="${plan.code}" ${isSelected ? 'checked' : ''} style="display:none;" />
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid rgba(0,0,0,0.05);">
                         <div>
                             <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
                                 <h3 style="font-size:18px; font-weight:800; color:#0f172a; font-family:\'Montserrat\', sans-serif; margin:0;">${plan.label}</h3> 
-                                <span style="font-size:11px; font-weight:800; background:${isSelected ? '#e2e8f0' : '#f1f5f9'}; color:#475569; padding:4px 10px; border-radius:100px; letter-spacing:0.5px;">${intervalTag}</span>
+                                <span style="font-size:11px; font-weight:800; background:${isSelected ? '#f3e8ff' : '#f1f5f9'}; color:${isSelected ? '#7c3aed' : '#475569'}; padding:4px 10px; border-radius:100px; letter-spacing:0.5px;">${intervalTag}</span>
                             </div>
                             <div style="font-size:32px; font-weight:800; color:#0f172a; font-family:\'Montserrat\', sans-serif; display:flex; align-items:baseline; gap:4px;">
                                 ฿${plan.amountThb.toLocaleString('th-TH')} <span style="font-size:15px; font-weight:600; color:#64748b;">${isYearly ? '/ yr' : '/ mo'}</span>
                             </div>
                         </div>
-                        <div style="width:28px; height:28px; border-radius:50%; border:2px solid ${isSelected ? '#0f172a' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center; background:${isSelected ? '#0f172a' : '#ffffff'}; transition:all 0.2s; box-shadow:${isSelected ? '0 4px 10px rgba(15,23,42,0.2)' : 'none'};">
+                        <div style="width:28px; height:28px; border-radius:50%; border:2px solid ${isSelected ? '#8b5cf6' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center; background:${isSelected ? '#8b5cf6' : '#ffffff'}; transition:all 0.2s; box-shadow:${isSelected ? '0 4px 10px rgba(139,92,246,0.3)' : 'none'};">
                             ${isSelected ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}
                         </div>
                     </div>
@@ -616,7 +616,7 @@
                 </div>
 
                 <div style="position:relative;">
-                    <button type="submit" style="background: linear-gradient(135deg, #1e293b, #0f172a); color: white; display:flex; justify-content:center; align-items:center; width: 100%; border-radius: 100px; height: 60px; font-size:16px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; cursor:pointer; transition:all 0.3s; box-shadow:0 10px 25px rgba(15,23,42,0.2);" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 15px 30px rgba(15,23,42,0.3)';" onmouseout="this.style.transform='none'; this.style.boxShadow='0 10px 25px rgba(15,23,42,0.2)';">
+                    <button type="submit" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; display:flex; justify-content:center; align-items:center; width: 100%; border-radius: 100px; height: 60px; font-size:16px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; cursor:pointer; transition:all 0.3s; box-shadow:0 10px 25px rgba(139,92,246,0.3);" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 15px 30px rgba(139,92,246,0.4)';" onmouseout="this.style.transform='none'; this.style.boxShadow='0 10px 25px rgba(139,92,246,0.3)';">
                         Continue to Payment
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:8px;"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
                     </button>
