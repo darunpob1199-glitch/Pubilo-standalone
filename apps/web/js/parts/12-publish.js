@@ -2239,7 +2239,7 @@ function renderMultiPageListItems() {
         multiPageList.innerHTML = `
             <div class="multi-page-empty">
                 <strong>ยังไม่มีเพจให้เลือก</strong>
-                รอ extension ดึงรายชื่อเพจ หรือรีเฟรชใหม่อีกครั้ง
+                รอ extension ดึงรายชื่อเพจ หรือระบบจะโหลดจากเพจที่เคยบันทึกใน workspace — ลองรีเฟรชหน้า
             </div>
         `;
         return;
@@ -3257,14 +3257,23 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
     const tokenChanged =
         effectiveAdsToken !== previousAdsToken ||
         effectivePostToken !== previousPostToken;
+    const workspaceId =
+        typeof getActiveWorkspaceId === "function" ? getActiveWorkspaceId() : "";
+    const canLoadPagesFromWorkspaceDb =
+        !!workspaceId &&
+        allPages.length === 0 &&
+        (!!effectiveUserId || !!effectiveCookie);
     const shouldRefreshFromSession =
-        !!(effectiveAdsToken || effectivePostToken) &&
-        (allPages.length === 0 || tokenChanged || currentFetchKey !== lastSessionDrivenFetchKey);
+        (allPages.length === 0 || tokenChanged || currentFetchKey !== lastSessionDrivenFetchKey) &&
+        (!!(effectiveAdsToken || effectivePostToken) || canLoadPagesFromWorkspaceDb);
 
     if (shouldRefreshFromSession) {
         lastSessionDrivenFetchKey = currentFetchKey;
-        fetchPages(effectiveAdsToken || effectivePostToken);
-        fetchAdAccounts(effectiveAdsToken || effectivePostToken);
+        const graphToken = effectiveAdsToken || effectivePostToken || "";
+        fetchPages(graphToken);
+        if (graphToken) {
+            fetchAdAccounts(graphToken);
+        }
     }
 
     if (!options.skipPersist) {
@@ -3580,7 +3589,7 @@ function scheduleEarlyExtensionSyncRetries() {
 
         extensionMissingHintShown = true;
         showPublishToast(
-            "ยังไม่พบ Extension บนหน้านี้ (ลอง Reload extension + เปิด Site access สำหรับ pubilo-web-prod.pages.dev)",
+            "ยังไม่พบ Extension บนหน้านี้ (ลอง Reload extension + เปิด Site access สำหรับ pubilo.com / app.pubilo.com / *.pubilo-web-prod.pages.dev)",
             "warning",
         );
         console.warn("[FEWFEED] Extension not detected on page after startup retries");
@@ -3691,37 +3700,35 @@ async function fetchPages(accessToken) {
             return;
         }
 
-        if (currentUserId) {
-            console.warn("[FEWFEED] Active Facebook account has no scoped page cache; skipping unscoped D1 fallback");
-            renderPagesDropdown([]);
-            return;
-        }
-
-        // Fallback: pages from D1 database via Worker API
+        // Workspace-scoped pages from D1 (safe: tied to Pubilo session, not "unscoped Facebook data").
+        // Previously we skipped this when fewfeed_userId was set, which left the sidebar empty whenever
+        // the extension did not return /me/accounts (common on pubilo.com or after token-only sync).
         try {
             const response = await fetch("/api/pages");
             const data = await response.json();
 
             if (data.success && data.pages && data.pages.length > 0) {
-                console.log("[FEWFEED] Loaded", data.pages.length, "pages from D1");
+                console.log("[FEWFEED] Loaded", data.pages.length, "pages from workspace DB");
 
-                // Transform to format expected by renderPagesDropdown
-                const pages = data.pages.map(p => ({
+                const pages = data.pages.map((p) => ({
                     id: p.id,
-                    name: p.name || 'Unknown Page',
-                    picture: p.picture || { data: { url: '' } },
-                    color: p.color || '#f59e0b',
+                    name: p.name || "Unknown Page",
+                    picture: p.picture || { data: { url: "" } },
+                    color: p.color || "#f59e0b",
                 }));
 
                 renderPagesDropdown(pages);
-            } else {
-                console.log("[FEWFEED] No pages found in D1");
-                hydratePageFromLocalStorageFallback();
+                return;
             }
+            console.log("[FEWFEED] No pages returned from /api/pages");
         } catch (error) {
             console.error("[FEWFEED] Failed to fetch pages from API:", error);
-            hydratePageFromLocalStorageFallback();
         }
+
+        if (currentUserId) {
+            console.warn("[FEWFEED] No pages from extension, scoped cache, or workspace DB for this account");
+        }
+        hydratePageFromLocalStorageFallback();
     })().finally(() => {
         activePagesFetchPromise = null;
         activePagesFetchKey = "";
