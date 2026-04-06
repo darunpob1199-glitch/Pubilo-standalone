@@ -103,8 +103,35 @@
         overlay.id = 'billingPaymentOverlay';
         overlay.className = 'pubilo-auth-overlay is-hidden';
         overlay.innerHTML = `
-            <div class="pubilo-auth-shell" style="grid-template-columns: minmax(320px, 560px); max-width: 560px;">
-                <div class="pubilo-auth-card" id="billingPaymentCard"></div>
+            <div class="pubilo-auth-shell">
+                <div style="display:flex; flex:1; width:100%; max-width:1200px; margin:0 auto; position:relative; z-index:2;">
+                    <!-- Left Side Content -->
+                    <div class="pubilo-auth-brand" style="flex:1; display:flex; flex-direction:column; justify-content:center; padding:0 60px;">
+                        <!-- Pubilo Logo -->
+                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:48px;">
+                            <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M50 20 L80 35 L50 50 L20 35 Z" fill="#7c3aed"/>
+                                <path d="M50 35 L80 50 L50 65 L20 50 Z" stroke="#94a3b8" stroke-width="6" stroke-linejoin="round"/>
+                                <path d="M50 50 L80 65 L50 80 L20 65 Z" stroke="#c4b5fd" stroke-width="6" stroke-linejoin="round"/>
+                            </svg>
+                            <span style="font-size:28px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; letter-spacing:-0.5px;">Pubilo</span>
+                        </div>
+
+                        <h1 style="font-size:62px; font-weight:800; margin-bottom:24px; line-height:1.15; letter-spacing:-1px; font-family:'Iter', 'Prompt', sans-serif;">
+                            <span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ยกระดับ</span><br>
+                            <span style="color:#1e293b;">การทำงาน</span><br>
+                            <span style="color:#1e293b;">ของคุณ</span>
+                        </h1>
+                        <p style="font-size:20px; color:#475569; margin-bottom:40px; line-height:1.6; max-width: 440px; font-weight: 500;">
+                            สแกน QR ผ่านแอปธนาคารหรือ e-wallet ของคุณเพื่อเปิดประสบการณ์พรีเมียมบน Pubilo
+                        </p>
+                    </div>
+
+                    <!-- Right Side Card -->
+                    <div id="pubiloRightContainer" style="flex: 0 0 600px; display: flex; align-items: center; justify-content: center; padding: 24px 24px 24px 0;">
+                        <div class="pubilo-auth-card" id="billingPaymentCard" style="display:flex; flex-direction:column; padding:2rem 3rem;"></div>
+                    </div>
+                </div>
             </div>
         `;
 
@@ -161,13 +188,13 @@
             card.style.boxShadow = '0 10px 40px rgba(0,0,0,0.06)';
             button.disabled = false;
             button.style.opacity = '1';
-            button.textContent = 'เลือกแพ็กเกจนี้';
+            button.textContent = 'เริ่มต้นใช้งาน';
 
             if (subscription?.plan_code === planCode) {
                 card.style.borderColor = 'var(--primary)';
                 card.style.background = '#faf8ff';
                 if (subscription.status === 'active') {
-                    button.textContent = 'ต่ออายุแพ็กเกจนี้';
+                    button.textContent = 'ต่ออายุแพ็กเกจ';
                 } else if (subscription.status === 'pending_payment') {
                     button.textContent = 'ชำระเพื่อเปิดใช้งาน';
                 } else if (subscription.status === 'cancelled') {
@@ -336,24 +363,29 @@
             : 'สแกน QR ผ่านแอปธนาคารหรือ e-wallet เพื่อเปิดใช้แพ็กเกจทันที';
 
         card.innerHTML = `
-            <div class="pubilo-auth-panel pubilo-payment-panel">
-                <div style="display:flex; justify-content:space-between; gap:1rem; align-items:flex-start;">
-                    <div style="display:grid; gap:0.5rem;">
-                        <p class="pubilo-auth-label">Billing Payment</p>
-                        <h2>ชำระ ${getPlanPrice(order.plan_code, amount)}</h2>
-                        <p class="pubilo-auth-copy">${escapeHtml(planLabel)} · order ${escapeHtml(orderId.slice(0, 8))}...</p>
-                    </div>
-                    <button type="button" id="billingClosePaymentBtn" style="border:none; background:none; color:#98a2b3; font-size:1.8rem; line-height:1; cursor:pointer;">&times;</button>
+            <div class="token-modal-header" style="display:flex; justify-content:space-between; align-items:flex-start; padding:0; border-bottom:none; margin-bottom:1rem;">
+                <div style="display:flex; flex-direction:column; gap:0.4rem;">
+                    <span style="font-size:0.75rem; font-weight:700; color:#8b5cf6; text-transform:uppercase; letter-spacing:0.05em; background:#f5f3ff; padding:0.25rem 0.6rem; border-radius:999px; width:fit-content;">ชำระเงินแพ็กเกจ</span>
+                    <h2 class="token-modal-title" style="font-size:1.6rem; margin:0.2rem 0 0;">ชำระ ${getPlanPrice(order.plan_code, amount)}</h2>
+                    <p style="color:#64748b; font-size:0.9rem; margin:0;">${escapeHtml(planLabel)} · order ${escapeHtml(orderId.slice(0, 8))}...</p>
                 </div>
-                <div class="pubilo-qr-area" id="billingQrArea">
-                    <p>กำลังสร้าง QR code...</p>
-                </div>
-                <div class="pubilo-payment-status" id="billingPaymentStatus"></div>
-                <p class="pubilo-auth-note" id="billingPaymentNote">${escapeHtml(note)}</p>
-                <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
-                    <button type="button" class="pubilo-primary-btn" id="billingRefreshQrBtn" style="display:none;">สร้าง QR ใหม่</button>
-                    <button type="button" id="billingCancelOrderBtn" style="min-height:56px; border-radius:16px; border:1px solid #fecaca; background:#fff5f5; color:#b42318; font-weight:700; cursor:pointer;">ยกเลิกออเดอร์นี้</button>
-                </div>
+                <button type="button" class="token-modal-close" id="billingClosePaymentBtn" style="border:none; cursor:pointer;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="pubilo-qr-area" id="billingQrArea" style="background:#fafafa; border-radius:16px; padding:1.5rem; text-align:center; min-height:220px; display:flex; flex-direction:column; align-items:center; justify-content:center; border:1px dashed #e2e8f0; margin-bottom:1.25rem;">
+                <p style="color:#64748b; font-size:0.95rem;">กำลังสร้าง QR code...</p>
+            </div>
+            
+            <div style="text-align:center; margin-bottom:1.5rem;">
+                <div class="pubilo-payment-status" id="billingPaymentStatus" style="font-weight:600; margin-bottom:0.4rem;"></div>
+                <p class="pubilo-auth-note" id="billingPaymentNote" style="color:#64748b; font-size:0.85rem; margin:0;">${escapeHtml(note)}</p>
+            </div>
+            
+            <div style="display:flex; flex-direction:column; gap:0.75rem;">
+                <button type="button" class="btn-publish" id="billingRefreshQrBtn" style="display:none; padding:0.8rem; font-size:0.95rem;">สร้าง QR ใหม่</button>
+                <button type="button" class="token-clear-btn" id="billingCancelOrderBtn" style="border:1px solid #fecaca; border-radius:12px; padding:0.8rem; font-weight:600; font-size:0.95rem; cursor:pointer; width:100%; transition:all 0.2s;">ยกเลิกออเดอร์นี้</button>
             </div>
         `;
 
@@ -361,9 +393,18 @@
 
         card.querySelector('#billingClosePaymentBtn')?.addEventListener('click', closePaymentOverlay);
         card.querySelector('#billingCancelOrderBtn')?.addEventListener('click', async () => {
-            if (!confirm('ยืนยันยกเลิกออเดอร์นี้?')) return;
-            await cancelPaymentOrder(orderId);
-            closePaymentOverlay();
+            const btn = card.querySelector('#billingCancelOrderBtn');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'กำลังยกเลิก...';
+            }
+            const success = await cancelPaymentOrder(orderId);
+            if (success) {
+                closePaymentOverlay();
+            } else if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'ยกเลิกออเดอร์นี้';
+            }
         });
         card.querySelector('#billingRefreshQrBtn')?.addEventListener('click', async () => {
             await restartCheckout(order.plan_code);
@@ -527,7 +568,6 @@
         }
 
         const planLabel = planCode === 'monthly_500' ? 'รายเดือน ฿299' : (planCode === 'yearly_4499' ? 'รายปี ฿2,999' : planCode);
-        if (!options?.skipConfirm && !confirm(`ยืนยันเลือกแพ็กเกจ ${planLabel} ?`)) return;
 
         const originalText = triggerButton?.textContent || '';
         let completed = false;
@@ -566,7 +606,7 @@
         } finally {
             if (triggerButton && !completed) {
                 triggerButton.disabled = false;
-                triggerButton.textContent = originalText || 'เลือกแพ็กเกจนี้';
+                triggerButton.textContent = originalText || 'เริ่มต้นใช้งาน';
             }
         }
     }
