@@ -748,25 +748,41 @@ header.header {
 }
 
 .ad-account-refresh-btn {
-    border: 1px solid #d1d5db;
-    background: #fff;
-    color: #374151;
-    border-radius: 10px;
-    padding: 0.35rem 0.7rem;
-    font-size: 0.78rem;
-    font-weight: 600;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #a855f7;
+    border-radius: 12px;
+    padding: 0.45rem 1rem;
+    font-size: 0.8rem;
+    font-weight: 700;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
 }
 
 .ad-account-refresh-btn:hover:not(:disabled) {
-    background: #f9fafb;
-    border-color: #9ca3af;
+    background: #f3e8ff;
+    border-color: #d8b4fe;
+    color: #9333ea;
+    box-shadow: 0 2px 4px rgba(168,85,247,0.1);
 }
 
 .ad-account-refresh-btn:disabled {
-    opacity: 0.6;
-    cursor: wait;
+    opacity: 0.5;
+    background: #f3f4f6;
+    color: #9ca3af;
+    border-color: #e5e7eb;
+    cursor: not-allowed;
+}
+
+#adAccountStatusText {
+    font-size: 0.75rem !important;
+    font-weight: 500 !important;
+    color: #6b7280 !important;
+    margin-top: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
 }
 
 /* --- UPLOAD PROMPT REDESIGN --- */
@@ -977,4 +993,97 @@ header.header {
     .status-indicator {
         padding: 6px !important;
     }
+}
+
+/* --- WORKSPACE CHIP (NBI THEME) --- */
+.header-right {
+    display: flex !important;
+    align-items: center !important;
+    gap: 16px !important;
+}
+
+.pubilo-workspace-chip {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    background: #eff6ff !important;
+    border: 1px solid #dbeafe !important;
+    border-radius: 9999px !important;
+    padding: 6px 6px 6px 20px !important;
+}
+
+.pubilo-workspace-label {
+    color: #0f172a !important;
+    font-weight: 800 !important;
+    font-size: 0.95rem !important;
+    letter-spacing: -0.01em !important;
+}
+
+.pubilo-days-badge {
+    background: #ecfdf5 !important;
+    color: #047857 !important;
+    padding: 4px 12px !important;
+    border-radius: 9999px !important;
+    font-size: 0.78rem !important;
+    font-weight: 800 !important;
+}
+
+.pubilo-days-badge.is-warning {
+    background: #fef2f2 !important;
+    color: #dc2626 !important;
+}
+
+#pubiloLogoutBtn {
+    background: #ffffff !important;
+    color: #2563eb !important;
+    border: none !important;
+    border-radius: 9999px !important;
+    padding: 8px 18px !important;
+    font-size: 0.85rem !important;
+    font-weight: 800 !important;
+    cursor: pointer !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+    transition: all 0.2s ease !important;
+}
+
+#pubiloLogoutBtn:hover {
+    background: #f8fafc !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+/* Override existing tokens */
+.status-indicators {
+    display: flex !important;
+    gap: 12px !important;
+    align-items: center !important;
+}
+
+.status-indicator {
+    border-radius: 12px !important;
+    padding: 8px 16px !important;
+    font-size: 0.9rem !important;
+    font-weight: 800 !important;
+    background: #fdfdfd !important;
+    border: 1px solid #e5e7eb !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    transition: all 0.2s ease !important;
+}
+
+.status-indicator svg {
+    width: 18px !important;
+    height: 18px !important;
+}
+
+.status-indicator.invalid {
+    background: #fdf2f8 !important;
+    color: #e11d48 !important;
+    border-color: #fbcfe8 !important;
+}
+
+.status-indicator.valid {
+    background: #ecfdf5 !important;
+    color: #059669 !important;
+    border-color: #a7f3d0 !important;
 }
