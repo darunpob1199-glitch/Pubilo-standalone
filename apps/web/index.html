@@ -439,6 +439,18 @@
                         <h3 class="ad-section-title">Ad Setup</h3>
                     </div>
                     <div class="card" style="display: flex; flex-direction: column;">
+                        <div class="form-group ad-account-group is-prominent" id="newsAdAccountGroup">
+                            <div class="ad-account-label-row">
+                                <label class="form-label" for="newsAdAccountSelect" style="margin-bottom: 0;">บัญชียิงแอด</label>
+                                <button type="button" class="ad-account-refresh-btn" id="newsRefreshAdAccountsBtn">รีเฟรช</button>
+                            </div>
+                            <select class="form-select" id="newsAdAccountSelect">
+                                <option value="">เลือกอัตโนมัติ (ให้ระบบเลือกเอง)</option>
+                            </select>
+                            <small id="newsAdAccountStatusText" style="color: #888; margin-top: 4px; display: block;">
+                                ยังไม่ได้โหลดบัญชียิงแอด
+                            </small>
+                        </div>
                         <div class="form-group">
                             <div style="display: flex; align-items: center; justify-content: space-between;">
                                 <label class="form-label" style="margin-bottom: 0;">Primary Text</label>
@@ -2210,7 +2222,7 @@
     <script src="/js/parts/09-navigation.js?v=7.7"></script>
     <script src="/js/parts/10-lazada.js?v=6.5"></script>
     <script src="/js/parts/11-image-generation.js?v=9.4"></script>
-    <script src="/js/parts/12-publish.js?v=11.17"></script>
+    <script src="/js/parts/12-publish.js?v=11.19"></script>
 
     <!-- Lightbox Modal -->
     <div class="lightbox-overlay" id="lightboxOverlay">

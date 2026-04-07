@@ -1433,13 +1433,11 @@ function setupPublishHandler(mode) {
             }
             const cookie =
                 fbCookie || localStorage.getItem("fewfeed_cookie");
-            let adAccountId =
-                document.getElementById("adAccountSelect").value;
+            let adAccountId = getSelectedAdAccountId();
             if (!adAccountId) {
                 adAccountId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
                 if (adAccountId) {
-                    const adAccountInput = document.getElementById("adAccountSelect");
-                    if (adAccountInput) adAccountInput.value = adAccountId;
+                    syncSelectedAdAccountValue(adAccountId);
                 }
             }
 
@@ -3141,6 +3139,117 @@ function ensureAdAccountUiElements() {
     }
 }
 
+function ensureNewsAdAccountUiElements() {
+    const newsModeContainer = document.getElementById("newsModeContainer");
+    if (!newsModeContainer) return;
+
+    let newsGroup = document.getElementById("newsAdAccountGroup");
+    let select = document.getElementById("newsAdAccountSelect");
+    let statusText = document.getElementById("newsAdAccountStatusText");
+    let refreshBtn = document.getElementById("newsRefreshAdAccountsBtn");
+
+    if (!newsGroup || !select || select.tagName !== "SELECT") {
+        if (newsGroup && newsGroup.parentNode) {
+            newsGroup.parentNode.removeChild(newsGroup);
+        }
+
+        newsGroup = document.createElement("div");
+        newsGroup.className = "form-group ad-account-group is-prominent";
+        newsGroup.id = "newsAdAccountGroup";
+        newsGroup.innerHTML = `
+            <div class="ad-account-label-row">
+                <label class="form-label" for="newsAdAccountSelect" style="margin-bottom: 0;">บัญชียิงแอด</label>
+                <button type="button" class="ad-account-refresh-btn" id="newsRefreshAdAccountsBtn">รีเฟรช</button>
+            </div>
+            <select class="form-select" id="newsAdAccountSelect">
+                <option value="">เลือกอัตโนมัติ (ให้ระบบเลือกเอง)</option>
+            </select>
+            <small id="newsAdAccountStatusText" style="color: #888; margin-top: 4px; display: block;">
+                ยังไม่ได้โหลดบัญชียิงแอด
+            </small>
+        `;
+
+        const newsUrlInput = document.getElementById("newsUrlInput");
+        const anchorGroup = newsUrlInput ? newsUrlInput.closest(".form-group") : null;
+        const targetCard = newsModeContainer.querySelector(".form-panel .card");
+        if (anchorGroup && anchorGroup.parentNode) {
+            anchorGroup.parentNode.insertBefore(newsGroup, anchorGroup);
+        } else if (targetCard) {
+            targetCard.prepend(newsGroup);
+        }
+
+        select = document.getElementById("newsAdAccountSelect");
+        statusText = document.getElementById("newsAdAccountStatusText");
+        refreshBtn = document.getElementById("newsRefreshAdAccountsBtn");
+    }
+
+    if (select && !select.querySelector('option[value=""]')) {
+        const autoOption = document.createElement("option");
+        autoOption.value = "";
+        autoOption.textContent = "เลือกอัตโนมัติ (ให้ระบบเลือกเอง)";
+        select.insertBefore(autoOption, select.firstChild || null);
+    }
+
+    if (statusText && !statusText.textContent?.trim()) {
+        statusText.textContent = "ยังไม่ได้โหลดบัญชียิงแอด";
+    }
+
+    if (refreshBtn && !refreshBtn.textContent?.trim()) {
+        refreshBtn.textContent = "รีเฟรช";
+    }
+}
+
+function ensureAllAdAccountUiElements() {
+    ensureAdAccountUiElements();
+    ensureNewsAdAccountUiElements();
+}
+
+function getAdAccountUiControls() {
+    return [
+        {
+            select: document.getElementById("adAccountSelect"),
+            statusText: document.getElementById("adAccountStatusText"),
+            refreshBtn: document.getElementById("refreshAdAccountsBtn"),
+        },
+        {
+            select: document.getElementById("newsAdAccountSelect"),
+            statusText: document.getElementById("newsAdAccountStatusText"),
+            refreshBtn: document.getElementById("newsRefreshAdAccountsBtn"),
+        },
+    ].filter((control) => control.select);
+}
+
+function getSelectedAdAccountId() {
+    const controls = getAdAccountUiControls();
+    for (const control of controls) {
+        const selected = String(control?.select?.value || "").trim();
+        if (selected) return selected;
+    }
+    return String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
+}
+
+function syncSelectedAdAccountValue(selectedId) {
+    const normalizedSelectedId = String(selectedId || "").trim();
+    const controls = getAdAccountUiControls();
+    controls.forEach(({ select }) => {
+        if (!select) return;
+        const hasOption = Array.from(select.options || []).some(
+            (option) => String(option.value || "").trim() === normalizedSelectedId,
+        );
+        if (!normalizedSelectedId) {
+            select.value = "";
+        } else if (hasOption) {
+            select.value = normalizedSelectedId;
+        }
+    });
+
+    if (normalizedSelectedId) {
+        localStorage.setItem("fewfeed_selectedAdAccountId", normalizedSelectedId);
+    } else {
+        localStorage.removeItem("fewfeed_selectedAdAccountId");
+    }
+}
+
 function normalizeAdAccounts(adAccounts) {
     const normalized = Array.isArray(adAccounts) ? adAccounts : [];
     return normalized
@@ -3200,49 +3309,57 @@ function cacheAdAccountsForCurrentUser(adAccounts) {
 }
 
 function renderAdAccountOptions(adAccounts, preferredId = "", options = {}) {
-    const select = document.getElementById("adAccountSelect");
-    const statusText = document.getElementById("adAccountStatusText");
-    if (!select) return "";
+    ensureAllAdAccountUiElements();
+    const controls = getAdAccountUiControls();
+    if (controls.length === 0) return "";
 
     const normalizedAccounts = normalizeAdAccounts(adAccounts);
     const nextPreferredId = String(preferredId || "").trim();
-    const previousValue = String(select.value || "").trim();
+    const previousValue = controls
+        .map((control) => String(control?.select?.value || "").trim())
+        .find(Boolean) || "";
     const savedId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
     const effectivePreferredId =
         nextPreferredId ||
         previousValue ||
         savedId;
 
-    select.innerHTML = "";
-
-    const autoOption = document.createElement("option");
-    autoOption.value = "";
-    autoOption.textContent = "เลือกอัตโนมัติ (ให้ระบบเลือกเอง)";
-    select.appendChild(autoOption);
-
-    normalizedAccounts.forEach((account) => {
-        const option = document.createElement("option");
-        option.value = account.account_id;
-        option.textContent = `${account.name || account.account_id} · ${account.account_id} (${getAdAccountStatusLabel(account.account_status)})`;
-        select.appendChild(option);
-    });
-
     const preferredExists = normalizedAccounts.some(
         (account) => String(account.account_id) === effectivePreferredId,
     );
-    if (!preferredExists && effectivePreferredId) {
-        const staleOption = document.createElement("option");
-        staleOption.value = effectivePreferredId;
-        staleOption.textContent = `บัญชีที่เคยเลือก · ${effectivePreferredId} (ยังไม่พบในสิทธิ์ตอนนี้)`;
-        select.appendChild(staleOption);
-    }
 
-    select.value = preferredExists ? effectivePreferredId : (effectivePreferredId || "");
-    if (select.value !== (preferredExists ? effectivePreferredId : (effectivePreferredId || ""))) {
-        select.value = "";
-    }
+    controls.forEach(({ select }) => {
+        if (!select) return;
 
-    if (statusText) {
+        select.innerHTML = "";
+        const autoOption = document.createElement("option");
+        autoOption.value = "";
+        autoOption.textContent = "เลือกอัตโนมัติ (ให้ระบบเลือกเอง)";
+        select.appendChild(autoOption);
+
+        normalizedAccounts.forEach((account) => {
+            const option = document.createElement("option");
+            option.value = account.account_id;
+            option.textContent = `${account.name || account.account_id} · ${account.account_id} (${getAdAccountStatusLabel(account.account_status)})`;
+            select.appendChild(option);
+        });
+
+        if (!preferredExists && effectivePreferredId) {
+            const staleOption = document.createElement("option");
+            staleOption.value = effectivePreferredId;
+            staleOption.textContent = `บัญชีที่เคยเลือก · ${effectivePreferredId} (ยังไม่พบในสิทธิ์ตอนนี้)`;
+            select.appendChild(staleOption);
+        }
+
+        const nextValue = preferredExists ? effectivePreferredId : (effectivePreferredId || "");
+        select.value = nextValue;
+        if (select.value !== nextValue) {
+            select.value = "";
+        }
+    });
+
+    const allStatusTexts = controls.map((control) => control.statusText).filter(Boolean);
+    allStatusTexts.forEach((statusText) => {
         if (normalizedAccounts.length > 0) {
             statusText.textContent = `พบบัญชีโฆษณา ${normalizedAccounts.length} บัญชี (เลือกเองได้)`;
             statusText.style.color = "#16a34a";
@@ -3256,28 +3373,30 @@ function renderAdAccountOptions(adAccounts, preferredId = "", options = {}) {
             statusText.textContent = "ยังไม่พบบัญชีโฆษณา";
             statusText.style.color = "#6b7280";
         }
-    }
+    });
 
-    return String(select.value || "").trim();
+    const selectedId = controls
+        .map((control) => String(control?.select?.value || "").trim())
+        .find(Boolean) || "";
+    syncSelectedAdAccountValue(selectedId);
+    return selectedId;
 }
 
 function bindAdAccountControls() {
-    ensureAdAccountUiElements();
-    const select = document.getElementById("adAccountSelect");
-    if (select && !select.dataset.bound) {
+    ensureAllAdAccountUiElements();
+    const controls = getAdAccountUiControls();
+
+    controls.forEach(({ select }) => {
+        if (!select || select.dataset.bound === "true") return;
         select.dataset.bound = "true";
         select.addEventListener("change", () => {
             const selectedId = String(select.value || "").trim();
-            if (selectedId) {
-                localStorage.setItem("fewfeed_selectedAdAccountId", selectedId);
-            } else {
-                localStorage.removeItem("fewfeed_selectedAdAccountId");
-            }
+            syncSelectedAdAccountValue(selectedId);
         });
-    }
+    });
 
-    const refreshBtn = document.getElementById("refreshAdAccountsBtn");
-    if (refreshBtn && !refreshBtn.dataset.bound) {
+    controls.forEach(({ refreshBtn }) => {
+        if (!refreshBtn || refreshBtn.dataset.bound === "true") return;
         refreshBtn.dataset.bound = "true";
         refreshBtn.addEventListener("click", async () => {
             const token =
@@ -3294,11 +3413,11 @@ function bindAdAccountControls() {
                 refreshBtn.textContent = originalText || "รีเฟรช";
             }
         });
-    }
+    });
 }
 
 function initializeAdAccountSelector() {
-    ensureAdAccountUiElements();
+    ensureAllAdAccountUiElements();
     bindAdAccountControls();
     const savedId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
     const cached = getCachedAdAccountsForCurrentUser();
@@ -3312,12 +3431,12 @@ function initializeAdAccountSelector() {
 }
 
 function setSelectedAdAccount(adAccounts) {
-    ensureAdAccountUiElements();
-    const select = document.getElementById("adAccountSelect");
-    if (!select) return "";
+    ensureAllAdAccountUiElements();
+    const controls = getAdAccountUiControls();
+    if (controls.length === 0) return "";
 
     const normalizedAccounts = normalizeAdAccounts(adAccounts);
-    const currentSelectedId = String(select.value || "").trim();
+    const currentSelectedId = getSelectedAdAccountId();
     const savedId = localStorage.getItem("fewfeed_selectedAdAccountId") || "";
     const preferredAccount =
         normalizedAccounts.find((account) => String(account.account_id) === currentSelectedId) ||
@@ -3328,22 +3447,17 @@ function setSelectedAdAccount(adAccounts) {
     const nextId = preferredAccount?.account_id ? String(preferredAccount.account_id) : "";
     const selectedAfterRender = renderAdAccountOptions(normalizedAccounts, nextId);
 
-    if (selectedAfterRender) {
-        localStorage.setItem("fewfeed_selectedAdAccountId", selectedAfterRender);
-    } else {
-        localStorage.removeItem("fewfeed_selectedAdAccountId");
-    }
+    syncSelectedAdAccountValue(selectedAfterRender);
     cacheAdAccountsForCurrentUser(normalizedAccounts);
 
     return selectedAfterRender;
 }
 
 async function fetchAdAccounts(accessToken) {
-    ensureAdAccountUiElements();
-    const select = document.getElementById("adAccountSelect");
-    if (!select) return "";
+    ensureAllAdAccountUiElements();
+    const controls = getAdAccountUiControls();
+    if (controls.length === 0) return "";
     initializeAdAccountSelector();
-    const statusText = document.getElementById("adAccountStatusText");
     if (!accessToken) {
         const cached = getCachedAdAccountsForCurrentUser();
         const fallbackSelectedId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
@@ -3365,20 +3479,23 @@ async function fetchAdAccounts(accessToken) {
         lastAdAccountsFetchAttemptKey === requestKey &&
         now - lastAdAccountsFetchAttemptAt < EXTENSION_FETCH_COOLDOWN_MS
     ) {
-        return String(select.value || localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
+        return getSelectedAdAccountId();
     }
 
     lastAdAccountsFetchAttemptKey = requestKey;
     lastAdAccountsFetchAttemptAt = now;
 
     const storedAdAccountId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
-    if (!select.value && storedAdAccountId) {
-        select.value = storedAdAccountId;
+    if (storedAdAccountId) {
+        syncSelectedAdAccountValue(storedAdAccountId);
     }
-    if (statusText) {
+    controls
+        .map((control) => control.statusText)
+        .filter(Boolean)
+        .forEach((statusText) => {
         statusText.textContent = "กำลังโหลดบัญชียิงแอด...";
         statusText.style.color = "#2563eb";
-    }
+    });
 
     activeAdAccountsFetchKey = requestKey;
     activeAdAccountsFetchPromise = (async () => {
@@ -3389,7 +3506,7 @@ async function fetchAdAccounts(accessToken) {
             return nextId;
         } catch (error) {
             console.warn("[FEWFEED] Failed to fetch ad accounts from extension:", error);
-            const fallbackId = String(select.value || storedAdAccountId || "").trim();
+            const fallbackId = String(getSelectedAdAccountId() || storedAdAccountId || "").trim();
             const cached = getCachedAdAccountsForCurrentUser();
             if (cached.length > 0) {
                 return renderAdAccountOptions(
@@ -3399,7 +3516,7 @@ async function fetchAdAccounts(accessToken) {
                 );
             }
             if (fallbackId) {
-                localStorage.setItem("fewfeed_selectedAdAccountId", fallbackId);
+                syncSelectedAdAccountValue(fallbackId);
                 renderAdAccountOptions([], fallbackId, {
                     errorMessage: "โหลดบัญชียิงแอดไม่สำเร็จ แต่ยังใช้บัญชีที่เคยเลือกได้",
                 });

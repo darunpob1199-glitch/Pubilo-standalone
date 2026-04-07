@@ -739,6 +739,13 @@ header.header {
     margin-bottom: 1rem;
 }
 
+.ad-account-group.is-prominent {
+    border: 1px solid #e5e7eb;
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 0.7rem;
+}
+
 .ad-account-label-row {
     display: flex;
     align-items: center;
