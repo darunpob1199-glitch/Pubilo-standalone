@@ -4133,6 +4133,8 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
     );
     if (ownerChanged) {
         clearPageScopedCache(`${currentPageCacheOwnerId || previousUserId} -> ${incomingUserId}`);
+        allPages = [];
+        targetPageSearchQuery = "";
         clearPrimaryPageSelection();
         clearWorkspaceFacebookSessionSnapshot(`${previousUserId} -> ${incomingUserId}`);
         // Reset identity-bound presentation fields when Facebook account changes.
@@ -4926,7 +4928,10 @@ async function fetchPages(accessToken) {
         if (currentUserId && !canUseWorkspaceDbFallback) {
             console.warn("[FEWFEED] No pages from extension or scoped cache for this Facebook account; skipped workspace DB fallback to avoid showing stale pages");
         }
-        hydratePageFromLocalStorageFallback();
+        const hydrated = hydratePageFromLocalStorageFallback();
+        if (!hydrated) {
+            renderPagesDropdown([]);
+        }
     })().finally(() => {
         activePagesFetchPromise = null;
         activePagesFetchKey = "";
