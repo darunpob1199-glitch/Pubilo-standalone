@@ -1,7 +1,7 @@
 // 9. PENDING POSTS
 // ============================================
-async function fetchScheduledPostsFromFacebook() {
-    const pageId = document.getElementById("pageSelect").value;
+function getPendingRequestSnapshot() {
+    const pageId = document.getElementById("pageSelect")?.value || "";
     const selectedPageToken = getPageToken();
     const accessToken =
         (typeof fbToken !== "undefined" && fbToken) ||
@@ -12,6 +12,20 @@ async function fetchScheduledPostsFromFacebook() {
         (typeof fbCookie !== "undefined" && fbCookie) ||
         localStorage.getItem("fewfeed_cookie") ||
         "";
+    const userId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+
+    return {
+        pageId,
+        selectedPageToken,
+        accessToken,
+        cookieData,
+        userId,
+    };
+}
+
+async function fetchScheduledPostsFromFacebook(snapshot = null) {
+    const request = snapshot || getPendingRequestSnapshot();
+    const { pageId, selectedPageToken, accessToken, cookieData } = request;
 
     console.log("[FEWFEED] Fetching scheduled posts:", {
         hasPageId: !!pageId,
@@ -191,6 +205,27 @@ const pendingFilters = {
 };
 
 let currentPendingPosts = [];
+let activePendingRequestId = 0;
+
+function isPendingRequestStillCurrent(requestId, snapshot) {
+    if (requestId !== activePendingRequestId) return false;
+    const currentSnapshot = getPendingRequestSnapshot();
+    return (
+        String(currentSnapshot.pageId || "") === String(snapshot?.pageId || "") &&
+        String(currentSnapshot.userId || "") === String(snapshot?.userId || "")
+    );
+}
+
+function clearPendingState(reason = "") {
+    activePendingRequestId += 1;
+    currentPendingPosts = [];
+    if (typeof invalidatePostsCache === "function") {
+        invalidatePostsCache();
+    }
+    if (reason) {
+        console.log("[FEWFEED] Cleared pending state:", reason);
+    }
+}
 
 function getPendingPostTypeKey(post) {
     const type = String(post.postType || "").toLowerCase();
@@ -801,7 +836,26 @@ if (pendingQuickFilters && !pendingQuickFilters.dataset.bound) {
     syncPendingQuickFiltersUi();
 }
 
+window.addEventListener("pubilo:pages-updated", (event) => {
+    const reason = String(event?.detail?.reason || "").trim();
+    if (!reason) return;
+    if (!reason.includes("primary-cleared") && !reason.includes("dropdown-rendered")) return;
+
+    const currentPageId = getCurrentPageId();
+    if (currentPageId) return;
+
+    clearPendingState(`pages-updated:${reason}`);
+    if (pendingPanel.style.display === "flex") {
+        renderPendingOverview([], "", "");
+        updatePendingFilterMeta(0, 0);
+        pendingTableContainer.innerHTML =
+            '<div class="pending-empty">กรุณาเลือกเพจหลักก่อน</div>';
+    }
+});
+
 async function showPendingPanel(forceRefresh = false, view = "posts") {
+    const requestId = ++activePendingRequestId;
+    const requestSnapshot = getPendingRequestSnapshot();
     if (window.PUBILO_WEB_ONLY_MODE && view === "quotes") {
         view = "posts";
     }
@@ -866,7 +920,12 @@ async function showPendingPanel(forceRefresh = false, view = "posts") {
 
     try {
         // Fetch scheduled posts from Facebook
-        const scheduledResult = await fetchScheduledPostsFromFacebook();
+        const scheduledResult = await fetchScheduledPostsFromFacebook(requestSnapshot);
+
+        if (!isPendingRequestStillCurrent(requestId, requestSnapshot)) {
+            console.log("[FEWFEED] Ignoring stale pending response after page/account change");
+            return;
+        }
 
         // Process scheduled posts
         let scheduledPosts = [];
@@ -896,6 +955,9 @@ async function showPendingPanel(forceRefresh = false, view = "posts") {
         renderPendingPostsWithFilters();
 
     } catch (err) {
+        if (!isPendingRequestStillCurrent(requestId, requestSnapshot)) {
+            return;
+        }
         console.error("Failed to fetch posts:", err);
         currentPendingPosts = [];
         renderPendingOverview([], "โหลดคิวโพสต์ไม่สำเร็จ", pageId);
