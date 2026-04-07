@@ -9,8 +9,15 @@ export default function EarningsTab({ pages }: Props) {
     const [loading, setLoading] = useState(true)
     const [selectedPage, setSelectedPage] = useState<string>('')
 
+    const handleSelectPage = (pageId: string) => {
+        setSelectedPage((prev) => {
+            if (prev === pageId) return prev
+            setLoading(true)
+            return pageId
+        })
+    }
+
     useEffect(() => {
-        setLoading(true)
         fetchEarnings(selectedPage || undefined).then(setEarnings).finally(() => setLoading(false))
     }, [selectedPage])
 
@@ -43,7 +50,7 @@ export default function EarningsTab({ pages }: Props) {
             <div className="overflow-x-auto pb-2 mb-4">
                 <div className="flex gap-2" style={{ width: 'max-content' }}>
                     <button
-                        onClick={() => setSelectedPage('')}
+                        onClick={() => handleSelectPage('')}
                         className="px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap tap-scale"
                         style={{ background: !selectedPage ? 'var(--accent)' : 'var(--surface)', color: !selectedPage ? 'white' : 'var(--muted)' }}
                     >
@@ -52,7 +59,7 @@ export default function EarningsTab({ pages }: Props) {
                     {pages.filter(p => p.has_token || p.auto_schedule).map(p => (
                         <button
                             key={p.id}
-                            onClick={() => setSelectedPage(p.id)}
+                            onClick={() => handleSelectPage(p.id)}
                             className="px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap tap-scale"
                             style={{
                                 background: selectedPage === p.id ? 'var(--accent)' : 'var(--surface)',

@@ -14,10 +14,10 @@ if (window.Telegram?.WebApp) {
   const tg = window.Telegram.WebApp
   tg.ready()
   tg.expand()
-  try { tg.disableVerticalSwipes?.() } catch { }
-  try { tg.setHeaderColor?.('#f5f5f7') } catch { }
-  try { tg.setBackgroundColor?.('#f5f5f7') } catch { }
-  try { tg.setBottomBarColor?.('#ffffff') } catch { }
+  tg.disableVerticalSwipes?.()
+  tg.setHeaderColor?.('#f5f5f7')
+  tg.setBackgroundColor?.('#f5f5f7')
+  tg.setBottomBarColor?.('#ffffff')
 }
 
 // Nav Icons
@@ -108,10 +108,24 @@ export default function App() {
 
   const loadPages = () => {
     setLoadingPages(true)
-    fetchPages().then(setPages).finally(() => setLoadingPages(false))
+    void fetchPages().then(setPages).finally(() => setLoadingPages(false))
   }
 
-  useEffect(() => { loadPages() }, [])
+  useEffect(() => {
+    let active = true
+
+    void fetchPages()
+      .then((nextPages) => {
+        if (active) setPages(nextPages)
+      })
+      .finally(() => {
+        if (active) setLoadingPages(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   const NAV_H = 88 // px — height of the fixed bottom nav compatible with safe-area
 
@@ -179,4 +193,3 @@ declare global {
     }
   }
 }
-

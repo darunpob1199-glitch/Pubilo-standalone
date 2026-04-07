@@ -2628,6 +2628,123 @@
                 margin-top: 0.65rem;
             }
 
+            .post-tool-run-status {
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                background: #f8fafc;
+                padding: 0.8rem 0.9rem;
+                margin-bottom: 0.85rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.45rem;
+            }
+
+            .post-tool-run-status.is-processing {
+                border-color: #fde68a;
+                background: #fffbeb;
+            }
+
+            .post-tool-run-status.is-completed {
+                border-color: #bbf7d0;
+                background: #f0fdf4;
+            }
+
+            .post-tool-run-status.is-failed {
+                border-color: #fecaca;
+                background: #fef2f2;
+            }
+
+            .post-tool-run-status-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 0.75rem;
+                flex-wrap: wrap;
+            }
+
+            .post-tool-run-status-badge {
+                display: inline-flex;
+                align-items: center;
+                border-radius: 999px;
+                font-size: 0.72rem;
+                font-weight: 700;
+                padding: 0.16rem 0.52rem;
+                background: #e2e8f0;
+                color: #475569;
+            }
+
+            .post-tool-run-status-badge.is-processing {
+                background: #fef3c7;
+                color: #92400e;
+            }
+
+            .post-tool-run-status-badge.is-completed {
+                background: #dcfce7;
+                color: #166534;
+            }
+
+            .post-tool-run-status-badge.is-failed {
+                background: #fee2e2;
+                color: #b91c1c;
+            }
+
+            .post-tool-run-status-main {
+                color: #0f172a;
+                font-size: 0.9rem;
+                font-weight: 700;
+            }
+
+            .post-tool-run-status-sub,
+            .post-tool-run-status-meta {
+                color: #64748b;
+                font-size: 0.78rem;
+                line-height: 1.45;
+            }
+
+            .post-tool-run-status-fail-wrap {
+                border-top: 1px dashed #fca5a5;
+                padding-top: 0.45rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.35rem;
+            }
+
+            .post-tool-run-status-fail-title {
+                color: #991b1b;
+                font-size: 0.76rem;
+                font-weight: 700;
+            }
+
+            .post-tool-run-status-fail-list {
+                margin: 0;
+                padding-left: 1rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.3rem;
+            }
+
+            .post-tool-run-status-fail-list li {
+                color: #7f1d1d;
+                font-size: 0.74rem;
+                line-height: 1.4;
+            }
+
+            .post-tool-run-status-fail-id {
+                font-weight: 700;
+                margin-right: 0.35rem;
+            }
+
+            .post-tool-run-status-fail-loading {
+                color: #991b1b;
+                font-size: 0.74rem;
+            }
+
+            .post-tool-run-status-actions {
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+            }
+
             .post-tool-selection-bar {
                 display: flex;
                 align-items: center;

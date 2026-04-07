@@ -116,15 +116,40 @@ async function initializeTokens() {
         return false;
       }
     })();
-    const hasStoredSession = !!(
+    const hasStoredAccessToken = !!(
       data?.accessToken ||
       data?.fewfeed_accessToken ||
+      data?.fewfeed_token
+    );
+    const hasStoredCookie = !!(
+      data?.cookie ||
+      data?.fewfeed_cookie
+    );
+    const hasStoredSession = !!(
+      hasStoredAccessToken ||
+      hasStoredCookie ||
       hasStoredPageTokenMap
     );
+    const needsAccessTokenRefresh = !!(hasStoredCookie && !hasStoredAccessToken);
 
-    // 2) If nothing stored yet, trigger fresh token fetch from background.
-    if (!hasStoredSession) {
+    // 2) If nothing stored yet OR cookie exists but token missing, trigger fresh token fetch.
+    if (!hasStoredSession || needsAccessTokenRefresh) {
       data = await safeSendMessage({ action: "fetchToken" });
+      const fetchedAccessToken = String(
+        data?.fewfeed_accessToken || data?.fewfeed_token || data?.accessToken || "",
+      ).trim();
+      const fetchedCookie = String(
+        data?.fewfeed_cookie || data?.cookie || "",
+      ).trim();
+      if (fetchedCookie && !fetchedAccessToken) {
+        // A fetch timeout may return before background completes token extraction.
+        // Re-read stored data once to pick up the token if it arrives a moment later.
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        const retried = await safeSendMessage({ action: "getStoredData" });
+        if (retried?.success) {
+          data = retried;
+        }
+      }
     }
 
     // Get existing localStorage values as fallback
@@ -135,10 +160,21 @@ async function initializeTokens() {
     const existingUserName = localStorage.getItem("fewfeed_userName");
     const existingAvatarUrl = localStorage.getItem("fewfeed_avatarUrl");
 
-    // Use new data if available, otherwise keep existing
-    let finalToken = data?.fewfeed_accessToken || data?.accessToken || existingToken || "";
-    let finalFbDtsg = data?.fewfeed_fbDtsg || data?.fbDtsg || existingFbDtsg || "";
-    let finalCookie = data?.fewfeed_cookie || data?.cookie || existingCookie || "";
+    const shouldTrustBackgroundSession = data?.success === true;
+
+    // Only fallback to page localStorage when background messaging fails.
+    // If background explicitly returns empty token/cookie, treat that as authoritative
+    // so stale invalid tokens don't get rehydrated again.
+    let finalToken =
+      data?.fewfeed_accessToken || data?.fewfeed_token || data?.accessToken || "";
+    let finalFbDtsg = data?.fewfeed_fbDtsg || data?.fbDtsg || "";
+    let finalCookie = data?.fewfeed_cookie || data?.cookie || "";
+
+    if (!shouldTrustBackgroundSession) {
+      finalToken = finalToken || existingToken || "";
+      finalFbDtsg = finalFbDtsg || existingFbDtsg || "";
+      finalCookie = finalCookie || existingCookie || "";
+    }
     let finalUserId = data?.fewfeed_userId || data?.userId || existingUserId || "";
     let finalUserName = data?.fewfeed_userName || data?.userName || existingUserName || "Facebook User";
     let finalAvatarUrl = data?.fewfeed_avatarUrl || data?.avatarUrl || existingAvatarUrl || "";
@@ -208,6 +244,7 @@ async function initializeTokens() {
       userId: finalUserId,
       userName: finalUserName,
       avatarUrl: finalAvatarUrl,
+      extensionVersion: data?.extensionVersion || chrome.runtime.getManifest().version,
       pageTokenMap: pageTokenMapRaw,
       pageTokenMapOwnerId: finalUserId || "",
       pageSummaryMap: localStorage.getItem(PAGE_SUMMARY_MAP_KEY) || "{}",
@@ -267,6 +304,7 @@ async function initializeTokens() {
         fbDtsg: cachedFbDtsg,
         userId: cachedUserId,
         userName: cachedUserName,
+        extensionVersion: chrome.runtime.getManifest().version,
         pageTokenMap: cachedPageTokenMap,
         pageTokenMapOwnerId: cachedPageTokenMapOwnerId,
         pageSummaryMap: cachedPageSummaryMap,
@@ -606,10 +644,18 @@ window.addEventListener("message", async (event) => {
   // Page requesting to convert Lazada URL to affiliate link
   if (event.data.type === "FEWFEED_CONVERT_LAZADA_LINK") {
     console.log("[FEWFEED Content] Converting Lazada link:", event.data.productUrl);
-    const response = await safeSendMessage({
-      action: "convertLazadaLink",
-      productUrl: event.data.productUrl
-    });
+    let response;
+    try {
+      response = await safeSendMessage({
+        action: "convertLazadaLink",
+        productUrl: event.data.productUrl
+      });
+    } catch (error) {
+      response = {
+        success: false,
+        error: error?.message || "convert_lazada_link_failed",
+      };
+    }
     window.postMessage({
       type: "FEWFEED_LAZADA_LINK_RESPONSE",
       data: response
@@ -619,10 +665,18 @@ window.addEventListener("message", async (event) => {
   // Page requesting to convert Lazada URL for News mode
   if (event.data.type === "FEWFEED_CONVERT_NEWS_LAZADA_LINK") {
     console.log("[FEWFEED Content] Converting News Lazada link:", event.data.productUrl);
-    const response = await safeSendMessage({
-      action: "convertLazadaLink",
-      productUrl: event.data.productUrl
-    });
+    let response;
+    try {
+      response = await safeSendMessage({
+        action: "convertLazadaLink",
+        productUrl: event.data.productUrl
+      });
+    } catch (error) {
+      response = {
+        success: false,
+        error: error?.message || "convert_news_lazada_link_failed",
+      };
+    }
     window.postMessage({
       type: "FEWFEED_NEWS_LAZADA_LINK_RESPONSE",
       data: response
@@ -655,4 +709,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Mark that extension is installed
 document.documentElement.setAttribute("data-fewfeed-extension", "true");
 window.postMessage({ type: "FEWFEED_EXTENSION_READY" }, "*");
-console.log("[Pubilo Content] Extension v9.1.2 ready - token validation + page-token-map retention");
+console.log("[Pubilo Content] Extension v9.1.3 ready - token validation + main-world probe fallback");

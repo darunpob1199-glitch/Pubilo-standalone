@@ -82,10 +82,12 @@ const CACHE_COOKIE_TOKEN = 60 * 60 * 1000; // 1 hour
 
 // Show cached data immediately on load
 chrome.storage.local.get(["fewfeed_accessToken", "fewfeed_cookie", "fewfeed_userName", "fewfeed_userId", "fewfeed_avatarUrl"], (data) => {
-  if (data.fewfeed_accessToken) {
-    // Show badges immediately
-    updateBadge(tokenBadge, "", "Token");
-    updateBadge(cookieBadge, data.fewfeed_cookie ? "" : "error", "Cookie");
+  const cachedAccessToken = typeof data.fewfeed_accessToken === "string" ? data.fewfeed_accessToken.trim() : "";
+  const cachedCookie = typeof data.fewfeed_cookie === "string" ? data.fewfeed_cookie.trim() : "";
+  if (cachedAccessToken || cachedCookie) {
+    // Show badges immediately (token/cookie use independent status).
+    updateBadge(tokenBadge, cachedAccessToken ? "" : "error", "Token");
+    updateBadge(cookieBadge, cachedCookie ? "" : "error", "Cookie");
 
     // Show user info
     userNameEl.textContent = data.fewfeed_userName || "Facebook User";
@@ -116,7 +118,7 @@ async function checkStatus() {
 
     // Show cached data immediately
     if (cachedAccessToken || cachedCookie) {
-      updateBadge(tokenBadge, "", "Token");
+      updateBadge(tokenBadge, cachedAccessToken ? "" : "error", "Token");
       updateBadge(cookieBadge, cachedCookie ? "" : "error", "Cookie");
 
       // Show user info from cache
@@ -129,7 +131,12 @@ async function checkStatus() {
     }
 
     // Check if need to refresh in background (1 hour for token/cookie)
-    const needRefresh = !(cachedAccessToken || cachedCookie) || !fewfeed_lastFetch || (now - fewfeed_lastFetch) > CACHE_COOKIE_TOKEN;
+    const missingTokenWhileCookieExists = !cachedAccessToken && !!cachedCookie;
+    const needRefresh =
+      missingTokenWhileCookieExists ||
+      !(cachedAccessToken || cachedCookie) ||
+      !fewfeed_lastFetch ||
+      (now - fewfeed_lastFetch) > CACHE_COOKIE_TOKEN;
 
     if (needRefresh) {
       tokenResponse = await chrome.runtime.sendMessage({ action: "fetchToken" });
@@ -138,14 +145,15 @@ async function checkStatus() {
       cachedCookie = pick(tokenResponse?.fewfeed_cookie, tokenResponse?.cookie);
       cachedUserId = pick(tokenResponse?.fewfeed_userId, tokenResponse?.userId);
     }
-    console.log("[Popup] Token data:", tokenResponse);
+    console.log("[Popup] Session status:", {
+      hasToken: !!cachedAccessToken,
+      hasCookie: !!cachedCookie,
+      hasUserId: !!cachedUserId,
+      refreshed: needRefresh,
+    });
 
     // Update token badge
-    if (cachedAccessToken || cachedCookie) {
-      updateBadge(tokenBadge, "", "Token");
-    } else {
-      updateBadge(tokenBadge, "error", "Token");
-    }
+    updateBadge(tokenBadge, cachedAccessToken ? "" : "error", "Token");
 
     // Update cookie badge
     if (cachedCookie) {

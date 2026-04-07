@@ -646,12 +646,6 @@ const autoHideTokenInput = document.getElementById("autoHideTokenInput");
 const autoHideTokenGroup = document.getElementById("autoHideTokenGroup");
 const hideAfterPublishToggle = document.getElementById("hideAfterPublishToggle");
 
-// Auto-resize textarea function
-function autoResizeTextarea(textarea) {
-    textarea.style.height = 'auto';
-    textarea.style.height = textarea.scrollHeight + 'px';
-}
-
 // Add auto-resize listeners
 [linkPromptInput, imagePromptInput, newsAnalysisPromptInput, newsGenerationPromptInput].forEach(textarea => {
     if (textarea) {
@@ -2927,12 +2921,6 @@ function renderQuotes(quotes, append = false) {
     });
 }
 
-function escapeHtml(text) {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
-}
-
 window.deleteQuote = async function (id, btn) {
     try {
         const row = btn.closest("tr");
@@ -3494,6 +3482,7 @@ function getModeElements(mode = postMode) {
 // ============================================
 const lazadaStatus = document.getElementById("lazadaStatus");
 let isConverting = false;
+let lazadaConvertTimer = null;
 
 // Check if URL is a Lazada product URL
 function isLazadaUrl(url) {
@@ -3519,6 +3508,9 @@ async function convertLazadaLink() {
     lazadaStatus.textContent = "Converting...";
     lazadaStatus.style.color = "#888";
 
+    // Clear any previous timeout
+    if (lazadaConvertTimer) clearTimeout(lazadaConvertTimer);
+
     // Send message to extension
     window.postMessage(
         {
@@ -3527,6 +3519,15 @@ async function convertLazadaLink() {
         },
         "*",
     );
+
+    // Timeout: if extension doesn't respond within 5 seconds, use link as-is
+    lazadaConvertTimer = setTimeout(() => {
+        if (isConverting) {
+            isConverting = false;
+            lazadaStatus.textContent = "ℹ️ ใช้ลิงก์เดิมได้เลย (ระบบแปลง affiliate ไม่พร้อม)";
+            lazadaStatus.style.color = "#f59e0b";
+        }
+    }, 5000);
 }
 
 // Listen for Lazada conversion response
@@ -3534,14 +3535,19 @@ window.addEventListener("message", (event) => {
     if (event.data.type === "FEWFEED_LAZADA_LINK_RESPONSE") {
         const response = event.data.data;
         isConverting = false;
+        if (lazadaConvertTimer) {
+            clearTimeout(lazadaConvertTimer);
+            lazadaConvertTimer = null;
+        }
 
         if (response.success && response.affiliateLink) {
             // Update the link URL field with affiliate link
             linkUrl.value = response.affiliateLink;
-            lazadaStatus.textContent = "";
+            lazadaStatus.textContent = "✅ แปลงเป็น affiliate link แล้ว";
+            lazadaStatus.style.color = "#22c55e";
         } else {
             lazadaStatus.textContent =
-                "❌ " + (response.error || "Conversion failed");
+                "❌ " + (response.error || "Conversion failed — ใช้ลิงก์เดิมได้เลย");
             lazadaStatus.style.color = "#ef4444";
         }
     }
@@ -3579,6 +3585,7 @@ const newsUrlInput = document.getElementById("newsUrlInput");
 const newsLazadaStatus = document.getElementById("newsLazadaStatus");
 const newsPreviewDescription = document.getElementById("newsPreviewDescription");
 let newsIsConverting = false;
+let newsLazadaConvertTimer = null;
 
 async function convertNewsLazadaLink() {
     if (newsIsConverting) return;
@@ -3591,7 +3598,20 @@ async function convertNewsLazadaLink() {
         newsLazadaStatus.style.color = "#888";
     }
 
+    if (newsLazadaConvertTimer) clearTimeout(newsLazadaConvertTimer);
+
     window.postMessage({ type: "FEWFEED_CONVERT_NEWS_LAZADA_LINK", productUrl: url }, "*");
+
+    // Timeout: if extension doesn't respond within 5 seconds, use link as-is
+    newsLazadaConvertTimer = setTimeout(() => {
+        if (newsIsConverting) {
+            newsIsConverting = false;
+            if (newsLazadaStatus) {
+                newsLazadaStatus.textContent = "ℹ️ ใช้ลิงก์เดิมได้เลย (ระบบแปลง affiliate ไม่พร้อม)";
+                newsLazadaStatus.style.color = "#f59e0b";
+            }
+        }
+    }, 5000);
 }
 
 // Listen for news Lazada conversion response
@@ -3599,12 +3619,19 @@ window.addEventListener("message", (event) => {
     if (event.data.type === "FEWFEED_NEWS_LAZADA_LINK_RESPONSE") {
         const response = event.data.data;
         newsIsConverting = false;
+        if (newsLazadaConvertTimer) {
+            clearTimeout(newsLazadaConvertTimer);
+            newsLazadaConvertTimer = null;
+        }
         if (response.success && response.affiliateLink) {
             newsUrlInput.value = response.affiliateLink;
-            if (newsLazadaStatus) newsLazadaStatus.textContent = "";
+            if (newsLazadaStatus) {
+                newsLazadaStatus.textContent = "✅ แปลงเป็น affiliate link แล้ว";
+                newsLazadaStatus.style.color = "#22c55e";
+            }
         } else {
             if (newsLazadaStatus) {
-                newsLazadaStatus.textContent = "❌ " + (response.error || "Conversion failed");
+                newsLazadaStatus.textContent = "❌ " + (response.error || "Conversion failed — ใช้ลิงก์เดิมได้เลย");
                 newsLazadaStatus.style.color = "#ef4444";
             }
         }

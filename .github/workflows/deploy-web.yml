@@ -21,6 +21,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Quality gate (web)
+        run: |
+          node scripts/smoke-release-guards.js
+          node scripts/verify-web-delete-tools.js
+          node --check apps/web/js/config.js
+          node --check apps/web/js/parts/08-post-tools.js
+          node --check apps/web/js/parts/12-publish.js
 
       - name: Deploy production dashboard
         uses: cloudflare/wrangler-action@v3
@@ -36,6 +47,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Quality gate (web)
+        run: |
+          node scripts/smoke-release-guards.js
+          node scripts/verify-web-delete-tools.js
+          node --check apps/web/js/config.js
+          node --check apps/web/js/parts/08-post-tools.js
+          node --check apps/web/js/parts/12-publish.js
 
       - name: Deploy dev dashboard
         uses: cloudflare/wrangler-action@v3

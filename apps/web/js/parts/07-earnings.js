@@ -143,6 +143,7 @@ function showPublishedPanel() {
 }
 
 const publishedFilters = {
+    source: "live",
     query: "",
     type: "all",
     day: "all",
@@ -153,12 +154,30 @@ let currentPublishedPosts = [];
 let currentPublishedPageId = "";
 const publishedLoadState = {
     loading: false,
-    activePageId: "",
+    activeRequestKey: "",
     lastLoadedAt: 0,
 };
 
+function getPublishedSourceApiValue() {
+    const source = String(publishedFilters.source || "live").trim().toLowerCase();
+    if (source === "history") return "history";
+    if (source === "merged") return "merged";
+    return "facebook";
+}
+
+function getPublishedSourceLabel() {
+    const source = String(publishedFilters.source || "live").trim().toLowerCase();
+    if (source === "history") return "History";
+    if (source === "merged") return "รวม";
+    return "Live";
+}
+
 function getPublishedEmptyCopy() {
-    return "ยังไม่พบโพสต์ของเพจนี้";
+    const source = String(publishedFilters.source || "live").trim().toLowerCase();
+    if (source === "history") {
+        return "ยังไม่พบประวัติโพสต์ของเพจนี้";
+    }
+    return "ยังไม่พบโพสต์ที่ยังอยู่บนเพจ (Live)";
 }
 
 function getPublishedNoResultsCopy() {
@@ -457,26 +476,27 @@ function getPublishedFilterResult(logs) {
 function updatePublishedFilterMeta(filteredCount, totalCount) {
     const metaEl = document.getElementById("publishedFilterMeta");
     if (!metaEl) return;
+    const sourceLabel = getPublishedSourceLabel();
 
     if (!totalCount) {
-        metaEl.textContent = getPublishedEmptyCopy();
+        metaEl.textContent = `โหมด ${sourceLabel}: ${getPublishedEmptyCopy()}`;
         return;
     }
 
     const rangeLabel = dateRangeFilterUtils.getLabel(publishedFilters.customDate);
     if (rangeLabel) {
         metaEl.textContent = filteredCount === totalCount
-            ? `${rangeLabel} มี ${filteredCount} รายการ`
-            : `${rangeLabel} แสดง ${filteredCount} / ${totalCount} รายการ`;
+            ? `โหมด ${sourceLabel} • ${rangeLabel} มี ${filteredCount} รายการ`
+            : `โหมด ${sourceLabel} • ${rangeLabel} แสดง ${filteredCount} / ${totalCount} รายการ`;
         return;
     }
 
     if (filteredCount === totalCount) {
-        metaEl.textContent = `แสดง ${totalCount} รายการ`;
+        metaEl.textContent = `โหมด ${sourceLabel} • แสดง ${totalCount} รายการ`;
         return;
     }
 
-    metaEl.textContent = `แสดง ${filteredCount} / ${totalCount} รายการ`;
+    metaEl.textContent = `โหมด ${sourceLabel} • แสดง ${filteredCount} / ${totalCount} รายการ`;
 }
 
 function syncPublishedDayFiltersUi() {
@@ -604,10 +624,12 @@ function renderPublishedPostsWithFilters() {
 
 function syncPublishedFilterInputs() {
     const searchInput = document.getElementById("publishedSearchInput");
+    const sourceFilter = document.getElementById("publishedSourceFilter");
     const typeFilter = document.getElementById("publishedTypeFilter");
     const dateInput = document.getElementById("publishedDateInput");
 
     if (searchInput) searchInput.value = publishedFilters.query;
+    if (sourceFilter) sourceFilter.value = publishedFilters.source;
     if (typeFilter) typeFilter.value = publishedFilters.type;
     dateRangeFilterUtils.syncInputValue(dateInput, publishedFilters.customDate);
     syncPublishedDayFiltersUi();
@@ -631,11 +653,13 @@ async function loadPublishedPosts(options = {}) {
         document.getElementById("pageTokenInputPanel")?.value?.trim() ||
         "";
     const cookie = fbCookie || localStorage.getItem("fewfeed_cookie") || "";
+    const sourceApi = getPublishedSourceApiValue();
+    const requestKey = `${String(pageId || "").trim()}::${sourceApi}`;
 
     if (!pageId) {
         currentPublishedPosts = [];
         currentPublishedPageId = "";
-        publishedLoadState.activePageId = "";
+        publishedLoadState.activeRequestKey = "";
         publishedLoadState.loading = false;
         if (summaryEl) summaryEl.innerHTML = "";
         publishedTableContainer.innerHTML = '<div class="pending-empty">Please select a Page first</div>';
@@ -643,7 +667,7 @@ async function loadPublishedPosts(options = {}) {
     }
 
     const now = Date.now();
-    const samePageRequest = publishedLoadState.activePageId === pageId;
+    const samePageRequest = publishedLoadState.activeRequestKey === requestKey;
     const requestedTooSoon = samePageRequest && now - publishedLoadState.lastLoadedAt < 700;
     if (!opts.force) {
         if (publishedLoadState.loading && samePageRequest) {
@@ -660,7 +684,7 @@ async function loadPublishedPosts(options = {}) {
     }
 
     publishedLoadState.loading = true;
-    publishedLoadState.activePageId = pageId;
+    publishedLoadState.activeRequestKey = requestKey;
 
     if (!opts.silent && (isPageChanged || currentPublishedPosts.length === 0)) {
         publishedTableContainer.innerHTML = `
@@ -679,7 +703,7 @@ async function loadPublishedPosts(options = {}) {
             body: JSON.stringify({
                 pageId,
                 limit: 200,
-                source: "merged",
+                source: sourceApi,
                 accessToken: adsToken,
                 pageToken,
                 cookieData: cookie,
@@ -707,6 +731,7 @@ async function loadPublishedPosts(options = {}) {
 
 const publishedRefreshBtn = document.getElementById("publishedRefreshBtn");
 const publishedSearchInput = document.getElementById("publishedSearchInput");
+const publishedSourceFilter = document.getElementById("publishedSourceFilter");
 const publishedTypeFilter = document.getElementById("publishedTypeFilter");
 const publishedDayFilters = document.getElementById("publishedDayFilters");
 const publishedDateInput = document.getElementById("publishedDateInput");
@@ -721,6 +746,15 @@ if (publishedSearchInput && !publishedSearchInput.dataset.bound) {
     publishedSearchInput.addEventListener("input", (event) => {
         publishedFilters.query = event.target.value || "";
         renderPublishedPostsWithFilters();
+    });
+}
+
+if (publishedSourceFilter && !publishedSourceFilter.dataset.bound) {
+    publishedSourceFilter.dataset.bound = "true";
+    publishedSourceFilter.addEventListener("change", (event) => {
+        const value = String(event.target.value || "live").trim().toLowerCase();
+        publishedFilters.source = ["live", "history", "merged"].includes(value) ? value : "live";
+        loadPublishedPosts({ force: true });
     });
 }
 

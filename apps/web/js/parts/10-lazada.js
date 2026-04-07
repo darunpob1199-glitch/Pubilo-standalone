@@ -2,6 +2,9 @@
 // ============================================
 const lazadaStatus = document.getElementById("lazadaStatus");
 let isConverting = false;
+let lazadaConvertTimer = null;
+let lazadaInputDebounceTimer = null;
+let lastConvertedLazadaUrl = "";
 
 // Check if URL is a Lazada product URL
 function isLazadaUrl(url) {
@@ -12,13 +15,48 @@ function isLazadaUrl(url) {
     );
 }
 
+function normalizeLazadaUrl(rawUrl) {
+    let normalized = String(rawUrl || "").trim();
+    if (!normalized) return "";
+
+    if (normalized.startsWith("//")) {
+        normalized = `https:${normalized}`;
+    } else if (!/^https?:\/\//i.test(normalized) && /(^|\.)lazada\.co\.th\//i.test(normalized)) {
+        normalized = `https://${normalized.replace(/^\/+/, "")}`;
+    }
+
+    return normalized;
+}
+
+function isValidHttpUrl(url) {
+    try {
+        const parsed = new URL(url);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch (_) {
+        return false;
+    }
+}
+
+function formatLazadaErrorMessage(rawError) {
+    const raw = String(rawError || "").trim();
+    if (!raw) return "Conversion failed — ใช้ลิงก์เดิมได้เลย";
+    if (raw.length > 140) return `${raw.slice(0, 137)}...`;
+    return raw;
+}
+
 // Convert Lazada URL to affiliate link
 async function convertLazadaLink() {
     if (isConverting) return;
 
-    const url = linkUrl.value.trim();
+    const url = normalizeLazadaUrl(cleanLazadaUrl(linkUrl?.value || ""));
+    if (linkUrl && linkUrl.value !== url) {
+        linkUrl.value = url;
+    }
 
-    if (!url || !isLazadaUrl(url)) {
+    if (!url || !isLazadaUrl(url) || url.includes("s.lazada.co.th")) {
+        return;
+    }
+    if (url === lastConvertedLazadaUrl) {
         return;
     }
 
@@ -26,6 +64,9 @@ async function convertLazadaLink() {
     isConverting = true;
     lazadaStatus.textContent = "Converting...";
     lazadaStatus.style.color = "#888";
+
+    // Clear any previous timeout
+    if (lazadaConvertTimer) clearTimeout(lazadaConvertTimer);
 
     // Send message to extension
     window.postMessage(
@@ -35,21 +76,44 @@ async function convertLazadaLink() {
         },
         "*",
     );
+
+    // Timeout: if extension doesn't respond within 5 seconds, use link as-is
+    lazadaConvertTimer = setTimeout(() => {
+        if (isConverting) {
+            isConverting = false;
+            lazadaStatus.textContent = "ℹ️ ใช้ลิงก์เดิมได้เลย (ระบบแปลง affiliate ไม่พร้อม)";
+            lazadaStatus.style.color = "#f59e0b";
+        }
+    }, 5000);
 }
 
 // Listen for Lazada conversion response
 window.addEventListener("message", (event) => {
+    if (event.source !== window || !event.data) return;
     if (event.data.type === "FEWFEED_LAZADA_LINK_RESPONSE") {
-        const response = event.data.data;
+        const response = event.data.data || {};
         isConverting = false;
+        if (lazadaConvertTimer) {
+            clearTimeout(lazadaConvertTimer);
+            lazadaConvertTimer = null;
+        }
 
         if (response.success && response.affiliateLink) {
+            const normalizedAffiliateLink = normalizeLazadaUrl(response.affiliateLink);
+            if (!isValidHttpUrl(normalizedAffiliateLink)) {
+                lazadaStatus.textContent =
+                    "❌ ระบบได้รับลิงก์ย่อไม่สมบูรณ์ ใช้ลิงก์เดิมได้เลย";
+                lazadaStatus.style.color = "#ef4444";
+                return;
+            }
             // Update the link URL field with affiliate link
-            linkUrl.value = response.affiliateLink;
-            lazadaStatus.textContent = "";
+            linkUrl.value = normalizedAffiliateLink;
+            lastConvertedLazadaUrl = normalizeLazadaUrl(cleanLazadaUrl(normalizedAffiliateLink));
+            lazadaStatus.textContent = "✅ แปลงเป็น affiliate link แล้ว";
+            lazadaStatus.style.color = "#22c55e";
         } else {
             lazadaStatus.textContent =
-                "❌ " + (response.error || "Conversion failed");
+                "❌ " + formatLazadaErrorMessage(response.error || "Conversion failed — ใช้ลิงก์เดิมได้เลย");
             lazadaStatus.style.color = "#ef4444";
         }
     }
@@ -57,13 +121,26 @@ window.addEventListener("message", (event) => {
 
 // Clean Lazada URL - remove query params after .html
 function cleanLazadaUrl(url) {
+    const normalizedUrl = normalizeLazadaUrl(url);
     if (
-        url.includes("lazada.co.th/products/") &&
-        url.includes(".html")
+        normalizedUrl.includes("lazada.co.th/products/") &&
+        normalizedUrl.includes(".html")
     ) {
-        return url.split(".html")[0] + ".html";
+        return normalizedUrl.split(".html")[0] + ".html";
     }
-    return url;
+    return normalizedUrl;
+}
+
+function queueLazadaAutoConvert() {
+    if (!linkUrl) return;
+    if (lazadaInputDebounceTimer) clearTimeout(lazadaInputDebounceTimer);
+    lazadaInputDebounceTimer = setTimeout(() => {
+        const normalized = cleanLazadaUrl(linkUrl.value || "");
+        if (linkUrl.value !== normalized) linkUrl.value = normalized;
+        if (isLazadaUrl(normalized) && !normalized.includes("s.lazada.co.th")) {
+            convertLazadaLink();
+        }
+    }, 800);
 }
 
 // Auto-convert Lazada URL on paste
@@ -81,43 +158,100 @@ if (linkUrl) linkUrl.addEventListener("paste", (e) => {
         }
     }, 100);
 });
+if (linkUrl) linkUrl.addEventListener("input", queueLazadaAutoConvert);
+if (linkUrl) linkUrl.addEventListener("blur", () => {
+    if (lazadaInputDebounceTimer) {
+        clearTimeout(lazadaInputDebounceTimer);
+        lazadaInputDebounceTimer = null;
+    }
+    queueLazadaAutoConvert();
+});
 
 // News URL - same Lazada conversion logic
 const newsUrlInput = document.getElementById("newsUrlInput");
 const newsLazadaStatus = document.getElementById("newsLazadaStatus");
 const newsPreviewDescription = document.getElementById("newsPreviewDescription");
 let newsIsConverting = false;
+let newsLazadaConvertTimer = null;
+let newsLazadaInputDebounceTimer = null;
+let lastConvertedNewsLazadaUrl = "";
 
 async function convertNewsLazadaLink() {
     if (newsIsConverting) return;
-    const url = newsUrlInput.value.trim();
-    if (!url || !isLazadaUrl(url)) return;
+    const url = cleanLazadaUrl(newsUrlInput?.value || "");
+    if (newsUrlInput && newsUrlInput.value !== url) {
+        newsUrlInput.value = url;
+    }
+    if (!url || !isLazadaUrl(url) || url.includes("s.lazada.co.th")) return;
+    if (url === lastConvertedNewsLazadaUrl) return;
     
     newsIsConverting = true;
     if (newsLazadaStatus) {
         newsLazadaStatus.textContent = "Converting...";
         newsLazadaStatus.style.color = "#888";
     }
+
+    if (newsLazadaConvertTimer) clearTimeout(newsLazadaConvertTimer);
     
     window.postMessage({ type: "FEWFEED_CONVERT_NEWS_LAZADA_LINK", productUrl: url }, "*");
+
+    // Timeout: if extension doesn't respond within 5 seconds, use link as-is
+    newsLazadaConvertTimer = setTimeout(() => {
+        if (newsIsConverting) {
+            newsIsConverting = false;
+            if (newsLazadaStatus) {
+                newsLazadaStatus.textContent = "ℹ️ ใช้ลิงก์เดิมได้เลย (ระบบแปลง affiliate ไม่พร้อม)";
+                newsLazadaStatus.style.color = "#f59e0b";
+            }
+        }
+    }, 5000);
 }
 
 // Listen for news Lazada conversion response
 window.addEventListener("message", (event) => {
+    if (event.source !== window || !event.data) return;
     if (event.data.type === "FEWFEED_NEWS_LAZADA_LINK_RESPONSE") {
-        const response = event.data.data;
+        const response = event.data.data || {};
         newsIsConverting = false;
+        if (newsLazadaConvertTimer) {
+            clearTimeout(newsLazadaConvertTimer);
+            newsLazadaConvertTimer = null;
+        }
         if (response.success && response.affiliateLink) {
-            newsUrlInput.value = response.affiliateLink;
-            if (newsLazadaStatus) newsLazadaStatus.textContent = "";
+            const normalizedAffiliateLink = normalizeLazadaUrl(response.affiliateLink);
+            if (!isValidHttpUrl(normalizedAffiliateLink)) {
+                if (newsLazadaStatus) {
+                    newsLazadaStatus.textContent = "❌ ระบบได้รับลิงก์ย่อไม่สมบูรณ์ ใช้ลิงก์เดิมได้เลย";
+                    newsLazadaStatus.style.color = "#ef4444";
+                }
+                return;
+            }
+            newsUrlInput.value = normalizedAffiliateLink;
+            lastConvertedNewsLazadaUrl = cleanLazadaUrl(normalizedAffiliateLink);
+            if (newsLazadaStatus) {
+                newsLazadaStatus.textContent = "✅ แปลงเป็น affiliate link แล้ว";
+                newsLazadaStatus.style.color = "#22c55e";
+            }
         } else {
             if (newsLazadaStatus) {
-                newsLazadaStatus.textContent = "❌ " + (response.error || "Conversion failed");
+                newsLazadaStatus.textContent = "❌ " + formatLazadaErrorMessage(response.error || "Conversion failed — ใช้ลิงก์เดิมได้เลย");
                 newsLazadaStatus.style.color = "#ef4444";
             }
         }
     }
 });
+
+function queueNewsLazadaAutoConvert() {
+    if (!newsUrlInput) return;
+    if (newsLazadaInputDebounceTimer) clearTimeout(newsLazadaInputDebounceTimer);
+    newsLazadaInputDebounceTimer = setTimeout(() => {
+        const normalized = cleanLazadaUrl(newsUrlInput.value || "");
+        if (newsUrlInput.value !== normalized) newsUrlInput.value = normalized;
+        if (isLazadaUrl(normalized) && !normalized.includes("s.lazada.co.th")) {
+            convertNewsLazadaLink();
+        }
+    }, 800);
+}
 
 if (newsUrlInput) {
     newsUrlInput.addEventListener("paste", (e) => {
@@ -130,6 +264,14 @@ if (newsUrlInput) {
             }
             validateNewsMode();
         }, 100);
+    });
+    newsUrlInput.addEventListener("input", queueNewsLazadaAutoConvert);
+    newsUrlInput.addEventListener("blur", () => {
+        if (newsLazadaInputDebounceTimer) {
+            clearTimeout(newsLazadaInputDebounceTimer);
+            newsLazadaInputDebounceTimer = null;
+        }
+        queueNewsLazadaAutoConvert();
     });
     newsUrlInput.addEventListener("input", validateNewsMode);
 }

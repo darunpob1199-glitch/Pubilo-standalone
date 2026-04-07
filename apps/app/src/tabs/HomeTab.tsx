@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
     fetchEarnings, triggerAutoPost, checkTokenHealth,
 } from '../api'
-import type { Page, Earnings } from '../api'
+import type { Page, Earnings, TokenHealth } from '../api'
 
 interface Props {
     pages: Page[]
@@ -14,7 +14,7 @@ export default function HomeTab({ pages }: Props) {
     const [earnings, setEarnings] = useState<Earnings[]>([])
     const [posting, setPosting] = useState(false)
     const [postMsg, setPostMsg] = useState('')
-    const [health, setHealth] = useState<any>(null)
+    const [health, setHealth] = useState<TokenHealth | null>(null)
 
     useEffect(() => {
         fetchEarnings().then(setEarnings)

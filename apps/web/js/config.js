@@ -50,9 +50,21 @@ function normalizeApiBase(value) {
 
 const urlParams = new URLSearchParams(window.location.search);
 const apiParam = normalizeApiBase(urlParams.get('api'));
+const isProductionWebHost = (() => {
+    const hostname = String(window.location.hostname || '').toLowerCase();
+    return (
+        hostname === 'pubilo.com'
+        || hostname === 'www.pubilo.com'
+        || hostname === 'pubilo-web-prod.pages.dev'
+        || hostname.endsWith('.pubilo-web-prod.pages.dev')
+    );
+})();
+const allowApiParamOverride = !isProductionWebHost;
 
-if (apiParam) {
+if (apiParam && allowApiParamOverride) {
     localStorage.setItem(PUBILO_API_STORAGE_KEY, apiParam);
+} else if (apiParam && !allowApiParamOverride) {
+    console.warn('[Pubilo] Ignored ?api override on production host');
 }
 
 const hostApiBase = resolveHostApiBase(window.location.hostname);
@@ -61,7 +73,7 @@ const storedApiBase = normalizeApiBase(localStorage.getItem(PUBILO_API_STORAGE_K
 window.API_BASE = normalizeApiBase(
     window.__PUBILO_API_BASE__
     || document.querySelector('meta[name="pubilo-api-base"]')?.content
-    || apiParam
+    || (allowApiParamOverride ? apiParam : '')
     // Host mapping has priority over stored value to prevent stale API base on preview subdomains.
     || hostApiBase
     || storedApiBase

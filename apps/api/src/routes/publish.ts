@@ -337,6 +337,15 @@ function normalizeAdAccountId(adAccountId?: string): string {
     return normalized.startsWith('act_') ? normalized : `act_${normalized}`;
 }
 
+function parseBooleanFlag(value: unknown): boolean {
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized === '1'
+        || normalized === 'true'
+        || normalized === 'yes'
+        || normalized === 'on';
+}
+
 const ALLOWED_CALL_TO_ACTION_TYPES = new Set([
     'SHOP_NOW',
     'LEARN_MORE',
@@ -396,6 +405,31 @@ function deriveSiteName(inputCaption?: string, targetUrl?: string): string {
     }
 
     return 'PUBILO';
+}
+
+function normalizeOutboundLink(rawValue?: string): string {
+    const raw = String(rawValue || '').trim();
+    if (!raw) return '';
+
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
+        return raw;
+    }
+
+    if (raw.startsWith('//')) {
+        return `https:${raw}`;
+    }
+
+    const withHttps = `https://${raw.replace(/^\/+/, '')}`;
+    try {
+        const parsed = new URL(withHttps);
+        if (parsed.hostname) {
+            return withHttps;
+        }
+    } catch {
+        // keep original fallback
+    }
+
+    return raw;
 }
 
 function normalizeTargetPageIds(input: unknown, currentPageId: string): string[] {
@@ -740,34 +774,56 @@ async function publishLinkCardViaFeed(params: {
     caption?: string;
     description?: string;
     pictureUrl?: string;
+    callToActionType?: string;
+    callToActionLinkUrl?: string;
+    publishAsAdsPost?: boolean;
     scheduledTime?: number | null;
     allowMetadataDropRetry?: boolean;
-}): Promise<{ postId: string }> {
-    const hasRichMetadata = Boolean(
+}): Promise<{ postId: string; createdAsDraft: boolean }> {
+    const hasLinkMetadata = Boolean(
         params.title ||
         params.caption ||
         params.description ||
         params.pictureUrl,
     );
+    const hasCallToAction = Boolean(params.callToActionType);
 
-    const execute = async (includeRichMetadata: boolean): Promise<{ postId: string }> => {
+    const execute = async (options: {
+        includeLinkMetadata: boolean;
+        includeCallToAction: boolean;
+        includeAdsDraft: boolean;
+    }): Promise<{ postId: string; createdAsDraft: boolean }> => {
         const body = new URLSearchParams({
             access_token: params.pageToken,
             link: params.linkUrl,
         });
+        const shouldCreateDraft = Boolean(params.publishAsAdsPost) && !params.scheduledTime && options.includeAdsDraft;
 
         if (params.message) body.set('message', params.message);
 
-        if (includeRichMetadata) {
+        if (options.includeLinkMetadata) {
             if (params.title) body.set('name', params.title);
             if (params.caption) body.set('caption', params.caption);
             if (params.description) body.set('description', params.description);
             if (params.pictureUrl) body.set('picture', params.pictureUrl);
         }
 
+        if (options.includeCallToAction && params.callToActionType) {
+            body.set('call_to_action', JSON.stringify({
+                type: params.callToActionType,
+                value: {
+                    link: params.callToActionLinkUrl || params.linkUrl,
+                },
+            }));
+        }
+
         if (params.scheduledTime) {
             body.set('published', 'false');
             body.set('scheduled_publish_time', String(params.scheduledTime));
+            body.set('unpublished_content_type', 'ADS_POST');
+        } else if (shouldCreateDraft) {
+            body.set('published', 'false');
+            body.set('unpublished_content_type', 'ADS_POST');
         }
 
         const response = await fetch(`${FB_API}/${params.pageId}/feed`, {
@@ -792,25 +848,91 @@ async function publishLinkCardViaFeed(params: {
             throw new Error('Facebook did not return post id for feed link card');
         }
 
-        return { postId };
+        return {
+            postId,
+            createdAsDraft: shouldCreateDraft,
+        };
     };
 
     try {
-        return await execute(hasRichMetadata);
+        return await execute({
+            includeLinkMetadata: hasLinkMetadata,
+            includeCallToAction: hasCallToAction,
+            includeAdsDraft: true,
+        });
     } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const shouldRetryWithoutMetadata =
-            hasRichMetadata &&
-            params.allowMetadataDropRetry !== false &&
-            message.includes('Only owners of the URL') &&
-            message.includes('picture, name, thumbnail or description');
+        const firstMessage = error instanceof Error ? error.message : String(error);
+        const firstLower = firstMessage.toLowerCase();
+        const isOwnershipMetadataError = firstLower.includes('only owners of the url')
+            && firstLower.includes('picture, name, thumbnail or description');
+        const isCallToActionError = firstLower.includes('call_to_action')
+            || firstLower.includes('call to action')
+            || firstLower.includes('unpublished_content_type');
 
-        if (!shouldRetryWithoutMetadata) {
-            throw error;
+        // Retry 1: drop metadata overrides if Facebook rejects domain metadata ownership.
+        if (hasLinkMetadata && isOwnershipMetadataError) {
+            try {
+                return await execute({
+                    includeLinkMetadata: false,
+                    includeCallToAction: hasCallToAction,
+                    includeAdsDraft: true,
+                });
+            } catch (retryError) {
+                error = retryError;
+            }
         }
 
-        console.warn('[publish] Feed link metadata rejected by Facebook, retrying without metadata override');
-        return await execute(false);
+        const retryMessage = error instanceof Error ? error.message : String(error);
+        const retryLower = retryMessage.toLowerCase();
+        const retryCallToActionError = retryLower.includes('call_to_action')
+            || retryLower.includes('call to action')
+            || retryLower.includes('unpublished_content_type');
+
+        // Retry 2: CTA might be rejected for some pages/tokens; retry without CTA.
+        if (hasCallToAction && (isCallToActionError || retryCallToActionError)) {
+            try {
+                return await execute({
+                    includeLinkMetadata: hasLinkMetadata,
+                    includeCallToAction: false,
+                    includeAdsDraft: true,
+                });
+            } catch (retryError) {
+                error = retryError;
+            }
+        }
+
+        // Retry 3: if ads-post mode is blocked, fallback to normal feed post.
+        const thirdMessage = error instanceof Error ? error.message : String(error);
+        const thirdLower = thirdMessage.toLowerCase();
+        const isAdsPostError = thirdLower.includes('unpublished_content_type')
+            || thirdLower.includes('ads_post')
+            || thirdLower.includes('unsupported post request');
+        if (Boolean(params.publishAsAdsPost) && isAdsPostError) {
+            try {
+                return await execute({
+                    includeLinkMetadata: hasLinkMetadata,
+                    includeCallToAction: false,
+                    includeAdsDraft: false,
+                });
+            } catch (retryError) {
+                error = retryError;
+            }
+        }
+
+        // Optional last retry: drop all link metadata overrides.
+        if (hasLinkMetadata && params.allowMetadataDropRetry === true) {
+            try {
+                return await execute({
+                    includeLinkMetadata: false,
+                    includeCallToAction: false,
+                    includeAdsDraft: true,
+                });
+            } catch (retryError) {
+                error = retryError;
+            }
+        }
+
+        throw error;
     }
 }
 
@@ -1356,6 +1478,7 @@ async function createStandaloneAdCreative(params: {
     description?: string;
     callToAction?: string;
     seed?: GhostAdSeed | null;
+    allowAdMaterialization?: boolean;
 }): Promise<{
     creativeId: string;
     postId: string;
@@ -1429,6 +1552,17 @@ async function createStandaloneAdCreative(params: {
             creativeData: storyResult.raw,
             materializedBy: 'creative',
         };
+    }
+
+    if (!params.allowAdMaterialization) {
+        const wrapped = new Error('Facebook did not return object_story_id for ad creative (materialization disabled)') as Error & {
+            debug?: Record<string, unknown>;
+        };
+        wrapped.debug = {
+            materializationEnabled: false,
+            creativeId,
+        };
+        throw wrapped;
     }
 
     const seedContext = await resolveAdSeedContext({
@@ -1588,9 +1722,33 @@ app.post('/', async (c) => {
 
         // Determine post type
         const finalMessage = message || primaryText || '';
-        const finalLink = link || linkUrl || '';
+        const finalLink = normalizeOutboundLink(link || linkUrl || '');
         const finalImageUrl = imageUrl || '';
         const isLinkAttachmentPost = !!finalLink && (postMode === 'news' || postMode === 'link');
+        if (isLinkAttachmentPost) {
+            try {
+                const parsed = new URL(finalLink);
+                if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+                    throw new Error('unsupported_protocol');
+                }
+            } catch {
+                return c.json({
+                    success: false,
+                    error: 'ลิงก์ไม่ถูกต้อง กรุณาใส่ URL แบบเต็ม เช่น https://example.com/...',
+                    errorType: 'InvalidLinkUrl',
+                }, 400);
+            }
+        }
+
+        // In Pubilo link/news mode we always expect an explicit cover image.
+        // Posting without it causes Facebook to generate unpredictable plain URL cards.
+        if (isLinkAttachmentPost && !String(finalImageUrl || '').trim()) {
+            return c.json({
+                success: false,
+                error: 'ไม่พบรูปสำหรับโพสต์ลิงก์ กรุณาอัปโหลดรูปใหม่ก่อนกดโพสต์',
+                errorType: 'MissingLinkCardImage',
+            }, 400);
+        }
         const requiresRichLinkCard = isLinkAttachmentPost && (
             !!finalImageUrl ||
             !!linkName ||
@@ -1990,8 +2148,17 @@ app.post('/', async (c) => {
         const normalizedAdAccountId = normalizeAdAccountId(adAccountId);
         let resolvedAdAccountId = normalizedAdAccountId;
         let accessibleAdAccounts: string[] = [];
+        const rawAdCreativeEnv = String((c.env as any).ENABLE_AD_CREATIVE_PUBLISH || '').trim().toLowerCase();
+        const adCreativeAllowedByEnv = rawAdCreativeEnv
+            ? rawAdCreativeEnv === 'true'
+            : true;
+        const rawClientAdCreativeFlag = body.allowAdCreativePublish ?? body.useAdCreativeFlow ?? body.enableAdCreativePublish;
+        const adCreativeRequestedByClient = rawClientAdCreativeFlag == null
+            ? false
+            : parseBooleanFlag(rawClientAdCreativeFlag);
+        const adCreativeFlowEnabled = adCreativeAllowedByEnv && adCreativeRequestedByClient;
 
-        if (isLinkAttachmentPost && accessToken && !resolvedAdAccountId) {
+        if (adCreativeFlowEnabled && isLinkAttachmentPost && accessToken && !resolvedAdAccountId) {
             try {
                 accessibleAdAccounts = await fetchAccessibleAdAccountIds(accessToken, facebookHeaders);
                 resolvedAdAccountId = accessibleAdAccounts[0] || '';
@@ -2000,8 +2167,7 @@ app.post('/', async (c) => {
             }
         }
         const normalizedCallToAction = normalizeCallToActionType(callToAction);
-        const canUseAdCreativeFlow = isLinkAttachmentPost && !!accessToken && !!resolvedAdAccountId;
-        const isGhostOnlyNewsPost = postMode === 'news';
+        const canUseAdCreativeFlow = adCreativeFlowEnabled && isLinkAttachmentPost && !!accessToken && !!resolvedAdAccountId;
 
         if (isLinkAttachmentPost) {
             // Include access token as last-resort candidate for feed fallback.
@@ -2013,6 +2179,14 @@ app.post('/', async (c) => {
                 storedPageToken,
                 accessToken,
             ]);
+            const feedLinkCandidates = (() => {
+                if (publishLinkUrl && finalLink && publishLinkUrl !== finalLink) {
+                    // Try controlled preview URL first to keep stable rich metadata.
+                    // If Facebook rejects/failed preview scraping, fallback to direct link.
+                    return [publishLinkUrl, finalLink];
+                }
+                return [finalLink || publishLinkUrl];
+            })().filter(Boolean);
             const pageTokenForPublish = pageTokenCandidates[0] || '';
             let adCreativeError: string | null = null;
             let adCreativeDebug: Record<string, unknown> = {
@@ -2023,21 +2197,12 @@ app.post('/', async (c) => {
             console.log('[publish] Link post diagnostics:', {
                 hasClientAccessToken: !!accessToken,
                 resolvedAdAccountId: resolvedAdAccountId || '(none)',
+                adCreativeAllowedByEnv,
+                adCreativeRequestedByClient,
+                adCreativeFlowEnabled,
                 canUseAdCreativeFlow,
                 pageTokenCandidateCount: pageTokenCandidates.length,
             });
-
-            if (isGhostOnlyNewsPost && !canUseAdCreativeFlow) {
-                return c.json({
-                    success: false,
-                    error: 'Ghost Ads ไม่พร้อมใช้งานสำหรับ account นี้: ไม่พบ Ads Token หรือ Ad Account ที่ใช้สร้าง ad creative ได้',
-                    errorType: 'GhostAdsUnavailable',
-                    _debug: {
-                        flow: 'ghost-required',
-                        ...adCreativeDebug,
-                    },
-                }, 422);
-            }
 
             // Primary: ad creative produces rich cards with custom image, title, CTA button.
             if (canUseAdCreativeFlow) {
@@ -2049,13 +2214,16 @@ app.post('/', async (c) => {
                         accessToken,
                         cookieHeaders: facebookHeaders,
                         adAccountId: resolvedAdAccountId,
-                        linkUrl: publishLinkUrl || finalLink,
+                        // Ad creative should point to the real outbound destination.
+                        // Using preview URL here causes posts to render as api.pubilo.com cards.
+                        linkUrl: finalLink,
                         hostedImageUrl: hostedImageUrl || undefined,
                         message: finalMessage,
                         title: attachmentTitle || undefined,
                         caption: previewSiteName || undefined,
                         description: attachmentDescription || undefined,
                         callToAction: normalizedCallToAction,
+                        allowAdMaterialization: false,
                     });
 
                     if (!scheduleTimestamp && pageTokenForPublish) {
@@ -2095,20 +2263,6 @@ app.post('/', async (c) => {
                         ...adCreativeDebug,
                         ...((((error as Error & { debug?: Record<string, unknown> }).debug) || {})),
                     };
-
-                    if (isGhostOnlyNewsPost) {
-                        return c.json({
-                            success: false,
-                            error: `Ghost Ads ไม่สำเร็จ: ${adCreativeError}`,
-                            errorType: 'GhostAdsFailed',
-                            _debug: {
-                                flow: 'ghost-required',
-                                adCreativeError,
-                                ...adCreativeDebug,
-                            },
-                        }, 422);
-                    }
-
                     console.warn('[publish] adcreative failed, falling back to feed:', adCreativeError);
                 }
             }
@@ -2131,41 +2285,74 @@ app.post('/', async (c) => {
 
             let lastFeedError = '';
             for (const candidateToken of pageTokenCandidates) {
-                try {
-                    const feedResult = await publishLinkCardViaFeed({
-                        pageId,
-                        pageToken: candidateToken,
-                        headers: facebookHeaders,
-                        message: finalMessage,
-                        linkUrl: publishLinkUrl || finalLink,
-                        scheduledTime: scheduleTimestamp || undefined,
-                    });
+                let candidateLastError = '';
+                for (let linkIndex = 0; linkIndex < feedLinkCandidates.length; linkIndex += 1) {
+                    const feedLinkUrl = feedLinkCandidates[linkIndex];
+                    try {
+                        const feedResult = await publishLinkCardViaFeed({
+                            pageId,
+                            pageToken: candidateToken,
+                            headers: facebookHeaders,
+                            message: finalMessage,
+                            linkUrl: feedLinkUrl,
+                            title: attachmentTitle || undefined,
+                            caption: attachmentCaption || previewSiteName || undefined,
+                            description: attachmentDescription || undefined,
+                            pictureUrl: hostedImageUrl || undefined,
+                            callToActionType: normalizedCallToAction,
+                            callToActionLinkUrl: finalLink || feedLinkUrl,
+                            publishAsAdsPost: !scheduleTimestamp,
+                            scheduledTime: scheduleTimestamp || undefined,
+                            allowMetadataDropRetry: true,
+                        });
+                        if (feedResult.createdAsDraft && !scheduleTimestamp) {
+                            await publishExistingUnpublishedPost(feedResult.postId, candidateToken, facebookHeaders);
+                        }
 
-                    const feedUrl = buildFacebookPostUrl(feedResult.postId, pageId);
-                    await recordPublishedSuccess(feedResult.postId, feedUrl, {
-                        flow: adCreativeError ? 'feed-fallback' : 'feed-link',
-                    });
-                    const hideResult = await maybeHideAfterPublish(feedResult.postId, candidateToken);
-
-                    return c.json({
-                        success: true,
-                        postId: feedResult.postId,
-                        url: feedUrl,
-                        timelineHidden: hideResult.hidden,
-                        ...(hideResult.attempted && !hideResult.hidden ? { warning: `ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}` } : {}),
-                        ...(adCreativeError ? { warning: 'Ad creative ไม่สำเร็จ ระบบสลับไปโพสต์ผ่าน feed แทน' } : {}),
-                        needsScheduling: !!scheduleTimestamp,
-                        ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
-                        _debug: {
+                        const feedUrl = buildFacebookPostUrl(feedResult.postId, pageId);
+                        await recordPublishedSuccess(feedResult.postId, feedUrl, {
                             flow: adCreativeError ? 'feed-fallback' : 'feed-link',
-                            adCreativeError,
-                            hide: hideResult,
-                        },
-                    });
-                } catch (feedError) {
-                    lastFeedError = feedError instanceof Error ? feedError.message : String(feedError);
-                    console.warn(`[publish] feed candidate failed (${pageTokenCandidates.indexOf(candidateToken) + 1}/${pageTokenCandidates.length}):`, lastFeedError);
+                        });
+                        const hideResult = await maybeHideAfterPublish(feedResult.postId, candidateToken);
+                        const warningMessages: string[] = [];
+                        if (hideResult.attempted && !hideResult.hidden) {
+                            warningMessages.push(`ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}`);
+                        }
+                        if (adCreativeError) {
+                            warningMessages.push('Ad creative ไม่สำเร็จ ระบบสลับไปโพสต์ผ่าน feed แทน');
+                        }
+                        if (linkIndex > 0 && publishLinkUrl && publishLinkUrl !== finalLink) {
+                            warningMessages.push('Preview link ใช้งานไม่ได้ ระบบสลับไปใช้ลิงก์จริงให้อัตโนมัติ');
+                        }
+
+                        return c.json({
+                            success: true,
+                            postId: feedResult.postId,
+                            url: feedUrl,
+                            timelineHidden: hideResult.hidden,
+                            ...(warningMessages.length > 0 ? { warning: warningMessages.join(' | ') } : {}),
+                            needsScheduling: !!scheduleTimestamp,
+                            ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                            _debug: {
+                                flow: adCreativeError ? 'feed-fallback' : 'feed-link',
+                                adCreativeError,
+                                hide: hideResult,
+                                feedLinkUrl,
+                                feedLinkAttempt: linkIndex + 1,
+                            },
+                        });
+                    } catch (feedError) {
+                        candidateLastError = feedError instanceof Error ? feedError.message : String(feedError);
+                        if (linkIndex + 1 < feedLinkCandidates.length) {
+                            console.warn(
+                                `[publish] feed link attempt failed, retrying with fallback link (${linkIndex + 1}/${feedLinkCandidates.length}):`,
+                                candidateLastError,
+                            );
+                        }
+                    }
                 }
+                lastFeedError = candidateLastError;
+                console.warn(`[publish] feed candidate failed (${pageTokenCandidates.indexOf(candidateToken) + 1}/${pageTokenCandidates.length}):`, lastFeedError);
             }
 
             // Last resort: cookie-only feed post (no access_token at all, just Cookie header).
@@ -2211,11 +2398,17 @@ app.post('/', async (c) => {
             const isSessionInvalidated = /session has been invalidated|error validating access token|changed.*password|security reasons|forbidden/i.test(
                 `${adCreativeError || ''} ${lastFeedError || ''}`
             );
+            const isExpectedCreativeStoryMiss = /did not return object_story_id|materialization disabled/i.test(
+                String(adCreativeError || '')
+            );
+            const normalizedAdCreativeError = isExpectedCreativeStoryMiss ? '' : String(adCreativeError || '').trim();
+            const normalizedFeedError = String(lastFeedError || '').trim();
+            const nonSessionReason = normalizedFeedError || normalizedAdCreativeError;
             const userMessage = isSessionInvalidated
                 ? 'Facebook session หมดอายุ กรุณา logout แล้ว login Facebook ใหม่ จากนั้นกดปุ่ม extension แล้วรีเฟรชหน้า'
-                : adCreativeError
-                    ? `โพสต์ไม่สำเร็จ กรุณา login Facebook ใหม่แล้วกด extension`
-                    : `โพสต์ไม่สำเร็จ: ${lastFeedError}`;
+                : nonSessionReason
+                    ? `โพสต์ไม่สำเร็จ: ${nonSessionReason}`
+                    : 'โพสต์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
 
             return c.json({
                 success: false,

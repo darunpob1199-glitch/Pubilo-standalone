@@ -5,76 +5,124 @@
 console.log("[FEWFEED FB] Content script loaded on", window.location.href);
 globalThis.__PUBILO_FB_CONTENT_SCRIPT_ACTIVE__ = true;
 
-// Auto-extract token when page loads and send to background
-(function autoExtractToken() {
-  const html = document.documentElement.outerHTML;
+function collectAccessTokenCandidatesFromText(text) {
+  const source = String(text || "");
+  if (!source) return [];
 
-  // Try to find access token
-  const tokenPatterns = [
-    /__accessToken\s*=\s*"(EA[A-Za-z0-9]+)"/,
-    /"__accessToken"\s*:\s*"(EA[A-Za-z0-9]+)"/,
-    /__window\.__accessToken="(EA[A-Za-z0-9]+)"/,
-    /"accessToken":"(EA[A-Za-z0-9]+)"/,
-    /"access_token":"(EA[A-Za-z0-9]+)"/
+  const candidates = [];
+  const TOKEN_CHARS = "[A-Za-z0-9_-]+";
+  const explicitPatterns = [
+    new RegExp(`__accessToken\\s*=\\s*"(EA${TOKEN_CHARS})"`, "g"),
+    new RegExp(`"__accessToken"\\s*:\\s*"(EA${TOKEN_CHARS})"`, "g"),
+    new RegExp(`__window\\.__accessToken="(EA${TOKEN_CHARS})"`, "g"),
+    new RegExp(`"accessToken":"(EA${TOKEN_CHARS})"`, "g"),
+    new RegExp(`"access_token":"(EA${TOKEN_CHARS})"`, "g"),
+    new RegExp(`\\\\"__accessToken\\\\"\\s*:\\s*\\\\"(EA${TOKEN_CHARS})\\\\"`, "g"),
+    new RegExp(`\\\\"accessToken\\\\"\\s*:\\s*\\\\"(EA${TOKEN_CHARS})\\\\"`, "g"),
+    new RegExp(`\\\\"access_token\\\\"\\s*:\\s*\\\\"(EA${TOKEN_CHARS})\\\\"`, "g"),
   ];
-  const escapedTokenPatterns = [
-    /\\"__accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
-    /\\"accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
-    /\\"access_token\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/
-  ];
-
-  let token = null;
-  for (const pattern of tokenPatterns) {
-    const match = html.match(pattern);
-    if (match) {
-      token = match[1];
-      console.log("[FEWFEED FB] Found token with pattern:", pattern.toString().substring(0, 30));
-      break;
+  for (const pattern of explicitPatterns) {
+    const matches = source.matchAll(pattern);
+    for (const match of matches) {
+      if (match?.[1]) candidates.push(String(match[1]).trim());
     }
   }
 
-  if (!token) {
-    for (const pattern of escapedTokenPatterns) {
-      const match = html.match(pattern);
-      if (match) {
-        token = match[1];
-        console.log("[FEWFEED FB] Found token with escaped pattern:", pattern.toString().substring(0, 30));
-        break;
-      }
+  const looseMatches = source.match(/EA[A-Za-z0-9_-]{20,}/g) || [];
+  for (const token of looseMatches) {
+    candidates.push(String(token || "").trim());
+  }
+
+  return candidates;
+}
+
+function pickBestAccessToken(tokens) {
+  const unique = Array.from(
+    new Set((tokens || []).map((token) => String(token || "").trim()).filter(Boolean)),
+  );
+  const score = (token) => {
+    if (token.startsWith("EAABsbCS")) return 400 + token.length;
+    if (token.startsWith("EAAChZC")) return 300 + token.length;
+    if (token.startsWith("EAAG")) return 200 + token.length;
+    return 100 + token.length;
+  };
+  unique.sort((a, b) => score(b) - score(a));
+  return unique[0] || "";
+}
+
+function extractTokenAndDtsgFromPage() {
+  const html = document.documentElement?.outerHTML || "";
+  const scriptText = Array.from(document.scripts || [])
+    .map((script) => script?.textContent || "")
+    .join("\n");
+
+  let storageBlob = "";
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      const value = key ? localStorage.getItem(key) : "";
+      if (value) storageBlob += `\n${value}`;
     }
+  } catch (_) {}
+
+  try {
+    for (let i = 0; i < sessionStorage.length; i += 1) {
+      const key = sessionStorage.key(i);
+      const value = key ? sessionStorage.getItem(key) : "";
+      if (value) storageBlob += `\n${value}`;
+    }
+  } catch (_) {}
+
+  const tokenCandidates = [
+    ...collectAccessTokenCandidatesFromText(html),
+    ...collectAccessTokenCandidatesFromText(scriptText),
+    ...collectAccessTokenCandidatesFromText(storageBlob),
+  ];
+
+  if (typeof window.__accessToken === "string" && window.__accessToken.trim()) {
+    tokenCandidates.push(window.__accessToken.trim());
   }
 
-  if (!token && typeof window.__accessToken === "string") {
-    token = window.__accessToken;
-    console.log("[FEWFEED FB] Found token from window.__accessToken");
-  }
+  const token = pickBestAccessToken(tokenCandidates);
 
-  // Try to find fb_dtsg
   const dtsgPatterns = [
     /"DTSGInitialData"[^}]*"token":"([^"]+)"/,
     /name="fb_dtsg"\s+value="([^"]+)"/,
-    /"fb_dtsg":"([^"]+)"/
+    /"fb_dtsg":"([^"]+)"/,
+    /fb_dtsg['"]\s*:\s*['"]([\w:_-]+)['"]/,
   ];
-
-  let dtsg = null;
+  let dtsg = "";
   for (const pattern of dtsgPatterns) {
-    const match = html.match(pattern);
-    if (match) {
-      dtsg = match[1];
+    const fromHtml = html.match(pattern);
+    if (fromHtml?.[1]) {
+      dtsg = String(fromHtml[1]).trim();
+      break;
+    }
+    const fromScript = scriptText.match(pattern);
+    if (fromScript?.[1]) {
+      dtsg = String(fromScript[1]).trim();
       break;
     }
   }
 
-  if (token || dtsg) {
-    // Try to extract profile picture URL
-    let avatarUrl = null;
-    const avatarImg = document.querySelector('image[*|href*="scontent"]') || 
-                      document.querySelector('svg image[href*="scontent"]') ||
-                      document.querySelector('img[alt*="profile picture"]');
-    if (avatarImg) {
-      avatarUrl = avatarImg.getAttribute('xlink:href') || avatarImg.getAttribute('href') || avatarImg.src;
-    }
+  // Try to extract profile picture URL
+  let avatarUrl = "";
+  const avatarImg = document.querySelector('image[*|href*="scontent"]') ||
+    document.querySelector('svg image[href*="scontent"]') ||
+    document.querySelector('img[alt*="profile picture"]') ||
+    document.querySelector('img[alt*="รูปโปรไฟล์"]') ||
+    document.querySelector('img[src*="scontent"]');
+  if (avatarImg) {
+    avatarUrl = avatarImg.getAttribute("xlink:href") || avatarImg.getAttribute("href") || avatarImg.src || "";
+  }
 
+  return { token, dtsg, avatarUrl };
+}
+
+// Auto-extract token when page loads and send to background
+(function autoExtractToken() {
+  const { token, dtsg, avatarUrl } = extractTokenAndDtsgFromPage();
+  if (token || dtsg) {
     console.log("[FEWFEED FB] Auto-extracted:", { hasToken: !!token, hasDtsg: !!dtsg, hasAvatar: !!avatarUrl });
     chrome.runtime.sendMessage({
       action: "tokenExtracted",
@@ -90,59 +138,7 @@ globalThis.__PUBILO_FB_CONTENT_SCRIPT_ACTIVE__ = true;
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Handle token extraction request
   if (request.action === "extractToken") {
-    const html = document.documentElement.outerHTML;
-
-    const tokenPatterns = [
-      /__accessToken\s*=\s*"(EA[A-Za-z0-9]+)"/,
-      /"__accessToken"\s*:\s*"(EA[A-Za-z0-9]+)"/,
-      /__window\.__accessToken="(EA[A-Za-z0-9]+)"/,
-      /"accessToken":"(EA[A-Za-z0-9]+)"/,
-      /"access_token":"(EA[A-Za-z0-9]+)"/
-    ];
-    const escapedTokenPatterns = [
-      /\\"__accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
-      /\\"accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
-      /\\"access_token\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/
-    ];
-
-    let token = null;
-    for (const pattern of tokenPatterns) {
-      const match = html.match(pattern);
-      if (match) {
-        token = match[1];
-        break;
-      }
-    }
-
-    if (!token) {
-      for (const pattern of escapedTokenPatterns) {
-        const match = html.match(pattern);
-        if (match) {
-          token = match[1];
-          break;
-        }
-      }
-    }
-
-    if (!token && typeof window.__accessToken === "string") {
-      token = window.__accessToken;
-    }
-
-    const dtsgPatterns = [
-      /"DTSGInitialData"[^}]*"token":"([^"]+)"/,
-      /name="fb_dtsg"\s+value="([^"]+)"/,
-      /"fb_dtsg":"([^"]+)"/
-    ];
-
-    let dtsg = null;
-    for (const pattern of dtsgPatterns) {
-      const match = html.match(pattern);
-      if (match) {
-        dtsg = match[1];
-        break;
-      }
-    }
-
+    const { token, dtsg } = extractTokenAndDtsgFromPage();
     console.log("[FEWFEED FB] Token extraction:", { hasToken: !!token, hasDtsg: !!dtsg });
     sendResponse({ token, dtsg });
     return;

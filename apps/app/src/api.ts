@@ -71,9 +71,48 @@ export interface Earnings {
     currency: string
 }
 
+export interface TokenHealth {
+    healthy?: number
+    expiring_soon?: number
+    expired?: number
+    [key: string]: unknown
+}
+
+interface PagesResponse {
+    pages?: Page[]
+}
+
+interface LogsResponse {
+    logs?: Log[]
+}
+
+interface PageSettingResponse {
+    settings?: PageSetting | null
+}
+
+interface EarningsResponse {
+    earnings?: Earnings[]
+}
+
+interface FacebookGraphError {
+    message?: string
+}
+
+interface FacebookGraphPage {
+    id: string
+    name: string
+    access_token?: string
+    picture?: { data?: { url?: string } }
+}
+
+interface FacebookGraphAccountsResponse {
+    data?: FacebookGraphPage[]
+    error?: FacebookGraphError
+}
+
 export const fetchPages = async (): Promise<Page[]> => {
     const r = await fetch(`${API}/api/pages`)
-    const d = await r.json() as any
+    const d = await r.json() as PagesResponse
     return d.pages || []
 }
 
@@ -101,18 +140,18 @@ export const fetchLogs = async (pageId?: string, limit = 50): Promise<Log[]> => 
     const params = new URLSearchParams({ limit: String(limit) })
     if (pageId) params.set('pageId', pageId)
     const r = await fetch(`${API}/api/logs?${params}`)
-    const d = await r.json() as any
+    const d = await r.json() as LogsResponse
     return d.logs || []
 }
 
 export const fetchPageSetting = async (pageId: string): Promise<PageSetting | null> => {
     const r = await fetch(`${API}/api/page-settings?pageId=${pageId}`)
-    const d = await r.json() as any
+    const d = await r.json() as PageSettingResponse
     return d.settings || null
 }
 
-export const savePageSetting = async (pageId: string, data: Partial<PageSetting> & Record<string, any>) => {
-    const body: Record<string, any> = { pageId }
+export const savePageSetting = async (pageId: string, data: Partial<PageSetting>) => {
+    const body: Record<string, unknown> = { pageId }
     if (data.auto_schedule !== undefined) body.autoSchedule = data.auto_schedule
     if (data.schedule_minutes !== undefined) body.scheduleMinutes = data.schedule_minutes
     if (data.post_token !== undefined) body.postToken = data.post_token
@@ -164,7 +203,7 @@ export const deletePage = async (pageId: string) => {
 export const fetchEarnings = async (pageId?: string): Promise<Earnings[]> => {
     const params = pageId ? `?pageId=${pageId}` : ''
     const r = await fetch(`${API}/api/earnings${params}`)
-    const d = await r.json() as any
+    const d = await r.json() as EarningsResponse
     return d.earnings || []
 }
 
@@ -178,10 +217,10 @@ export const importPages = async (token: string) => {
         const r = await fetch(
             `https://graph.facebook.com/v19.0/me/accounts?fields=id,name,picture,category&limit=100&access_token=${token}`
         )
-        const data = await r.json() as any
-        if (data.error) return { success: false, error: data.error.message }
+        const data = await r.json() as FacebookGraphAccountsResponse
+        if (data.error?.message) return { success: false, error: data.error.message }
 
-        const fbPages: any[] = data.data || []
+        const fbPages = data.data || []
         let imported = 0, updated = 0
 
         for (const page of fbPages) {
@@ -192,7 +231,7 @@ export const importPages = async (token: string) => {
 
             // Check if page already exists by checking page-settings
             const check = await fetch(`${API}/api/page-settings?pageId=${page.id}`)
-            const checkData = await check.json() as any
+            const checkData = await check.json() as PageSettingResponse
 
             // Save/update settings
             await fetch(`${API}/api/page-settings`, {
@@ -221,7 +260,7 @@ export const triggerAutoPost = async () => {
     return r.json()
 }
 
-export const checkTokenHealth = async () => {
+export const checkTokenHealth = async (): Promise<TokenHealth> => {
     const r = await fetch(`${API}/api/token-health`)
-    return r.json()
+    return r.json() as Promise<TokenHealth>
 }

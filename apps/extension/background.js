@@ -129,6 +129,9 @@ const FB_TAB_URLS = [
 ];
 const PAGE_TOKEN_MAP_KEY = "fewfeed_pageTokenMap";
 const PAGE_TOKEN_MAP_OWNER_KEY = "fewfeed_pageTokenMapOwnerId";
+const ACCESS_TOKEN_VALIDATED_AT_KEY = "fewfeed_accessTokenValidatedAt";
+const ACCESS_TOKEN_VALIDATION_STATUS_KEY = "fewfeed_accessTokenValidationStatus";
+const ACCESS_TOKEN_REVALIDATE_INTERVAL_MS = 2 * 60 * 1000;
 
 function parseStoredPageTokenMap(rawValue) {
   try {
@@ -182,6 +185,372 @@ function isMissingHostPermissionError(error) {
     message.includes("cannot access contents of url") ||
     message.includes("permission denied")
   );
+}
+
+function isLikelyFacebookAccessToken(token) {
+  const normalized = String(token || "").trim();
+  return /^EA[A-Za-z0-9_-]+$/.test(normalized) && normalized.length >= 20;
+}
+
+function scoreAccessTokenCandidate(token) {
+  const normalized = String(token || "").trim();
+  if (!isLikelyFacebookAccessToken(normalized)) return -1;
+  if (normalized.startsWith("EAABsbCS")) return 500 + normalized.length;
+  if (normalized.startsWith("EAAG")) return 450 + normalized.length;
+  if (normalized.startsWith("EAAChZC")) return 400 + normalized.length;
+  return 300 + normalized.length;
+}
+
+function rankAccessTokenCandidates(tokens = []) {
+  const unique = Array.from(
+    new Set((tokens || []).map((token) => String(token || "").trim()).filter(Boolean)),
+  );
+  unique.sort((a, b) => scoreAccessTokenCandidate(b) - scoreAccessTokenCandidate(a));
+  return unique.filter((token) => scoreAccessTokenCandidate(token) >= 0);
+}
+
+async function executeTokenProbeInTab(tabId, world = "MAIN") {
+  const runProbe = async (mode) =>
+    chrome.scripting.executeScript({
+      target: { tabId },
+      world: mode,
+      injectImmediately: true,
+      func: () => {
+        const TOKEN_REGEX = /EA[A-Za-z0-9_-]{20,}/g;
+        const DYNAMIC_KEY_MATCHER = /(token|access|auth|session|dtsg|actor|user)/i;
+        const MAX_ENTRIES_PER_OBJECT = 180;
+        const MAX_WINDOW_KEYS = 500;
+
+        const candidates = [];
+        const pushCandidate = (value) => {
+          const normalized = String(value || "").trim();
+          if (!/^EA[A-Za-z0-9_-]{20,}$/.test(normalized)) return;
+          candidates.push(normalized);
+        };
+
+        const collectFromText = (text) => {
+          const source = String(text || "");
+          if (!source) return;
+          const matches = source.match(TOKEN_REGEX) || [];
+          for (const token of matches) pushCandidate(token);
+        };
+
+        const seen = new WeakSet();
+        const scanObject = (value, depth = 0) => {
+          if (depth > 3 || value == null) return;
+          if (typeof value === "string") {
+            collectFromText(value);
+            return;
+          }
+          if (typeof value !== "object" && typeof value !== "function") return;
+          if (typeof value === "object") {
+            if (seen.has(value)) return;
+            seen.add(value);
+          }
+
+          const entries = [];
+          try {
+            if (Array.isArray(value)) {
+              value.slice(0, MAX_ENTRIES_PER_OBJECT).forEach((item, index) => {
+                entries.push([String(index), item]);
+              });
+            } else {
+              Object.keys(value)
+                .slice(0, MAX_ENTRIES_PER_OBJECT)
+                .forEach((key) => {
+                  entries.push([key, value[key]]);
+                });
+            }
+          } catch (_) {
+            return;
+          }
+
+          for (const [key, nestedValue] of entries) {
+            if (typeof nestedValue === "string") {
+              if (DYNAMIC_KEY_MATCHER.test(String(key)) || /^EA/.test(nestedValue)) {
+                collectFromText(nestedValue);
+              }
+              continue;
+            }
+            if (DYNAMIC_KEY_MATCHER.test(String(key))) {
+              scanObject(nestedValue, depth + 1);
+              continue;
+            }
+            if (depth <= 1 && (typeof nestedValue === "object" || typeof nestedValue === "function")) {
+              scanObject(nestedValue, depth + 1);
+            }
+          }
+        };
+
+        try {
+          if (typeof window.__accessToken === "string") {
+            pushCandidate(window.__accessToken);
+          }
+        } catch (_) {}
+
+        // Inspect script text + full HTML
+        try {
+          collectFromText(document.documentElement?.outerHTML || "");
+          const scriptText = Array.from(document.scripts || [])
+            .map((script) => script?.textContent || "")
+            .join("\n");
+          collectFromText(scriptText);
+        } catch (_) {}
+
+        // Inspect local/session storage
+        try {
+          for (let i = 0; i < localStorage.length; i += 1) {
+            const key = localStorage.key(i);
+            const value = key ? localStorage.getItem(key) : "";
+            if (value && DYNAMIC_KEY_MATCHER.test(String(key))) {
+              collectFromText(value);
+            }
+          }
+        } catch (_) {}
+        try {
+          for (let i = 0; i < sessionStorage.length; i += 1) {
+            const key = sessionStorage.key(i);
+            const value = key ? sessionStorage.getItem(key) : "";
+            if (value && DYNAMIC_KEY_MATCHER.test(String(key))) {
+              collectFromText(value);
+            }
+          }
+        } catch (_) {}
+
+        // Probe known FB modules from MAIN world.
+        try {
+          if (typeof window.require === "function") {
+            const modules = [
+              "SiteData",
+              "CurrentUserInitialData",
+              "DTSGInitialData",
+              "LSD",
+              "RelayAPIConfigDefaults",
+              "MarauderConfig",
+            ];
+            modules.forEach((moduleName) => {
+              try {
+                const mod = window.require(moduleName);
+                scanObject(mod, 0);
+              } catch (_) {}
+            });
+          }
+        } catch (_) {}
+
+        // Shallow scan of window keys for token-bearing globals.
+        try {
+          Object.keys(window)
+            .slice(0, MAX_WINDOW_KEYS)
+            .forEach((key) => {
+              if (!DYNAMIC_KEY_MATCHER.test(String(key))) return;
+              try {
+                scanObject(window[key], 0);
+              } catch (_) {}
+            });
+        } catch (_) {}
+
+        const unique = Array.from(new Set(candidates));
+        unique.sort((a, b) => {
+          const score = (value) => {
+            if (value.startsWith("EAABsbCS")) return 500 + value.length;
+            if (value.startsWith("EAAG")) return 450 + value.length;
+            if (value.startsWith("EAAChZC")) return 400 + value.length;
+            return 300 + value.length;
+          };
+          return score(b) - score(a);
+        });
+
+        const dtsgCandidates = [];
+        const pushDtsg = (value) => {
+          const normalized = String(value || "").trim();
+          if (!normalized) return;
+          dtsgCandidates.push(normalized);
+        };
+        try {
+          const html = document.documentElement?.outerHTML || "";
+          const dtsgPatterns = [
+            /"DTSGInitialData"[^}]*"token":"([^"]+)"/,
+            /name="fb_dtsg"\s+value="([^"]+)"/,
+            /"fb_dtsg":"([^"]+)"/,
+            /fb_dtsg['"]\s*:\s*['"]([\w:_-]+)['"]/,
+          ];
+          dtsgPatterns.forEach((pattern) => {
+            const match = html.match(pattern);
+            if (match?.[1]) pushDtsg(match[1]);
+          });
+        } catch (_) {}
+        try {
+          if (typeof window.require === "function") {
+            const dtsgMod = window.require("DTSGInitialData");
+            if (dtsgMod?.token) pushDtsg(dtsgMod.token);
+          }
+        } catch (_) {}
+
+        return {
+          token: unique[0] || "",
+          candidates: unique,
+          dtsg: Array.from(new Set(dtsgCandidates))[0] || "",
+          sourceUrl: window.location.href,
+        };
+      },
+    });
+
+  try {
+    const result = await runProbe(world);
+    return result?.[0]?.result || null;
+  } catch (error) {
+    if (world !== "ISOLATED") {
+      try {
+        const fallback = await runProbe("ISOLATED");
+        return fallback?.[0]?.result || null;
+      } catch (_) {
+        // Ignore secondary fallback failures and rethrow primary error below.
+      }
+    }
+    throw error;
+  }
+}
+
+function isTokenDefinitelyInvalidGraphError(errorObj) {
+  const code = Number(errorObj?.code || 0);
+  const subcode = Number(errorObj?.error_subcode || 0);
+  if (code === 190) return true;
+  // Common subcodes for expired/invalid/revoked sessions.
+  return [460, 463, 467, 493].includes(subcode);
+}
+
+async function validateGraphAccessToken(accessToken, expectedUserId = "", cookieString = "") {
+  const normalizedToken = String(accessToken || "").trim();
+  const normalizedExpectedUserId = String(expectedUserId || "").trim();
+  if (!isLikelyFacebookAccessToken(normalizedToken)) {
+    return { ok: false, reason: "token_format_invalid" };
+  }
+
+  const requestInit = cookieString
+    ? {
+      headers: {
+        Cookie: cookieString,
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    }
+    : undefined;
+
+  let hadNetworkError = false;
+  let lastNonFatalGraphError = null;
+  let graphId = "";
+
+  const attemptEndpoints = [
+    `https://graph.facebook.com/v21.0/me?fields=id&access_token=${encodeURIComponent(normalizedToken)}`,
+    `https://graph.facebook.com/v21.0/me/accounts?fields=id&limit=1&access_token=${encodeURIComponent(normalizedToken)}`,
+  ];
+
+  for (const endpoint of attemptEndpoints) {
+    try {
+      const validateResp = await fetch(endpoint, requestInit);
+      const validateData = await validateResp.json();
+
+      if (validateData?.id) {
+        graphId = String(validateData.id || "").trim();
+        const idMismatch = !!(normalizedExpectedUserId && graphId && graphId !== normalizedExpectedUserId);
+        if (idMismatch) {
+          return {
+            ok: true,
+            reason: "token_user_mismatch",
+            graphId,
+            expectedUserId: normalizedExpectedUserId,
+            userMismatch: true,
+          };
+        }
+        return { ok: true, graphId, reason: "valid" };
+      }
+
+      if (Array.isArray(validateData?.data)) {
+        // /me/accounts returned structured data => token is accepted by Graph.
+        return {
+          ok: true,
+          graphId,
+          reason: "valid_accounts_endpoint",
+        };
+      }
+
+      const graphError = validateData?.error || null;
+      if (graphError) {
+        if (isTokenDefinitelyInvalidGraphError(graphError)) {
+          return {
+            ok: false,
+            reason: "token_invalid",
+            graphId,
+            expectedUserId: normalizedExpectedUserId,
+            error: graphError?.message || "graph_token_invalid",
+            code: graphError?.code || null,
+            subcode: graphError?.error_subcode || null,
+          };
+        }
+
+        // Non-190 Graph errors can still happen with valid tokens (permission/app context).
+        lastNonFatalGraphError = graphError;
+        continue;
+      }
+    } catch (error) {
+      hadNetworkError = true;
+      lastNonFatalGraphError = { message: error?.message || String(error) };
+    }
+  }
+
+  if (lastNonFatalGraphError) {
+    // Be permissive here: unknown/non-190 Graph failures should not wipe token and break the app.
+    return {
+      ok: true,
+      graphId,
+      reason: "validation_non_fatal_error",
+      warning: lastNonFatalGraphError?.message || "non_fatal_graph_error",
+    };
+  }
+
+  if (hadNetworkError) {
+    return {
+      ok: false,
+      reason: "network_error",
+      error: "graph_validation_network_error",
+    };
+  }
+
+  try {
+    // Last chance fallback to unversioned /me.
+    const fallbackResp = await fetch(
+      `https://graph.facebook.com/me?fields=id&access_token=${encodeURIComponent(normalizedToken)}`,
+      requestInit,
+    );
+    const fallbackData = await fallbackResp.json();
+    if (fallbackData?.id) {
+      return {
+        ok: true,
+        graphId: String(fallbackData.id || "").trim(),
+        reason: "valid_unversioned",
+      };
+    }
+    const fallbackError = fallbackData?.error || null;
+    if (isTokenDefinitelyInvalidGraphError(fallbackError)) {
+      return {
+        ok: false,
+        reason: "token_invalid",
+        error: fallbackError?.message || "graph_token_invalid",
+        code: fallbackError?.code || null,
+        subcode: fallbackError?.error_subcode || null,
+      };
+    }
+    return {
+      ok: true,
+      reason: "validation_fallback_non_fatal",
+      warning: fallbackError?.message || "fallback_non_fatal",
+    };
+  } catch (_) {
+    return {
+      ok: false,
+      reason: "network_error",
+      error: "graph_validation_network_error",
+    };
+  }
 }
 
 async function getFacebookCookieSnapshot() {
@@ -327,83 +696,189 @@ async function fetchAllTokensInBackground() {
 async function extractTokenFromExistingTabs() {
   console.log("[FEWFEED] Trying to extract token from existing tabs...");
 
-  // Find Facebook tabs (prioritize Ads Manager)
-  const tabUrls = [
+  const tabs = await listUniqueTabsByPatterns([
     "https://adsmanager.facebook.com/*",
     "https://business.facebook.com/*",
-    "https://www.facebook.com/*"
-  ];
+    "https://www.facebook.com/*",
+  ]);
 
-  for (const urlPattern of tabUrls) {
-    const tabs = await chrome.tabs.query({ url: urlPattern });
-    if (tabs.length === 0) continue;
+  const tokenCandidates = [];
+  let bestDtsg = "";
 
-    console.log("[FEWFEED] Found tab:", tabs[0].url);
+  for (const tab of tabs || []) {
+    if (!tab?.id) continue;
 
     try {
-      // Inject script to extract token from the page
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tabs[0].id },
-        func: () => {
-          const html = document.documentElement.outerHTML;
+      await ensureScriptInjected(tab.id, "__PUBILO_FB_CONTENT_SCRIPT_ACTIVE__", "fb-content.js");
+    } catch (_) {
+      // Ignore injection errors; fallback extraction below may still work.
+    }
 
-          // Extract access token
-          const tokenPatterns = [
-            /__accessToken\s*=\s*"(EA[A-Za-z0-9]+)"/,
-            /"__accessToken"\s*:\s*"(EA[A-Za-z0-9]+)"/,
-            /__window\.__accessToken="(EA[A-Za-z0-9]+)"/,
-            /"accessToken":"(EA[A-Za-z0-9]+)"/,
-            /"access_token":"(EA[A-Za-z0-9]+)"/
-          ];
-
-          let token = null;
-          for (const pattern of tokenPatterns) {
-            const match = html.match(pattern);
-            if (match) {
-              token = match[1];
-              break;
-            }
-          }
-
-          // Also try window.__accessToken directly
-          if (!token && typeof window.__accessToken === 'string') {
-            token = window.__accessToken;
-          }
-
-          // Extract fb_dtsg
-          const dtsgPatterns = [
-            /"DTSGInitialData"[^}]*"token":"([^"]+)"/,
-            /name="fb_dtsg"\s+value="([^"]+)"/,
-            /"fb_dtsg":"([^"]+)"/
-          ];
-
-          let dtsg = null;
-          for (const pattern of dtsgPatterns) {
-            const match = html.match(pattern);
-            if (match) {
-              dtsg = match[1];
-              break;
-            }
-          }
-
-          return { token, dtsg };
-        }
-      });
-
-      if (results && results[0] && results[0].result) {
-        const { token, dtsg } = results[0].result;
-        if (token) {
-          console.log("[FEWFEED] Extracted token from tab:", token.substring(0, 15) + "...");
-          return { token, dtsg };
-        }
+    try {
+      const mainWorldResult = await executeTokenProbeInTab(tab.id, "MAIN");
+      if (Array.isArray(mainWorldResult?.candidates)) {
+        tokenCandidates.push(...mainWorldResult.candidates);
       }
-    } catch (e) {
-      console.log("[FEWFEED] Script injection failed for", urlPattern, ":", e.message);
+      const tokenFromMain = String(mainWorldResult?.token || "").trim();
+      const dtsgFromMain = String(mainWorldResult?.dtsg || "").trim();
+      if (tokenFromMain) {
+        tokenCandidates.push(tokenFromMain);
+      }
+      if (dtsgFromMain && !bestDtsg) {
+        bestDtsg = dtsgFromMain;
+      }
+    } catch (_) {
+      // Ignore per-tab main world extraction errors.
+    }
+
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, { action: "extractToken" });
+      const tokenFromMessage = String(response?.token || "").trim();
+      const dtsgFromMessage = String(response?.dtsg || "").trim();
+      if (tokenFromMessage) {
+        tokenCandidates.push(tokenFromMessage);
+      }
+      if (dtsgFromMessage && !bestDtsg) {
+        bestDtsg = dtsgFromMessage;
+      }
+    } catch (_) {
+      // Ignore missing receiver errors and try executeScript fallback.
+    }
+
+    try {
+      const fallbackResult = await executeTokenProbeInTab(tab.id, "ISOLATED");
+      if (Array.isArray(fallbackResult?.candidates)) {
+        tokenCandidates.push(...fallbackResult.candidates);
+      }
+      const tokenFromScript = String(fallbackResult?.token || "").trim();
+      const dtsgFromScript = String(fallbackResult?.dtsg || "").trim();
+      if (tokenFromScript) {
+        tokenCandidates.push(tokenFromScript);
+      }
+      if (dtsgFromScript && !bestDtsg) {
+        bestDtsg = dtsgFromScript;
+      }
+    } catch (_) {
+      // Ignore executeScript failures per-tab.
     }
   }
 
+  const rankedCandidates = rankAccessTokenCandidates(tokenCandidates);
+  const bestToken = rankedCandidates[0] || "";
+  if (bestToken) {
+    console.log("[FEWFEED] Extracted token from existing tabs:", bestToken.substring(0, 15) + "...");
+    return { token: bestToken, dtsg: bestDtsg || null, candidates: rankedCandidates };
+  }
+
+  if (!tabs.length) {
+    console.log("[FEWFEED] No Facebook tabs available for token extraction");
+  }
   console.log("[FEWFEED] No token found in existing tabs");
   return null;
+}
+
+function waitForTabComplete(tabId, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    let timeout = null;
+
+    const done = (ok, error) => {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      if (ok) resolve(true);
+      else reject(error || new Error("tab_load_timeout"));
+    };
+
+    const onUpdated = (updatedTabId, changeInfo) => {
+      if (updatedTabId !== tabId) return;
+      if (changeInfo.status === "complete") {
+        done(true);
+      }
+    };
+
+    timeout = setTimeout(() => {
+      done(false, new Error("tab_load_timeout"));
+    }, timeoutMs);
+
+    chrome.tabs.onUpdated.addListener(onUpdated);
+  });
+}
+
+async function extractTokenViaTemporaryTab(url) {
+  let tabId = null;
+  try {
+    const createdTab = await chrome.tabs.create({ url, active: false });
+    tabId = createdTab?.id;
+    if (!tabId) return null;
+
+    await waitForTabComplete(tabId, 15000);
+    await ensureScriptInjected(tabId, "__PUBILO_FB_CONTENT_SCRIPT_ACTIVE__", "fb-content.js");
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    let bestDtsg = "";
+    // MAIN-world probe retries: Facebook sometimes hydrates token a bit after load complete.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const mainResult = await executeTokenProbeInTab(tabId, "MAIN");
+        if (Array.isArray(mainResult?.candidates) && mainResult.candidates.length > 0) {
+          const ranked = rankAccessTokenCandidates(mainResult.candidates);
+          const token = String(ranked[0] || mainResult.token || "").trim();
+          const dtsg = String(mainResult?.dtsg || "").trim();
+          if (dtsg && !bestDtsg) {
+            bestDtsg = dtsg;
+          }
+          if (token) {
+            return {
+              token,
+              dtsg: dtsg || bestDtsg || null,
+              source: `temporary_tab_main_world_attempt_${attempt + 1}`,
+              candidates: ranked,
+            };
+          }
+        }
+      } catch (_) {
+        // Continue to next fallback/retry.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 900 * (attempt + 1)));
+    }
+
+    let response = null;
+    try {
+      response = await chrome.tabs.sendMessage(tabId, { action: "extractToken" });
+    } catch (_) {
+      response = null;
+    }
+
+    const token = String(response?.token || "").trim();
+    const dtsg = String(response?.dtsg || "").trim();
+    if (token) {
+      return { token, dtsg: dtsg || bestDtsg || null, source: "temporary_tab" };
+    }
+
+    const fallbackResult = await executeTokenProbeInTab(tabId, "ISOLATED");
+    const fallbackToken = String(fallbackResult?.token || "").trim();
+    const fallbackDtsg = String(fallbackResult?.dtsg || "").trim();
+    if (fallbackToken) {
+      return {
+        token: fallbackToken,
+        dtsg: dtsg || fallbackDtsg || bestDtsg || null,
+        source: "temporary_tab_fallback",
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.warn("[FEWFEED] Temporary tab token extraction failed:", url, error?.message || error);
+    return null;
+  } finally {
+    if (tabId) {
+      try {
+        await chrome.tabs.remove(tabId);
+      } catch (_) {}
+    }
+  }
 }
 
 // Main function to fetch ads token from Facebook using cookies
@@ -472,6 +947,24 @@ async function fetchAndStoreToken() {
       console.log("[FEWFEED] Got token from existing tab!");
     }
 
+    if (!accessToken) {
+      const tempAdsResult = await extractTokenViaTemporaryTab("https://adsmanager.facebook.com/adsmanager/manage/campaigns");
+      if (tempAdsResult?.token) {
+        accessToken = tempAdsResult.token;
+        fbDtsg = fbDtsg || tempAdsResult.dtsg;
+        console.log("[FEWFEED] Got token from temporary Ads Manager tab!");
+      }
+    }
+
+    if (!accessToken) {
+      const tempBusinessResult = await extractTokenViaTemporaryTab("https://business.facebook.com/latest/home");
+      if (tempBusinessResult?.token) {
+        accessToken = tempBusinessResult.token;
+        fbDtsg = fbDtsg || tempBusinessResult.dtsg;
+        console.log("[FEWFEED] Got token from temporary Business tab!");
+      }
+    }
+
     // Method 1: Try fetching from Ads Manager API (fallback)
     if (!accessToken) {
       const adsResult = await fetchTokenFromAdsManager(cookieString, true);
@@ -517,38 +1010,95 @@ async function fetchAndStoreToken() {
 
     // Validate token before storing. Some extraction patterns can return stale/invalid EA strings.
     if (accessToken) {
-      try {
-        const validateResp = await fetch(
-          `https://graph.facebook.com/v21.0/me?fields=id&access_token=${encodeURIComponent(accessToken)}`,
-          cookieString
-            ? {
-              headers: {
-                Cookie: cookieString,
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              },
-            }
-            : undefined
-        );
-        const validateData = await validateResp.json();
-        const idMismatch = userId && validateData?.id && String(validateData.id) !== String(userId);
-        if (!validateData?.id || validateData?.error || idMismatch) {
-          console.warn("[FEWFEED] Discarding invalid access token", validateData?.error?.message || "token_invalid");
+      const tokenCandidates = [];
+      if (tabResult?.candidates && Array.isArray(tabResult.candidates)) {
+        tokenCandidates.push(...tabResult.candidates);
+      }
+      tokenCandidates.push(accessToken);
+      const dedupCandidates = Array.from(
+        new Set(tokenCandidates.map((value) => String(value || "").trim()).filter(Boolean)),
+      );
+
+      let selectedToken = "";
+      let selectedValidation = null;
+      for (const candidate of dedupCandidates) {
+        const candidateValidation = await validateGraphAccessToken(candidate, userId, cookieString);
+        if (candidateValidation.ok) {
+          selectedToken = candidate;
+          selectedValidation = candidateValidation;
+          break;
+        }
+        if (!selectedValidation || selectedValidation.reason !== "network_error") {
+          selectedValidation = candidateValidation;
+        }
+      }
+
+      if (selectedToken) {
+        accessToken = selectedToken;
+      }
+
+      const validation =
+        selectedToken
+          ? selectedValidation
+          : (await validateGraphAccessToken(accessToken, userId, cookieString));
+      if (!validation.ok) {
+        if (validation.reason === "network_error") {
+          console.warn("[FEWFEED] Access token validation network error, keeping token candidate:", validation.error);
+        } else {
+          console.warn("[FEWFEED] Discarding invalid access token:", validation.reason, validation.error || "");
           accessToken = null;
           fbDtsg = null;
         }
-      } catch (validateErr) {
-        console.warn("[FEWFEED] Token validation failed, discarding token:", validateErr?.message || validateErr);
-        accessToken = null;
-        fbDtsg = null;
+      } else if (validation.userMismatch) {
+        console.warn(
+          "[FEWFEED] Access token validated but Graph user id differs from c_user. Keeping token.",
+          "expected:",
+          validation.expectedUserId || "(none)",
+          "graph:",
+          validation.graphId || "(none)",
+        );
+      }
+    }
+
+    // Fallback: if fresh extraction failed, reuse previous token from the same account
+    // when it still validates (or validation endpoint is temporarily unreachable).
+    if (!accessToken) {
+      const previousAccessToken = String(previousData.fewfeed_accessToken || "").trim();
+      const previousUserId = String(previousData.fewfeed_userId || "").trim();
+      const canReusePreviousAccessToken = !!(
+        previousAccessToken &&
+        userId &&
+        previousUserId &&
+        previousUserId === String(userId).trim()
+      );
+
+      if (canReusePreviousAccessToken) {
+        const previousValidation = await validateGraphAccessToken(previousAccessToken, userId, cookieString);
+        if (previousValidation.ok || previousValidation.reason === "network_error") {
+          accessToken = previousAccessToken;
+          console.log(
+            "[FEWFEED] Reused previous access token for same account:",
+            previousValidation.ok ? "validated" : "network-validation-fallback",
+          );
+          if (!fbDtsg && previousData.fewfeed_fbDtsg) {
+            fbDtsg = previousData.fewfeed_fbDtsg;
+          }
+        } else {
+          console.warn("[FEWFEED] Previous access token rejected:", previousValidation.reason);
+        }
       }
     }
 
     // Fetch user name and avatar from Graph API if we have access token
     let avatarUrl = null;
-    if (accessToken && userId) {
+    let graphUserIdFromToken = "";
+    if (accessToken) {
       try {
-        const nameResponse = await fetch(`https://graph.facebook.com/${userId}?fields=name,picture.width(200).height(200)&access_token=${accessToken}`);
+        const nameResponse = await fetch(`https://graph.facebook.com/v21.0/me?fields=id,name,picture.width(200).height(200)&access_token=${accessToken}`);
         const userData = await nameResponse.json();
+        if (userData.id) {
+          graphUserIdFromToken = String(userData.id).trim();
+        }
         if (userData.name) {
           userName = userData.name;
           console.log("[FEWFEED] Fetched user name:", userName);
@@ -563,7 +1113,7 @@ async function fetchAndStoreToken() {
     }
 
     console.log("[FEWFEED] Result:", {
-      userId,
+      userId: userId || graphUserIdFromToken,
       userName,
       hasAdsToken: !!accessToken,
       hasDtsg: !!fbDtsg,
@@ -579,8 +1129,11 @@ async function fetchAndStoreToken() {
     // otherwise the app keeps sending invalid token (code 190) forever.
     const storageData = {
       fewfeed_accessToken: hasFreshAccessToken ? accessToken : "",
+      fewfeed_token: hasFreshAccessToken ? accessToken : "",
       fewfeed_fbDtsg: hasFreshDtsg ? fbDtsg : "",
-      fewfeed_userId: userId || previousData.fewfeed_userId || "",
+      [ACCESS_TOKEN_VALIDATED_AT_KEY]: hasFreshAccessToken ? Date.now() : 0,
+      [ACCESS_TOKEN_VALIDATION_STATUS_KEY]: hasFreshAccessToken ? "valid" : "missing",
+      fewfeed_userId: userId || graphUserIdFromToken || previousData.fewfeed_userId || "",
       fewfeed_userName:
         (userName && userName !== "Facebook User")
           ? userName
@@ -606,9 +1159,9 @@ async function fetchAndStoreToken() {
       console.log("[FEWFEED] Facebook account changed, clearing previous page token map owner:", previousPageTokenMapOwnerId, "->", userId);
     }
     const effectiveAccessToken = hasFreshAccessToken ? storageData.fewfeed_accessToken : "";
-    if (effectiveAccessToken) {
+    if (effectiveAccessToken || cookieString) {
       try {
-        const pagesResult = await fetchFacebookPages(effectiveAccessToken, cookieString);
+        const pagesResult = await fetchFacebookPages(effectiveAccessToken || "", cookieString);
         if (pagesResult?.success && Array.isArray(pagesResult.pages)) {
           for (const page of pagesResult.pages) {
             if (page.id && page.access_token) {
@@ -636,8 +1189,35 @@ async function fetchAndStoreToken() {
       pageTokenMap = previousPageTokenMap;
       console.log("[FEWFEED] No valid ads token, using previous page token map");
     }
+
+    // If Ads token cannot be extracted but we still got page tokens via cookie mode,
+    // use first page token as a pragmatic fallback so UI/flows can continue.
+    if (!storageData.fewfeed_accessToken && Object.keys(pageTokenMap).length > 0) {
+      const firstPageEntry = Object.values(pageTokenMap).find((entry) => {
+        const tokenValue = typeof entry === "string" ? entry : entry?.token;
+        return !!String(tokenValue || "").trim();
+      });
+      const fallbackToken = String(
+        typeof firstPageEntry === "string"
+          ? firstPageEntry
+          : firstPageEntry?.token || "",
+      ).trim();
+      if (fallbackToken) {
+        storageData.fewfeed_accessToken = fallbackToken;
+        storageData.fewfeed_token = fallbackToken;
+        storageData[ACCESS_TOKEN_VALIDATED_AT_KEY] = Date.now();
+        storageData[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = "page_token_fallback";
+        console.log("[FEWFEED] Using page token fallback as access token");
+      }
+    }
+
     storageData[PAGE_TOKEN_MAP_KEY] = JSON.stringify(pageTokenMap);
     storageData[PAGE_TOKEN_MAP_OWNER_KEY] = userId || "";
+    storageData.fewfeed_ready = !!(
+      storageData.fewfeed_cookie ||
+      storageData.fewfeed_accessToken ||
+      Object.keys(pageTokenMap).length > 0
+    );
     await chrome.storage.local.set(storageData);
 
     console.log("[FEWFEED] Ads token, fb_dtsg, cookies and page tokens stored!");
@@ -777,34 +1357,35 @@ async function fetchTokenFromInternalAPI(cookieString) {
 
 // Extract token from HTML/text response
 function extractTokenFromHTML(html) {
+  const TOKEN_CHARS = "[A-Za-z0-9_-]+";
   const patterns = [
     // __accessToken assignment in HTML
-    /__accessToken\s*=\s*"(EA[A-Za-z0-9]+)"/,
-    /"__accessToken"\s*:\s*"(EA[A-Za-z0-9]+)"/,
+    new RegExp(`__accessToken\\s*=\\s*"(EA${TOKEN_CHARS})"`),
+    new RegExp(`"__accessToken"\\s*:\\s*"(EA${TOKEN_CHARS})"`),
     // NEW: __window.__accessToken format (Facebook 2024+)
-    /__window\.__accessToken="(EAABsbCS[A-Za-z0-9]+)"/,
-    /__window\.__accessToken="(EA[A-Za-z0-9]+)"/,
+    new RegExp(`__window\\.__accessToken="(EAABsbCS${TOKEN_CHARS})"`),
+    new RegExp(`__window\\.__accessToken="(EA${TOKEN_CHARS})"`),
 
     // EAABsbCS format (internal token)
-    /"accessToken":\s*"(EAABsbCS[A-Za-z0-9]+)"/,
-    /"access_token":\s*"(EAABsbCS[A-Za-z0-9]+)"/,
-    /accessToken['"]\s*:\s*['"](EAABsbCS[A-Za-z0-9]+)['"]/,
+    new RegExp(`"accessToken":\\s*"(EAABsbCS${TOKEN_CHARS})"`),
+    new RegExp(`"access_token":\\s*"(EAABsbCS${TOKEN_CHARS})"`),
+    new RegExp(`accessToken['"]\\s*:\\s*['"](EAABsbCS${TOKEN_CHARS})['"]`),
 
     // EAAChZC format (OAuth token) - also valid but less preferred
-    /"accessToken":\s*"(EA[A-Za-z0-9]+)"/,
-    /"access_token":\s*"(EA[A-Za-z0-9]+)"/,
-    /access_token=(EA[A-Za-z0-9]+)/,
-    /"token":\s*"(EA[A-Za-z0-9]+)"/,
-    /accessToken['"]\s*:\s*['"](EA[A-Za-z0-9]+)['"]/,
+    new RegExp(`"accessToken":\\s*"(EA${TOKEN_CHARS})"`),
+    new RegExp(`"access_token":\\s*"(EA${TOKEN_CHARS})"`),
+    new RegExp(`access_token=(EA${TOKEN_CHARS})`),
+    new RegExp(`"token":\\s*"(EA${TOKEN_CHARS})"`),
+    new RegExp(`accessToken['"]\\s*:\\s*['"](EA${TOKEN_CHARS})['"]`),
 
     // EAAG format
-    /"accessToken":\s*"(EAAG[A-Za-z0-9]+)"/
+    new RegExp(`"accessToken":\\s*"(EAAG${TOKEN_CHARS})"`)
   ];
 
   const escapedPatterns = [
-    /\\"__accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
-    /\\"accessToken\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
-    /\\"access_token\\"\s*:\s*\\"(EA[A-Za-z0-9]+)\\"/,
+    new RegExp(`\\\\"__accessToken\\\\"\\s*:\\s*\\\\"(EA${TOKEN_CHARS})\\\\"`),
+    new RegExp(`\\\\"accessToken\\\\"\\s*:\\s*\\\\"(EA${TOKEN_CHARS})\\\\"`),
+    new RegExp(`\\\\"access_token\\\\"\\s*:\\s*\\\\"(EA${TOKEN_CHARS})\\\\"`),
   ];
 
   for (const pattern of patterns) {
@@ -849,6 +1430,95 @@ function extractDtsgFromHTML(html) {
   return null;
 }
 
+async function handleTokenExtractedMessage(request = {}) {
+  const extractedToken = String(request.token || "").trim();
+  const extractedDtsg = String(request.dtsg || "").trim();
+  const extractedAvatarUrl = String(request.avatarUrl || "").trim();
+  const source = String(request.source || "unknown").trim();
+
+  if (!extractedToken && !extractedDtsg && !extractedAvatarUrl) {
+    return { success: true, applied: false, reason: "empty_payload" };
+  }
+
+  const existingData = await chrome.storage.local.get([
+    "fewfeed_accessToken",
+    "fewfeed_token",
+    "fewfeed_fbDtsg",
+    "fewfeed_userId",
+    "fewfeed_cookie",
+    ACCESS_TOKEN_VALIDATED_AT_KEY,
+    ACCESS_TOKEN_VALIDATION_STATUS_KEY,
+  ]);
+  const cookieSnapshot = await getFacebookCookieSnapshot();
+  const cookieString = String(cookieSnapshot.cookieString || existingData.fewfeed_cookie || "").trim();
+  const expectedUserId = String(cookieSnapshot.userId || existingData.fewfeed_userId || "").trim();
+
+  const updates = {
+    fewfeed_lastFetch: Date.now(),
+  };
+  if (cookieString) {
+    updates.fewfeed_cookie = cookieString;
+  }
+  if (expectedUserId) {
+    updates.fewfeed_userId = expectedUserId;
+  }
+
+  let acceptedToken = "";
+  let tokenValidation = null;
+
+  if (extractedToken) {
+    tokenValidation = await validateGraphAccessToken(
+      extractedToken,
+      expectedUserId,
+      cookieString,
+    );
+
+    if (tokenValidation.ok) {
+      acceptedToken = extractedToken;
+      updates.fewfeed_accessToken = extractedToken;
+      updates.fewfeed_token = extractedToken;
+      updates[ACCESS_TOKEN_VALIDATED_AT_KEY] = Date.now();
+      updates[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = tokenValidation.userMismatch ? "valid_user_mismatch" : "valid";
+      if (tokenValidation.graphId && !expectedUserId) {
+        updates.fewfeed_userId = tokenValidation.graphId;
+      }
+    } else {
+      updates[ACCESS_TOKEN_VALIDATED_AT_KEY] = Date.now();
+      updates[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = tokenValidation.reason || "invalid";
+      console.warn(
+        "[FEWFEED] Ignored token extracted from page because validation failed:",
+        tokenValidation.reason,
+        tokenValidation.error || "",
+        "| source:",
+        source,
+      );
+    }
+  }
+
+  if (extractedDtsg && (acceptedToken || existingData.fewfeed_accessToken)) {
+    updates.fewfeed_fbDtsg = extractedDtsg;
+  }
+
+  if (extractedAvatarUrl) {
+    updates.fewfeed_avatarUrl = extractedAvatarUrl;
+  }
+
+  const resultingToken = acceptedToken || String(existingData.fewfeed_accessToken || "").trim();
+  updates.fewfeed_ready = !!(resultingToken || cookieString);
+
+  await chrome.storage.local.set(updates);
+  await notifyAppTabsSessionUpdated("token_extracted");
+
+  return {
+    success: true,
+    applied: true,
+    hasToken: !!resultingToken,
+    hasCookie: !!cookieString,
+    tokenAccepted: !!acceptedToken,
+    validationReason: tokenValidation?.reason || null,
+  };
+}
+
 // Listen for messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const replyError = (error, extra = {}) => {
@@ -865,39 +1535,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       source: request.source
     });
 
-    if (request.token || request.dtsg) {
-      // Store the extracted token
-      const updates = {};
-      if (request.token) {
-        updates.fewfeed_accessToken = request.token;
-        console.log("[FEWFEED] Storing access token from", request.source);
+    (async () => {
+      try {
+        const result = await handleTokenExtractedMessage(request);
+        sendResponse(result);
+      } catch (error) {
+        replyError(error, { reason: "token_extracted_failed" });
       }
-      if (request.dtsg) {
-        updates.fewfeed_fbDtsg = request.dtsg;
-      }
-      if (request.avatarUrl) {
-        updates.fewfeed_avatarUrl = request.avatarUrl;
-      }
-      updates.fewfeed_ready = true;
-      updates.fewfeed_lastFetch = Date.now();
-
-      chrome.storage.local.set(updates);
-
-      // Notify any open app tabs (localhost and production)
-      for (const urlPattern of APP_URLS) {
-        chrome.tabs.query({ url: urlPattern }).then(tabs => {
-          for (const tab of tabs) {
-            chrome.tabs.sendMessage(tab.id, {
-              action: "tokenUpdated",
-              hasToken: !!request.token,
-              hasDtsg: !!request.dtsg
-            }).catch(() => { });
-          }
-        });
-      }
-    }
-    sendResponse({ success: true });
-    return false;
+    })();
+    return true;
   }
 
   // Get Facebook cookies for popup (checks if logged in)
@@ -936,11 +1582,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         const readKeys = [
           "fewfeed_accessToken",
+          "fewfeed_token",
           "fewfeed_fbDtsg",
           "fewfeed_userId",
           "fewfeed_userName",
           "fewfeed_cookie",
           "fewfeed_ready",
+          "fewfeed_lastFetch",
+          ACCESS_TOKEN_VALIDATED_AT_KEY,
+          ACCESS_TOKEN_VALIDATION_STATUS_KEY,
           PAGE_TOKEN_MAP_KEY,
           PAGE_TOKEN_MAP_OWNER_KEY,
           "fewfeed_avatarUrl"
@@ -960,12 +1610,58 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           data = await chrome.storage.local.get(readKeys);
         }
 
+        const currentAccessToken = String(data.fewfeed_accessToken || data.fewfeed_token || "").trim();
+        const tokenCheckedAt = Number(data[ACCESS_TOKEN_VALIDATED_AT_KEY] || 0);
+        const shouldRevalidateAccessToken = !!(
+          currentAccessToken &&
+          (!tokenCheckedAt || (Date.now() - tokenCheckedAt) > ACCESS_TOKEN_REVALIDATE_INTERVAL_MS)
+        );
+        if (shouldRevalidateAccessToken) {
+          const validation = await validateGraphAccessToken(
+            currentAccessToken,
+            currentCookieUserId || storedUserId,
+            cookieSnapshot.cookieString || String(data.fewfeed_cookie || ""),
+          );
+          if (validation.ok) {
+            await chrome.storage.local.set({
+              [ACCESS_TOKEN_VALIDATED_AT_KEY]: Date.now(),
+              [ACCESS_TOKEN_VALIDATION_STATUS_KEY]: validation.userMismatch ? "valid_user_mismatch" : "valid",
+            });
+            data[ACCESS_TOKEN_VALIDATED_AT_KEY] = Date.now();
+            data[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = validation.userMismatch ? "valid_user_mismatch" : "valid";
+          } else if (validation.reason !== "network_error") {
+            console.warn("[FEWFEED] Stored access token failed validation, clearing stale token:", validation.reason, validation.error || "");
+            await chrome.storage.local.set({
+              fewfeed_accessToken: "",
+              fewfeed_token: "",
+              fewfeed_fbDtsg: "",
+              [ACCESS_TOKEN_VALIDATED_AT_KEY]: Date.now(),
+              [ACCESS_TOKEN_VALIDATION_STATUS_KEY]: validation.reason || "invalid",
+            });
+            data = await chrome.storage.local.get(readKeys);
+          } else {
+            await chrome.storage.local.set({
+              [ACCESS_TOKEN_VALIDATED_AT_KEY]: Date.now(),
+              [ACCESS_TOKEN_VALIDATION_STATUS_KEY]: "network_error",
+            });
+            data[ACCESS_TOKEN_VALIDATED_AT_KEY] = Date.now();
+            data[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = "network_error";
+          }
+        }
+
         const hasPageTokenMap = (() => {
           const parsed = parseStoredPageTokenMap(data[PAGE_TOKEN_MAP_KEY]);
           return Object.keys(parsed).length > 0;
         })();
-        const hasUsableSession = !!(data.fewfeed_accessToken || hasPageTokenMap);
-        if (!hasUsableSession) {
+        const hasAccessToken = !!String(data.fewfeed_accessToken || data.fewfeed_token || "").trim();
+        const hasUsableSession = !!(hasAccessToken || hasPageTokenMap);
+        const lastFetchAt = Number(data.fewfeed_lastFetch || 0);
+        const shouldRefreshMissingAdsToken = !!(
+          !hasAccessToken &&
+          data.fewfeed_cookie &&
+          (!lastFetchAt || (Date.now() - lastFetchAt) > 60 * 1000)
+        );
+        if (!hasUsableSession || shouldRefreshMissingAdsToken) {
           // Auto-refresh once so FEWFEED_GET_DATA can recover without manual retries.
           try {
             await fetchAndStoreToken();
@@ -977,6 +1673,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         sendResponse({
           success: true,
+          extensionVersion: chrome.runtime.getManifest().version,
           accessToken: data.fewfeed_accessToken,
           fbDtsg: data.fewfeed_fbDtsg,
           userId: data.fewfeed_userId,
@@ -998,24 +1695,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "fetchToken") {
     (async () => {
       try {
-        // Prevent message channel timeout if Facebook fetch hangs.
+        // Token extraction can take longer when fallback opens temporary Facebook tabs.
         const fetchResult = await Promise.race([
           fetchAndStoreToken(),
-          new Promise((resolve) => setTimeout(resolve, 9000)),
+          new Promise((resolve) => setTimeout(() => resolve({ success: false, reason: "timeout" }), 30000)),
         ]);
 
         const data = await chrome.storage.local.get([
           "fewfeed_accessToken",
+          "fewfeed_token",
           "fewfeed_fbDtsg",
           "fewfeed_userId",
           "fewfeed_userName",
           "fewfeed_cookie",
           "fewfeed_avatarUrl",
+          ACCESS_TOKEN_VALIDATED_AT_KEY,
+          ACCESS_TOKEN_VALIDATION_STATUS_KEY,
           PAGE_TOKEN_MAP_KEY,
           PAGE_TOKEN_MAP_OWNER_KEY,
         ]);
         sendResponse({
           success: !!(data.fewfeed_accessToken || data.fewfeed_cookie),
+          extensionVersion: chrome.runtime.getManifest().version,
           ...data,
           pageTokenMap: data[PAGE_TOKEN_MAP_KEY] || "{}",
           pageTokenMapOwnerId: data[PAGE_TOKEN_MAP_OWNER_KEY] || "",
@@ -1025,16 +1726,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         try {
           const fallback = await chrome.storage.local.get([
             "fewfeed_accessToken",
+            "fewfeed_token",
             "fewfeed_fbDtsg",
             "fewfeed_userId",
             "fewfeed_userName",
             "fewfeed_cookie",
             "fewfeed_avatarUrl",
+            ACCESS_TOKEN_VALIDATED_AT_KEY,
+            ACCESS_TOKEN_VALIDATION_STATUS_KEY,
             PAGE_TOKEN_MAP_KEY,
             PAGE_TOKEN_MAP_OWNER_KEY,
           ]);
           sendResponse({
             success: !!(fallback.fewfeed_accessToken || fallback.fewfeed_cookie),
+            extensionVersion: chrome.runtime.getManifest().version,
             ...fallback,
             pageTokenMap: fallback[PAGE_TOKEN_MAP_KEY] || "{}",
             pageTokenMapOwnerId: fallback[PAGE_TOKEN_MAP_OWNER_KEY] || "",
@@ -1215,10 +1920,12 @@ async function fetchFacebookPages(accessToken, cookie) {
       headers["Cookie"] = cookie;
     }
 
-    const response = await fetch(
-      `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}&fields=id,name,access_token,picture,is_published&limit=100`,
-      { headers }
-    );
+    const hasAccessToken = !!String(accessToken || "").trim();
+    const endpoint = hasAccessToken
+      ? `https://graph.facebook.com/v21.0/me/accounts?access_token=${encodeURIComponent(String(accessToken).trim())}&fields=id,name,access_token,picture,is_published&limit=100`
+      : `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,picture,is_published&limit=100`;
+
+    const response = await fetch(endpoint, { headers });
     const data = await response.json();
 
     if (data.error) {
@@ -1263,6 +1970,95 @@ async function fetchFacebookAdAccounts(accessToken, cookie) {
 // ============================================
 
 // Convert Lazada URL to affiliate link using mtop API (for s.lazada.co.th format)
+function parseJsonMaybe(input) {
+  if (typeof input !== "string") return input;
+  const trimmed = input.trim();
+  if (!trimmed) return input;
+  if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) return input;
+  try {
+    return JSON.parse(trimmed);
+  } catch (_) {
+    return input;
+  }
+}
+
+function normalizeAffiliateUrl(rawUrl) {
+  let value = String(rawUrl || "").trim();
+  if (!value) return "";
+
+  value = value.replace(/\\\//g, "/");
+  value = value.replace(/^["']|["']$/g, "");
+
+  if (value.startsWith("\\/\\/")) value = value.slice(1);
+  if (value.startsWith("//")) value = `https:${value}`;
+  if (value.startsWith("/")) value = `https://www.lazada.co.th${value}`;
+  if (!/^https?:\/\//i.test(value) && /(^|\.)lazada\.co\.th\//i.test(value)) {
+    value = `https://${value.replace(/^\/+/, "")}`;
+  }
+
+  if (!/^https?:\/\//i.test(value)) return "";
+
+  try {
+    return new URL(value).toString();
+  } catch (_) {
+    return "";
+  }
+}
+
+function collectAffiliateCandidates(source, output = [], seen = new Set(), depth = 0) {
+  if (depth > 6 || source == null) return output;
+
+  const pushUrl = (candidate) => {
+    const normalized = normalizeAffiliateUrl(candidate);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    output.push(normalized);
+  };
+
+  if (typeof source === "string") {
+    const parsed = parseJsonMaybe(source);
+    if (parsed !== source) {
+      collectAffiliateCandidates(parsed, output, seen, depth + 1);
+    }
+
+    const text = source.replace(/\\\//g, "/");
+    const urlMatches = text.match(/https?:\/\/[^\s"'<>\\]+/gi) || [];
+    urlMatches.forEach(pushUrl);
+
+    const noSchemeMatches = text.match(/(?:^|[^\w])(s\.lazada\.co\.th\/[^\s"'<>\\]+|c\.lazada\.co\.th\/[^\s"'<>\\]+|(?:[\w-]+\.)?lazada\.co\.th\/[^\s"'<>\\]+)/gi) || [];
+    noSchemeMatches.forEach((match) => {
+      const cleaned = String(match).trim().replace(/^[^\w/]+/, "");
+      pushUrl(cleaned);
+    });
+    return output;
+  }
+
+  if (Array.isArray(source)) {
+    source.forEach((item) => collectAffiliateCandidates(item, output, seen, depth + 1));
+    return output;
+  }
+
+  if (typeof source === "object") {
+    Object.values(source).forEach((value) => collectAffiliateCandidates(value, output, seen, depth + 1));
+  }
+
+  return output;
+}
+
+function pickBestAffiliateUrl(candidates) {
+  if (!Array.isArray(candidates) || candidates.length === 0) return "";
+  const priority = [
+    (url) => url.includes("://s.lazada.co.th/"),
+    (url) => url.includes("://c.lazada.co.th/"),
+    (url) => url.includes("lazada.co.th/"),
+  ];
+  for (const rank of priority) {
+    const match = candidates.find((url) => rank(url));
+    if (match) return match;
+  }
+  return candidates[0] || "";
+}
+
 async function convertToLazadaAffiliateLink(productUrl) {
   console.log("[FEWFEED] Converting Lazada URL:", productUrl);
 
@@ -1334,42 +2130,55 @@ async function convertToLazadaAffiliateLink(productUrl) {
     const result = await response.json();
     console.log("[FEWFEED] mtop API response:", JSON.stringify(result));
 
-    // Check for s.lazada link in response - try multiple paths
-    const dataObj = result.data || {};
+    // Check for affiliate links in response - try multiple shapes
+    const rawDataObj = parseJsonMaybe(result.data || {});
+    const dataObj = (rawDataObj && typeof rawDataObj === "object") ? rawDataObj : {};
 
     // Try to find the short link (s.lazada format)
-    const shortLink = dataObj.shortLink || dataObj.short_link || dataObj.sLink;
-    if (shortLink) {
-      console.log("[FEWFEED] Found shortLink:", shortLink);
+    const directLinkCandidates = [
+      dataObj.shortLink,
+      dataObj.short_link,
+      dataObj.sLink,
+      dataObj.promotionLink,
+      dataObj.promotion_link,
+      dataObj.link,
+      dataObj.url,
+      dataObj.result?.shortLink,
+      dataObj.result?.promotionLink,
+      dataObj.result?.link,
+      dataObj.model?.shortLink,
+      dataObj.model?.promotionLink,
+      dataObj.model?.link,
+      result.shortLink,
+      result.promotionLink,
+      result.link,
+      result.url,
+    ].map(normalizeAffiliateUrl).filter(Boolean);
+
+    const directLink = pickBestAffiliateUrl(directLinkCandidates);
+    if (directLink) {
+      console.log("[FEWFEED] Found direct affiliate link:", directLink);
       return {
         success: true,
-        affiliateLink: shortLink,
+        affiliateLink: directLink,
         productName: dataObj.productName || dataObj.product_name || '',
         commissionRate: dataObj.commissionRate || dataObj.commission_rate || ''
       };
     }
 
-    // Try promotion link
-    const promoLink = dataObj.promotionLink || dataObj.promotion_link || dataObj.link || dataObj.url;
-    if (promoLink) {
-      console.log("[FEWFEED] Found promotionLink:", promoLink);
+    // Fallback: recursively scan entire response for any URL.
+    const discoveredLinks = collectAffiliateCandidates({
+      ...result,
+      data: dataObj,
+    });
+    const discoveredAffiliateLink = pickBestAffiliateUrl(discoveredLinks);
+    if (discoveredAffiliateLink) {
+      console.log("[FEWFEED] Found affiliate link from deep scan:", discoveredAffiliateLink);
       return {
         success: true,
-        affiliateLink: promoLink,
+        affiliateLink: discoveredAffiliateLink,
         productName: dataObj.productName || dataObj.product_name || '',
         commissionRate: dataObj.commissionRate || dataObj.commission_rate || ''
-      };
-    }
-
-    // Check if link is in the result directly
-    if (result.shortLink || result.promotionLink) {
-      const link = result.shortLink || result.promotionLink;
-      console.log("[FEWFEED] Found link in result:", link);
-      return {
-        success: true,
-        affiliateLink: link,
-        productName: result.productName || '',
-        commissionRate: result.commissionRate || ''
       };
     }
 
@@ -1409,14 +2218,20 @@ async function convertToLazadaAffiliateLink(productUrl) {
         return { success: false, error: "Session หมดอายุ กรุณา refresh หน้า Lazada แล้วลองใหม่" };
       }
 
-      // Other error
+      // Other error (show concise message, avoid dumping raw response)
       if (!retStr.includes('SUCCESS')) {
-        return { success: false, error: retStr };
+        return {
+          success: false,
+          error: `ระบบ Lazada ยังไม่คืนลิงก์ย่อ (${retStr.slice(0, 120)})`,
+        };
       }
     }
 
-    // Last resort - return full response for debugging
-    return { success: false, error: "ไม่พบลิ้ง - Response: " + JSON.stringify(result).substring(0, 200) };
+    // Last resort - concise message (no raw JSON in UI)
+    return {
+      success: false,
+      error: "Lazada ตอบกลับสำเร็จ แต่ยังไม่พบลิงก์ affiliate ที่ใช้งานได้ ลองเปิดหน้าสินค้า Lazada แล้วกดใหม่อีกครั้ง",
+    };
 
   } catch (e) {
     console.error("[FEWFEED] mtop API error:", e);
@@ -1600,4 +2415,4 @@ async function getLazadaCookies() {
 // END LAZADA SECTION
 // ============================================
 
-console.log("[Pubilo] Background v9.0 loaded - Ads Token + Cookie only (Post Token removed)");
+console.log("[Pubilo] Background v9.1.3 loaded - MAIN-world token probe + resilient extraction");

@@ -104,6 +104,11 @@
                                 placeholder="ค้นหาข้อความ post id หรือ batch"
                             />
                         </div>
+                        <select class="pending-filter-select" id="publishedSourceFilter">
+                            <option value="live" selected>Live ตอนนี้</option>
+                            <option value="history">History</option>
+                            <option value="merged">รวม Live + History</option>
+                        </select>
                         <select class="pending-filter-select" id="publishedTypeFilter">
                             <option value="all">ทุกประเภท</option>
                             <option value="link">Link</option>
@@ -186,7 +191,7 @@
                             <button class="post-tool-secondary-btn" id="hidePostsClearSelectionBtn" type="button">ล้างที่เลือก</button>
                         </div>
                     </div>
-                    <div class="post-tool-body">
+                    <div class="post-tool-body" style="grid-template-columns: minmax(0, 1fr);">
                         <div class="post-tool-main">
                             <div class="pending-table-container" id="hidePostsTableContainer">
                                 <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
@@ -211,11 +216,18 @@
                             <button class="tool-primary-btn tool-primary-btn-delete" id="deletePostsRunBtn" type="button">ลบที่เลือก</button>
                         </div>
                     </div>
+                    <div class="post-tool-run-status is-idle" id="deletePostsStatusPanel">
+                        <div class="post-tool-run-status-head">
+                            <span class="post-tool-run-status-badge is-idle">รอสถานะล่าสุด</span>
+                        </div>
+                        <div class="post-tool-run-status-main">ยังไม่มีงานลบล่าสุด</div>
+                        <div class="post-tool-run-status-sub">เลือกโพสต์แล้วกด "ลบที่เลือก" ระบบจะแสดงผลสำเร็จ/ล้มเหลวของแต่ละโพสต์ให้ทันที</div>
+                    </div>
                     <div class="post-tool-note is-delete" style="display: none;" aria-hidden="true">
                         ลบโพสต์ออกจาก Facebook แบบ batch สำหรับเคลียร์เพจจำนวนมาก ปุ่มนี้ควรใช้หลังจากเช็ก filter และรายการที่เลือกแล้วเท่านั้น
                     </div>
                     <div class="pending-summary-bar" id="deletePostsSummaryBar"></div>
-                    <div class="pending-filter-bar post-tool-filter-bar" style="display: none;">
+                    <div class="pending-filter-bar post-tool-filter-bar">
                         <div class="pending-filter-search">
                             <input class="pending-filter-input" id="deletePostsSearchInput" type="search" placeholder="ค้นหาข้อความหรือ post id" />
                         </div>
@@ -231,7 +243,8 @@
                             <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
                             <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
                             <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
-                            <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
+                            <button type="button" class="pending-filter-chip" data-filter="thisMonth">เดือนนี้</button>
+                            <button type="button" class="pending-filter-chip" data-filter="thisYear">ปีนี้</button>
                         </div>
                         <div class="pending-filter-search published-date-filter">
                             <input class="pending-filter-input" id="deletePostsDateInput" type="date" />
@@ -243,7 +256,12 @@
                             <input class="pending-filter-input" id="deletePostsClearBeforeInput" type="datetime-local" />
                         </div>
                         <div class="pending-filter-search" style="max-width: 180px;">
-                            <input class="pending-filter-input" id="deletePostsBatchSizeInput" type="number" min="1" max="200" step="1" value="20" placeholder="ลบทีละกี่โพสต์" />
+                            <input class="pending-filter-input" id="deletePostsBatchSizeInput" type="number" min="1" max="200" step="1" value="50" placeholder="ลบทีละกี่โพสต์" />
+                        </div>
+                        <div class="pending-quick-filters" id="deletePostsBatchPresets">
+                            <button type="button" class="pending-filter-chip" data-batch-size="50">แนะนำ 50</button>
+                            <button type="button" class="pending-filter-chip" data-batch-size="80">เร็ว 80</button>
+                            <button type="button" class="pending-filter-chip" data-batch-size="120">เร็วมาก 120</button>
                         </div>
                         <button class="post-tool-secondary-btn" id="deletePostsAutoSelectBtn" type="button">เลือกตามวันเวลา + จำนวน</button>
                         <div class="pending-filter-meta">เคลียร์ตามเงื่อนไข: โพสต์ที่เผยแพร่ก่อนวันเวลาที่กำหนด และเลือกสูงสุดตามจำนวนต่อรอบ</div>
@@ -255,7 +273,7 @@
                             <button class="post-tool-secondary-btn" id="deletePostsClearSelectionBtn" type="button">ล้างที่เลือก</button>
                         </div>
                     </div>
-                    <div class="post-tool-body" style="grid-template-columns: minmax(0, 1fr);">
+                    <div class="post-tool-body">
                         <div class="post-tool-main">
                             <div class="pending-table-container" id="deletePostsTableContainer">
                                 <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>

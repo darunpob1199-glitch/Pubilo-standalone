@@ -112,6 +112,35 @@ function isPostGoneOrInvalidIdError(message: string): boolean {
     );
 }
 
+function extractGraphErrorCode(message: string): number {
+    const match = String(message || '').match(/code=(\d+)/i);
+    if (!match) return 0;
+    const parsed = Number(match[1] || 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isTransientGraphError(message: string): boolean {
+    const normalized = String(message || '').toLowerCase();
+    const code = extractGraphErrorCode(message);
+    if ([1, 2, 4, 17, 341, 613].includes(code)) return true;
+
+    return (
+        normalized.includes('temporarily unavailable')
+        || normalized.includes('try again')
+        || normalized.includes('please try again')
+        || normalized.includes('request limit reached')
+        || normalized.includes('rate limit')
+        || normalized.includes('too many calls')
+        || normalized.includes('unknown error has occurred')
+        || normalized.includes('service temporarily unavailable')
+        || normalized.includes('timed out')
+    );
+}
+
+async function waitMs(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieData?: string): Promise<string> {
     const headers = buildFacebookHeaders(cookieData);
     if (accessToken) {
@@ -415,6 +444,10 @@ async function runGraphAction(
             const cookieHide = await graphHideWithCookie(hideTarget, headers, token);
             if (cookieHide.ok) return;
             hideError = cookieHide.error || hideError;
+
+            const cookieHideNoToken = await graphHideWithCookie(hideTarget, headers);
+            if (cookieHideNoToken.ok) return;
+            hideError = cookieHideNoToken.error || hideError;
         }
         throw new Error(hideError || 'Graph API hide failed');
     }
@@ -442,14 +475,88 @@ async function runGraphAction(
             const cookieDelete = await graphDeleteWithCookie(candidate, headers, token);
             if (cookieDelete.ok) return;
             lastError = cookieDelete.error || lastError;
+
+            const cookieDeleteNoToken = await graphDeleteWithCookie(candidate, headers);
+            if (cookieDeleteNoToken.ok) return;
+            lastError = cookieDeleteNoToken.error || lastError;
         }
 
         const cookieHide = await graphHideWithCookie(hideTarget, headers, token);
         if (cookieHide.ok) return;
         lastError = cookieHide.error || lastError;
+
+        const cookieHideNoToken = await graphHideWithCookie(hideTarget, headers);
+        if (cookieHideNoToken.ok) return;
+        lastError = cookieHideNoToken.error || lastError;
     }
 
     throw new Error(lastError || 'Graph API delete failed');
+}
+
+async function runGraphActionWithResilience(
+    env: Env,
+    params: {
+        organizationId: string;
+        pageId: string;
+        action: PostActionType;
+        postId: string;
+        token: string;
+        cookieHeadersCandidates: Array<Record<string, string>>;
+    },
+): Promise<{ ok: boolean; token: string; error?: string; alreadyGone?: boolean }> {
+    const maxAttempts = 3;
+    let workingToken = String(params.token || '').trim();
+    let lastError = '';
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            await runGraphAction(
+                params.action,
+                params.postId,
+                workingToken,
+                params.cookieHeadersCandidates,
+            );
+            return { ok: true, token: workingToken };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            lastError = message;
+
+            if (isPostGoneOrInvalidIdError(message)) {
+                return {
+                    ok: true,
+                    token: workingToken,
+                    alreadyGone: true,
+                };
+            }
+
+            const looksLikeTokenIssue = isSessionOrTokenInvalidError(message);
+            if (looksLikeTokenIssue) {
+                const recoveredToken = await recoverActionTokenFromWorkspaceCredentials(
+                    env,
+                    params.organizationId,
+                    params.pageId,
+                    params.action,
+                );
+                if (recoveredToken) {
+                    workingToken = recoveredToken;
+                }
+            }
+
+            const retryable = looksLikeTokenIssue || isTransientGraphError(message);
+            if (!retryable || attempt >= maxAttempts) {
+                break;
+            }
+
+            // Small linear backoff to reduce random Graph API flakiness/rate-limit bursts.
+            await waitMs(220 * attempt);
+        }
+    }
+
+    return {
+        ok: false,
+        token: workingToken,
+        error: lastError || 'Graph API delete failed',
+    };
 }
 
 export async function ensurePostActionTables(env: Env): Promise<void> {
@@ -947,8 +1054,17 @@ export async function processPendingPostActionJobs(env: Env, options?: {
         `).bind(job.id, perJobLimit).all<PostActionItemRow>();
 
         for (const item of itemRows.results || []) {
-            try {
-                await runGraphAction(job.action, item.post_id, token, cookieHeadersCandidates);
+            const actionResult = await runGraphActionWithResilience(env, {
+                organizationId: job.organization_id,
+                pageId: job.page_id,
+                action: job.action,
+                postId: item.post_id,
+                token,
+                cookieHeadersCandidates,
+            });
+            token = actionResult.token || token;
+
+            if (actionResult.ok) {
                 await env.DB.prepare(`
                     UPDATE post_action_items
                     SET status = 'success',
@@ -956,53 +1072,8 @@ export async function processPendingPostActionJobs(env: Env, options?: {
                         processed_at = ?
                     WHERE id = ?
                 `).bind(nowSql(), item.id).run();
-            } catch (error) {
-                let message = error instanceof Error ? error.message : String(error);
-                if (isPostGoneOrInvalidIdError(message)) {
-                    // Treat already-removed/invalid IDs as success so bulk jobs don't fail whole batches.
-                    await env.DB.prepare(`
-                        UPDATE post_action_items
-                        SET status = 'success',
-                            error_message = NULL,
-                            processed_at = ?
-                        WHERE id = ?
-                    `).bind(nowSql(), item.id).run();
-                    continue;
-                }
-                if (isSessionOrTokenInvalidError(message)) {
-                    const recoveredToken = await recoverActionTokenFromWorkspaceCredentials(
-                        env,
-                        job.organization_id,
-                        job.page_id,
-                        job.action,
-                    );
-                    if (recoveredToken) {
-                        token = recoveredToken;
-                        try {
-                            await runGraphAction(job.action, item.post_id, token, cookieHeadersCandidates);
-                            await env.DB.prepare(`
-                                UPDATE post_action_items
-                                SET status = 'success',
-                                    error_message = NULL,
-                                    processed_at = ?
-                                WHERE id = ?
-                            `).bind(nowSql(), item.id).run();
-                            continue;
-                        } catch (retryError) {
-                            message = retryError instanceof Error ? retryError.message : String(retryError);
-                            if (isPostGoneOrInvalidIdError(message)) {
-                                await env.DB.prepare(`
-                                    UPDATE post_action_items
-                                    SET status = 'success',
-                                        error_message = NULL,
-                                        processed_at = ?
-                                    WHERE id = ?
-                                `).bind(nowSql(), item.id).run();
-                                continue;
-                            }
-                        }
-                    }
-                }
+            } else {
+                const message = String(actionResult.error || 'Graph API delete failed').trim();
                 await env.DB.prepare(`
                     UPDATE post_action_items
                     SET status = 'failed',
@@ -1016,6 +1087,11 @@ export async function processPendingPostActionJobs(env: Env, options?: {
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 `).bind(message, job.id).run();
+            }
+
+            // Pace delete bursts slightly to reduce transient Graph API rejections.
+            if (job.action === 'delete') {
+                await waitMs(90);
             }
         }
 

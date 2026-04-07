@@ -5,6 +5,37 @@ import { getWorkspaceId } from '../lib/workspace';
 
 const app = new Hono<{ Bindings: Env }>();
 
+function isGenericPageName(value: unknown, pageId: string): boolean {
+    const normalizedName = String(value || '').trim();
+    const normalizedPageId = String(pageId || '').trim();
+    if (!normalizedName) return true;
+
+    const lowered = normalizedName.toLowerCase();
+    if (
+        lowered === 'page'
+        || lowered === 'unknown page'
+        || lowered === 'saved page'
+        || lowered === 'เพจไม่ทราบชื่อ'
+    ) return true;
+
+    if (normalizedPageId && normalizedName === normalizedPageId) return true;
+    if (/^page\s+\d+$/i.test(normalizedName)) {
+        return lowered === `page ${normalizedPageId}`.toLowerCase();
+    }
+    if (/^เพจ\s+\d+$/i.test(normalizedName)) {
+        return lowered === `เพจ ${normalizedPageId}`.toLowerCase();
+    }
+
+    return false;
+}
+
+function resolvePageName(value: unknown, pageId: string): string {
+    const normalizedName = String(value || '').trim();
+    const normalizedPageId = String(pageId || '').trim();
+    if (!isGenericPageName(normalizedName, normalizedPageId)) return normalizedName;
+    return normalizedPageId ? `เพจ ${normalizedPageId}` : 'เพจไม่ทราบชื่อ';
+}
+
 // GET /api/page-settings?pageId=xxx
 app.get('/', async (c) => {
     const pageId = c.req.query('pageId');
@@ -82,7 +113,7 @@ app.post('/', async (c) => {
         if (body.shareMode !== undefined) fields.share_mode = body.shareMode;
         if (body.shareScheduleMinutes !== undefined) fields.share_schedule_minutes = body.shareScheduleMinutes;
         if (body.pageColor !== undefined) fields.page_color = body.pageColor;
-        if (body.pageName !== undefined) fields.page_name = body.pageName;
+        if (body.pageName !== undefined) fields.page_name = resolvePageName(body.pageName, pageId);
         if (body.pictureUrl !== undefined) fields.picture_url = body.pictureUrl;
         if (body.imageSource !== undefined) fields.image_source = body.imageSource;
         if (body.ogBackgroundUrl !== undefined) fields.og_background_url = body.ogBackgroundUrl;

@@ -20,6 +20,11 @@ type PublishedQueryInput = {
     cookieData?: string;
 };
 
+type WorkspaceCredentialCandidate = {
+    accessToken: string;
+    cookieData: string;
+};
+
 function normalizeSource(value?: string | null): PublishedSource {
     const normalized = String(value || '').trim().toLowerCase();
     if (normalized === 'history') return 'history';
@@ -155,6 +160,31 @@ function buildAuthCandidates(tokens: Array<string | null | undefined>): string[]
     return candidates;
 }
 
+type FacebookEdge = 'published_posts' | 'feed' | 'posts';
+
+function encodeFacebookCursor(edge: FacebookEdge, cursor?: string | null): string {
+    const normalizedCursor = String(cursor || '').trim();
+    if (!normalizedCursor) return '';
+    return `${edge}::${normalizedCursor}`;
+}
+
+function parseFacebookCursor(value?: string | null): { edge: FacebookEdge | null; cursor: string } {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+        return { edge: null, cursor: '' };
+    }
+
+    const match = normalized.match(/^(published_posts|feed|posts)::(.+)$/);
+    if (!match) {
+        return { edge: null, cursor: normalized };
+    }
+
+    return {
+        edge: match[1] as FacebookEdge,
+        cursor: String(match[2] || '').trim(),
+    };
+}
+
 function mapSourceLabel(source?: string): string {
     switch (String(source || '')) {
         case 'facebook':
@@ -169,6 +199,18 @@ function mapSourceLabel(source?: string): string {
         default:
             return 'Manual';
     }
+}
+
+function isFacebookAuthInvalid(error: any): boolean {
+    const code = Number(error?.code);
+    const type = String(error?.type || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+
+    if (code === 190) return true;
+    if (code === 1 && type === 'oauthexception') return true;
+    if (message.includes('error validating access token')) return true;
+    if (message.includes('session has been invalidated')) return true;
+    return false;
 }
 
 function inferFacebookPostType(post: Record<string, any>): string {
@@ -307,27 +349,33 @@ async function getStoredPageToken(env: Env, workspaceId: string, pageId: string)
     return String(await decryptSecret(env, result?.post_token_encrypted) || '').trim();
 }
 
-async function getWorkspaceCookieCandidates(env: Env, workspaceId: string): Promise<string[]> {
+async function getWorkspaceCredentialCandidates(env: Env, workspaceId: string): Promise<WorkspaceCredentialCandidate[]> {
     try {
         const rows = await env.DB.prepare(`
-            SELECT cookie_encrypted
+            SELECT ads_token_encrypted, cookie_encrypted
             FROM facebook_credentials
             WHERE workspace_id = ?
             ORDER BY updated_at DESC
             LIMIT 5
-        `).bind(workspaceId).all<{ cookie_encrypted?: string | null }>();
+        `).bind(workspaceId).all<{ ads_token_encrypted?: string | null; cookie_encrypted?: string | null }>();
 
         const seen = new Set<string>();
-        const cookies: string[] = [];
+        const credentials: WorkspaceCredentialCandidate[] = [];
         for (const row of rows.results || []) {
+            const accessToken = String(await decryptSecret(env, row?.ads_token_encrypted) || '').trim();
             const cookie = String(await decryptSecret(env, row?.cookie_encrypted) || '').trim();
-            if (!cookie || seen.has(cookie)) continue;
-            seen.add(cookie);
-            cookies.push(cookie);
+            const dedupeKey = `${accessToken}::${cookie}`;
+            if (!accessToken && !cookie) continue;
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
+            credentials.push({
+                accessToken,
+                cookieData: cookie,
+            });
         }
-        return cookies;
+        return credentials;
     } catch (error) {
-        console.warn('[published-posts] workspace cookie candidates fetch failed:', error);
+        console.warn('[published-posts] workspace credential candidates fetch failed:', error);
         return [];
     }
 }
@@ -339,19 +387,33 @@ async function fetchFacebookPublishedPostsCookieOnly(params: {
     headers: Record<string, string>;
 }): Promise<{ success: boolean; logs?: Array<Record<string, any>>; meta?: Record<string, any>; error?: string }> {
     const { pageId, limit, after, headers } = params;
+    const parsedCursor = parseFacebookCursor(after);
+    const edgeHint = parsedCursor.edge;
+    const afterCursor = parsedCursor.cursor;
     let lastError = '';
-    const endpointsToTry = [
-        { edge: 'posts', metaSource: 'facebook-cookie' },
+    const endpointCatalog: Array<{ edge: FacebookEdge; metaSource: string }> = [
+        { edge: 'published_posts', metaSource: 'facebook-cookie-published' },
         { edge: 'feed', metaSource: 'facebook-cookie-feed' },
+        { edge: 'posts', metaSource: 'facebook-cookie' },
     ];
+    const endpointsToTry = edgeHint
+        ? endpointCatalog.filter((endpoint) => endpoint.edge === edgeHint)
+        : endpointCatalog;
+    const endpointResults: Array<{
+        edge: FacebookEdge;
+        metaSource: string;
+        logs: Array<Record<string, any>>;
+        hasMore: boolean;
+        nextCursor: string;
+    }> = [];
 
     for (const endpoint of endpointsToTry) {
         const query = new URLSearchParams({
             fields: 'id,message,story,created_time,full_picture,permalink_url,status_type,from,is_hidden,timeline_visibility,attachments{media_type,type,url,target,media,subattachments}',
             limit: String(Math.min(limit, 100)),
         });
-        if (String(after || '').trim()) {
-            query.set('after', String(after).trim());
+        if (afterCursor) {
+            query.set('after', afterCursor);
         }
 
         try {
@@ -372,22 +434,59 @@ async function fetchFacebookPublishedPostsCookieOnly(params: {
             const nextCursor = String(data?.paging?.cursors?.after || '').trim();
             const hasMore = Boolean(data?.paging?.next && nextCursor);
 
-            if (endpoint.edge === 'posts' && logs.length === 0 && !String(after || '').trim()) {
+            endpointResults.push({
+                edge: endpoint.edge,
+                metaSource: endpoint.metaSource,
+                logs,
+                hasMore,
+                nextCursor,
+            });
+
+            if (!afterCursor && !edgeHint && logs.length === 0) {
                 continue;
             }
 
+            const encodedNextCursor = hasMore
+                ? encodeFacebookCursor(endpoint.edge, nextCursor)
+                : '';
             return {
                 success: true,
                 logs,
                 meta: {
                     source: endpoint.metaSource,
                     hasMore,
-                    nextCursor: hasMore ? nextCursor : null,
+                    edge: endpoint.edge,
+                    nextCursor: encodedNextCursor || null,
                 },
             };
         } catch (error) {
             lastError = error instanceof Error ? error.message : String(error);
         }
+    }
+
+    if (endpointResults.length > 0 && !afterCursor && !edgeHint) {
+        const nonEmpty = endpointResults.filter((row) => row.logs.length > 0);
+        const preferred = (nonEmpty.length > 0 ? nonEmpty : endpointResults)
+            .sort((a, b) => {
+                if (b.logs.length !== a.logs.length) {
+                    return b.logs.length - a.logs.length;
+                }
+                return Number(b.hasMore) - Number(a.hasMore);
+            })[0];
+
+        const encodedNextCursor = preferred.hasMore
+            ? encodeFacebookCursor(preferred.edge, preferred.nextCursor)
+            : '';
+        return {
+            success: true,
+            logs: preferred.logs,
+            meta: {
+                source: preferred.metaSource,
+                hasMore: preferred.hasMore,
+                edge: preferred.edge,
+                nextCursor: encodedNextCursor || null,
+            },
+        };
     }
 
     return { success: false, error: lastError || 'Facebook API error (cookie-only)' };
@@ -401,8 +500,31 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
     }
 
     const storedPageToken = pageToken?.trim() || await getStoredPageToken(env, workspaceId, pageId);
-    const freshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
-    const workspaceCookieCandidates = await getWorkspaceCookieCandidates(env, workspaceId);
+    const workspaceCredentialCandidates = await getWorkspaceCredentialCandidates(env, workspaceId);
+    let freshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
+    if (!freshPageToken) {
+        for (const candidate of workspaceCredentialCandidates) {
+            if (!candidate.accessToken) continue;
+            const recoveredToken = await fetchFreshPageToken(
+                pageId,
+                candidate.accessToken,
+                candidate.cookieData || cookieData,
+            );
+            if (recoveredToken) {
+                freshPageToken = recoveredToken;
+                console.log('[published-posts] Recovered fresh page token from workspace facebook_credentials');
+                break;
+            }
+        }
+    }
+
+    const workspaceCookieCandidates = workspaceCredentialCandidates
+        .map((candidate) => candidate.cookieData)
+        .filter(Boolean);
+    const workspaceAccessTokenCandidates = workspaceCredentialCandidates
+        .map((candidate) => candidate.accessToken)
+        .filter(Boolean);
+
     const cookieHeaderCandidates: Array<Record<string, string>> = [];
     const seenCookies = new Set<string>();
     const addCookieCandidate = (rawCookie?: string) => {
@@ -420,8 +542,12 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
         freshPageToken,
         storedPageToken,
         accessToken,
+        ...workspaceAccessTokenCandidates,
     ]);
     const headers = cookieHeaderCandidates[0];
+    const parsedCursor = parseFacebookCursor(after);
+    const edgeHint = parsedCursor.edge;
+    const afterCursor = parsedCursor.cursor;
     let lastFacebookError: any = null;
 
     for (const authToken of authCandidates) {
@@ -430,15 +556,53 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
             limit: String(Math.min(limit, 100)),
             access_token: authToken,
         });
-        if (String(after || '').trim()) {
-            params.set('after', String(after).trim());
+        if (afterCursor) {
+            params.set('after', afterCursor);
         }
 
-        const endpointsToTry = [
-            { edge: 'posts', metaSource: 'facebook' },
-            // Some pages return empty on /posts but still return timeline items on /feed.
+        const endpointCatalog: Array<{ edge: FacebookEdge; metaSource: string }> = [
+            { edge: 'published_posts', metaSource: 'facebook-published' },
             { edge: 'feed', metaSource: 'facebook-feed' },
+            { edge: 'posts', metaSource: 'facebook' },
         ];
+        const endpointsToTry = edgeHint
+            ? endpointCatalog.filter((endpoint) => endpoint.edge === edgeHint)
+            : endpointCatalog;
+        const endpointResults: Array<{
+            edge: FacebookEdge;
+            metaSource: string;
+            logs: Array<Record<string, any>>;
+            hasMore: boolean;
+            nextCursor: string;
+        }> = [];
+
+        const finalizeResult = async (result: {
+            edge: FacebookEdge;
+            metaSource: string;
+            logs: Array<Record<string, any>>;
+            hasMore: boolean;
+            nextCursor: string;
+        }) => {
+            const pinnedIds = await fetchPinnedPostIds(pageId, authToken, headers);
+            const normalizedLogs = result.logs.map((row) => ({
+                ...row,
+                is_pinned: pinnedIds.has(String(row.facebook_post_id || '').trim()),
+            }));
+            const encodedNextCursor = result.hasMore
+                ? encodeFacebookCursor(result.edge, result.nextCursor)
+                : '';
+
+            return {
+                success: true,
+                logs: normalizedLogs,
+                meta: {
+                    source: result.metaSource,
+                    edge: result.edge,
+                    hasMore: result.hasMore,
+                    nextCursor: encodedNextCursor || null,
+                },
+            };
+        };
 
         for (const endpoint of endpointsToTry) {
             const response = await fetch(
@@ -466,26 +630,38 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
             const nextCursor = String(data?.paging?.cursors?.after || '').trim();
             const hasMore = Boolean(data?.paging?.next && nextCursor);
 
-            // If /posts is empty for the first page, try /feed before concluding no data.
-            if (endpoint.edge === 'posts' && logs.length === 0 && !String(after || '').trim()) {
+            endpointResults.push({
+                edge: endpoint.edge,
+                metaSource: endpoint.metaSource,
+                logs,
+                hasMore,
+                nextCursor,
+            });
+
+            if (!afterCursor && !edgeHint && logs.length === 0) {
                 continue;
             }
 
-            const pinnedIds = await fetchPinnedPostIds(pageId, authToken, headers);
-            const normalizedLogs = logs.map((row) => ({
-                ...row,
-                is_pinned: pinnedIds.has(String(row.facebook_post_id || '').trim()),
-            }));
+            return finalizeResult({
+                edge: endpoint.edge,
+                metaSource: endpoint.metaSource,
+                logs,
+                hasMore,
+                nextCursor,
+            });
+        }
 
-            return {
-                success: true,
-                logs: normalizedLogs,
-                meta: {
-                    source: endpoint.metaSource,
-                    hasMore,
-                    nextCursor: hasMore ? nextCursor : null,
-                },
-            };
+        if (endpointResults.length > 0 && !afterCursor && !edgeHint) {
+            const nonEmpty = endpointResults.filter((row) => row.logs.length > 0);
+            const preferred = (nonEmpty.length > 0 ? nonEmpty : endpointResults)
+                .sort((a, b) => {
+                    if (b.logs.length !== a.logs.length) {
+                        return b.logs.length - a.logs.length;
+                    }
+                    return Number(b.hasMore) - Number(a.hasMore);
+                })[0];
+
+            return finalizeResult(preferred);
         }
 
         // Move to next token candidate.
@@ -519,6 +695,9 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
         errorCode: lastFacebookError?.code,
         errorSubcode: lastFacebookError?.error_subcode,
         errorType: lastFacebookError?.type,
+        errorCategory: isFacebookAuthInvalid(lastFacebookError)
+            ? 'facebook_auth_invalid'
+            : 'facebook_api_error',
     };
 }
 

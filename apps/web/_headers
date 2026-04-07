@@ -9,14 +9,11 @@
 /*.html
   Cache-Control: no-cache, no-store, must-revalidate
 
-/*.js
-  Cache-Control: no-cache, no-store, must-revalidate
-
 /js/*
-  Cache-Control: no-cache, no-store, must-revalidate
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
 /js/parts/*
-  Cache-Control: no-cache, no-store, must-revalidate
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
-/*.css
-  Cache-Control: no-cache, no-store, must-revalidate
+/css/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400

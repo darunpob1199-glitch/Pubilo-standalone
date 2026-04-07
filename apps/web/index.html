@@ -11,8 +11,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/styles.css?v=8.1" />
-    <link rel="stylesheet" href="/css/premium-theme.css?v=7.3" />
+    <link rel="stylesheet" href="/css/styles.css?v=8.2" />
+    <link rel="stylesheet" href="/css/premium-theme.css?v=7.4" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
         .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange, .flatpickr-day.selected.inRange, .flatpickr-day.startRange.inRange, .flatpickr-day.endRange.inRange, .flatpickr-day.selected:focus, .flatpickr-day.startRange:focus, .flatpickr-day.endRange:focus, .flatpickr-day.selected:hover, .flatpickr-day.startRange:hover, .flatpickr-day.endRange:hover, .flatpickr-day.selected.prevMonthDay, .flatpickr-day.startRange.prevMonthDay, .flatpickr-day.endRange.prevMonthDay, .flatpickr-day.selected.nextMonthDay, .flatpickr-day.startRange.nextMonthDay, .flatpickr-day.endRange.nextMonthDay {
@@ -48,14 +48,16 @@
         </div>
         <div class="header-right">
             <div class="status-indicators" id="statusIndicators">
-                <div class="status-indicator invalid" id="tokenIndicator" title="Token">
+                <div class="status-indicator invalid" id="tokenIndicator" title="Token" role="button" tabindex="0"
+                    data-token-modal-type="ads">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path
                             d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                     </svg>
                     <span>Token</span>
                 </div>
-                <div class="status-indicator invalid" id="cookieIndicator" title="Cookie">
+                <div class="status-indicator invalid" id="cookieIndicator" title="Cookie" role="button" tabindex="0"
+                    data-token-modal-type="cookie">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10" />
                         <circle cx="8" cy="9" r="1.5" fill="currentColor" />
@@ -911,6 +913,11 @@
                         <input class="pending-filter-input" id="publishedSearchInput" type="search"
                             placeholder="ค้นหาข้อความ post id ลิงก์ หรือ batch" />
                     </div>
+                    <select class="pending-filter-select" id="publishedSourceFilter">
+                        <option value="live" selected>Live ตอนนี้</option>
+                        <option value="history">History</option>
+                        <option value="merged">รวม Live + History</option>
+                    </select>
                     <select class="pending-filter-select" id="publishedTypeFilter">
                         <option value="all">ทุกประเภท</option>
                         <option value="link">Link</option>
@@ -1010,19 +1017,26 @@
                 </div>
             </div>
 
-            <div class="pending-panel post-tool-panel" id="deletePostsPanel" style="display: none">
-                <div class="pending-panel-header">
-                    <h2>Delete Posts</h2>
-                    <div class="pending-panel-toolbar">
-                        <button class="pending-refresh-btn" id="deletePostsRefreshBtn" type="button">โหลดโพสต์</button>
-                        <button class="tool-primary-btn tool-primary-btn-delete" id="deletePostsRunBtn" type="button">ลบที่เลือก</button>
+                <div class="pending-panel post-tool-panel" id="deletePostsPanel" style="display: none">
+                    <div class="pending-panel-header">
+                        <h2>Delete Posts</h2>
+                        <div class="pending-panel-toolbar">
+                            <button class="pending-refresh-btn" id="deletePostsRefreshBtn" type="button">โหลดโพสต์</button>
+                            <button class="tool-primary-btn tool-primary-btn-delete" id="deletePostsRunBtn" type="button">ลบที่เลือก</button>
+                        </div>
                     </div>
-                </div>
-                <div class="post-tool-note is-delete" style="display: none;" aria-hidden="true">
-                    ลบโพสต์ออกจาก Facebook แบบ batch สำหรับเคลียร์เพจจำนวนมาก ปุ่มนี้ควรใช้หลังจากเช็ก filter และรายการที่เลือกแล้วเท่านั้น
-                </div>
+                    <div class="post-tool-run-status is-idle" id="deletePostsStatusPanel">
+                        <div class="post-tool-run-status-head">
+                            <span class="post-tool-run-status-badge is-idle">รอสถานะล่าสุด</span>
+                        </div>
+                        <div class="post-tool-run-status-main">ยังไม่มีงานลบล่าสุด</div>
+                        <div class="post-tool-run-status-sub">เลือกโพสต์แล้วกด "ลบที่เลือก" ระบบจะแสดงผลสำเร็จ/ล้มเหลวของแต่ละโพสต์ให้ทันที</div>
+                    </div>
+                    <div class="post-tool-note is-delete" style="display: none;" aria-hidden="true">
+                        ลบโพสต์ออกจาก Facebook แบบ batch สำหรับเคลียร์เพจจำนวนมาก ปุ่มนี้ควรใช้หลังจากเช็ก filter และรายการที่เลือกแล้วเท่านั้น
+                    </div>
                 <div class="pending-summary-bar" id="deletePostsSummaryBar"></div>
-                <div class="pending-filter-bar post-tool-filter-bar" style="display: none;">
+                <div class="pending-filter-bar post-tool-filter-bar">
                     <div class="pending-filter-search">
                         <input class="pending-filter-input" id="deletePostsSearchInput" type="search" placeholder="ค้นหาข้อความหรือ post id" />
                     </div>
@@ -1038,7 +1052,8 @@
                         <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
                         <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
                         <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
-                        <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
+                        <button type="button" class="pending-filter-chip" data-filter="thisMonth">เดือนนี้</button>
+                        <button type="button" class="pending-filter-chip" data-filter="thisYear">ปีนี้</button>
                     </div>
                     <div class="pending-filter-meta" id="deletePostsFilterMeta"></div>
                 </div>
@@ -1047,7 +1062,12 @@
                         <input class="pending-filter-input" id="deletePostsClearBeforeInput" type="datetime-local" placeholder="ลบโพสต์ก่อนวันเวลา" />
                     </div>
                     <div class="pending-filter-search" style="max-width: 180px;">
-                        <input class="pending-filter-input" id="deletePostsBatchSizeInput" type="number" min="1" max="200" step="1" value="20" placeholder="ลบทีละกี่โพสต์" />
+                        <input class="pending-filter-input" id="deletePostsBatchSizeInput" type="number" min="1" max="200" step="1" value="50" placeholder="ลบทีละกี่โพสต์" />
+                    </div>
+                    <div class="pending-quick-filters" id="deletePostsBatchPresets">
+                        <button type="button" class="pending-filter-chip" data-batch-size="50">แนะนำ 50</button>
+                        <button type="button" class="pending-filter-chip" data-batch-size="80">เร็ว 80</button>
+                        <button type="button" class="pending-filter-chip" data-batch-size="120">เร็วมาก 120</button>
                     </div>
                     <button class="post-tool-secondary-btn" id="deletePostsAutoSelectBtn" type="button">เลือกตามวันเวลา + จำนวน</button>
                     <div class="pending-filter-meta">โหมดแนะนำ: ใส่วันเวลา + จำนวน แล้วกดปุ่มเลือกอัตโนมัติ จากนั้นกดลบ</div>
@@ -1059,22 +1079,22 @@
                         <button class="post-tool-secondary-btn" id="deletePostsClearSelectionBtn" type="button">ล้างที่เลือก</button>
                     </div>
                 </div>
-                <div class="post-tool-body" style="grid-template-columns: minmax(0, 1fr);">
-                    <div class="post-tool-main">
-                        <div class="pending-table-container" id="deletePostsTableContainer">
-                            <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
+                    <div class="post-tool-body" style="grid-template-columns: minmax(0, 1fr);">
+                        <div class="post-tool-main">
+                            <div class="pending-table-container" id="deletePostsTableContainer">
+                                <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
+                            </div>
+                            <div class="post-tool-pagination">
+                                <div class="post-tool-pagination-meta" id="deletePostsLoadMoreMeta"></div>
+                                <button class="post-tool-secondary-btn" id="deletePostsLoadMoreBtn" type="button">โหลดเพิ่ม</button>
+                            </div>
                         </div>
-                        <div class="post-tool-pagination">
-                            <div class="post-tool-pagination-meta" id="deletePostsLoadMoreMeta"></div>
-                            <button class="post-tool-secondary-btn" id="deletePostsLoadMoreBtn" type="button">โหลดเพิ่ม</button>
-                        </div>
+                        <aside class="post-tool-side" style="display: none;">
+                            <div class="post-tool-side-header">Recent Jobs</div>
+                            <div class="post-tool-jobs" id="deletePostsJobs"></div>
+                        </aside>
                     </div>
-                    <aside class="post-tool-side" style="display: none;">
-                        <div class="post-tool-side-header">Recent Jobs</div>
-                        <div class="post-tool-jobs" id="deletePostsJobs"></div>
-                    </aside>
                 </div>
-            </div>
 
             <div id="earningsPanel" style="display:none" aria-hidden="true"></div>
 
@@ -2033,7 +2053,7 @@
     <img class="thumb-preview-popup" id="thumbPreviewPopup" src="" alt="" />
 
     <script src="/js/config.js?v=7.0"></script>
-    <script src="/js/auth-bootstrap.js?v=1.10"></script>
+    <script src="/js/auth-bootstrap.js?v=1.12"></script>
     <script src="/js/parts/01-thumb-preview.js?v=6.1"></script>
     <script src="/js/parts/02-dom-elements.js?v=6.3"></script>
     <script src="/js/parts/03-validation.js?v=6.8"></script>
@@ -2041,13 +2061,13 @@
     <script src="/js/parts/05-auto-post.js?v=7.2"></script>
     <script src="/js/parts/06-billing.js?v=1.8"></script>
     <script src="/js/parts/06-pending-posts.js?v=6.7"></script>
-    <script src="/js/parts/07-earnings.js?v=6.7"></script>
+    <script src="/js/parts/07-earnings.js?v=6.8"></script>
     <script src="/js/parts/08-quotes.js?v=6.2"></script>
-    <script src="/js/parts/08-post-tools.js?v=1.11"></script>
+    <script src="/js/parts/08-post-tools.js?v=1.31"></script>
     <script src="/js/parts/09-navigation.js?v=7.7"></script>
-    <script src="/js/parts/10-lazada.js?v=6.3"></script>
+    <script src="/js/parts/10-lazada.js?v=6.5"></script>
     <script src="/js/parts/11-image-generation.js?v=9.3"></script>
-    <script src="/js/parts/12-publish.js?v=11.7"></script>
+    <script src="/js/parts/12-publish.js?v=11.14"></script>
 
     <!-- Lightbox Modal -->
     <div class="lightbox-overlay" id="lightboxOverlay">

@@ -2,6 +2,8 @@
 (function () {
     const SHOW_BILLING_BANNER = false;
     const SKIP_SIGNUP_AND_BILLING_GATE = false;
+    const AUTH_GATE_CLASS = 'pubilo-auth-gated';
+    const AUTH_REQUEST_TIMEOUT_MS = 12000;
     let authReadyResolved = false;
     let resolveAuthReadyPromise = null;
     const state = {
@@ -29,10 +31,39 @@
         }
     });
 
+    function markAuthGateEnabled() {
+        if (!document.body) return;
+        document.body.classList.add(AUTH_GATE_CLASS);
+    }
+
     function nativeFetch(url, options) {
-        return window.__PUBILO_NATIVE_FETCH__(window.API_BASE + url, {
+        const rawOptions = options || {};
+        const timeoutMs = Number.isFinite(rawOptions.timeoutMs) ? Number(rawOptions.timeoutMs) : AUTH_REQUEST_TIMEOUT_MS;
+        const fetchOptions = { ...rawOptions };
+        delete fetchOptions.timeoutMs;
+
+        const requestPromise = window.__PUBILO_NATIVE_FETCH__(window.API_BASE + url, {
             credentials: 'include',
-            ...(options || {}),
+            ...fetchOptions,
+        });
+
+        if (!timeoutMs || timeoutMs <= 0) {
+            return requestPromise;
+        }
+
+        let timeoutId = null;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = window.setTimeout(() => {
+                const error = new Error(`Request timeout after ${timeoutMs}ms`);
+                error.code = 'ETIMEDOUT';
+                reject(error);
+            }, timeoutMs);
+        });
+
+        return Promise.race([requestPromise, timeoutPromise]).finally(() => {
+            if (timeoutId) {
+                window.clearTimeout(timeoutId);
+            }
         });
     }
 
@@ -102,10 +133,12 @@
     }
 
     function setAppShellAuthenticated(isAuthenticated) {
+        markAuthGateEnabled();
         document.body.classList.toggle('pubilo-authenticated', !!isAuthenticated);
     }
 
     function ensureOverlay() {
+        markAuthGateEnabled();
         let overlay = document.getElementById('pubiloAuthOverlay');
         if (overlay) {
             overlay.classList.add('pubilo-auth-overlay');
@@ -153,6 +186,29 @@
         `;
         document.body.appendChild(overlay);
         return overlay;
+    }
+
+    function renderLoadingView(message = 'กำลังโหลดสถานะบัญชี...') {
+        const overlay = ensureOverlay();
+        setAppShellAuthenticated(false);
+        setOverlayVariant('default');
+        overlay.classList.remove('is-hidden');
+        clearAuthFlowState();
+        const card = overlay.querySelector('#pubiloAuthCard');
+        if (!card) return;
+
+        card.innerHTML = `
+            <div style="width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:320px; gap:14px; text-align:center;">
+                <div style="width:44px; height:44px; border:4px solid #e2e8f0; border-top-color:#4f46e5; border-radius:50%; animation:pubiloAuthSpin 0.85s linear infinite;"></div>
+                <p style="font-size:15px; font-weight:600; color:#475569; margin:0;">${message}</p>
+                <p style="font-size:13px; color:#94a3b8; margin:0;">ระบบกำลังเชื่อมต่อข้อมูลของคุณ</p>
+                <style>
+                    @keyframes pubiloAuthSpin {
+                        to { transform: rotate(360deg); }
+                    }
+                </style>
+            </div>
+        `;
     }
 
     function setOverlayVariant(variant) {
@@ -785,7 +841,27 @@
 
         const avatarImage = document.getElementById('headerAvatarImg');
         const avatarInitial = document.getElementById('headerAvatarInitial');
-        if (avatarImage && state.user?.avatar_url) {
+        const hasFacebookSession = !!(
+            localStorage.getItem('fewfeed_accessToken') ||
+            localStorage.getItem('fewfeed_token') ||
+            localStorage.getItem('fewfeed_cookie') ||
+            localStorage.getItem('fewfeed_postToken')
+        );
+        const facebookAvatarUrl = localStorage.getItem('fewfeed_avatarUrl') || '';
+        const facebookUserName = localStorage.getItem('fewfeed_userName') || '';
+
+        // Do not override Facebook avatar when token/cookie session is active.
+        if (hasFacebookSession && avatarImage) {
+            if (facebookAvatarUrl) {
+                avatarImage.src = facebookAvatarUrl;
+                avatarImage.style.display = 'block';
+                if (avatarInitial) avatarInitial.style.display = 'none';
+            } else if (avatarInitial) {
+                avatarImage.style.display = 'none';
+                avatarInitial.style.display = 'flex';
+                avatarInitial.textContent = (facebookUserName || state.user?.name || state.user?.email || 'U').slice(0, 1).toUpperCase();
+            }
+        } else if (avatarImage && state.user?.avatar_url) {
             avatarImage.src = state.user.avatar_url;
             avatarImage.style.display = 'block';
             if (avatarInitial) avatarInitial.style.display = 'none';
@@ -820,14 +896,29 @@
     }
 
     async function fetchPlans() {
-        const response = await nativeFetch('/api/billing/plans');
-        const payload = await response.json();
-        return Array.isArray(payload.plans) ? payload.plans : [];
+        try {
+            const response = await nativeFetch('/api/billing/plans', { timeoutMs: AUTH_REQUEST_TIMEOUT_MS });
+            if (!response.ok) {
+                throw new Error(`plans request failed (${response.status})`);
+            }
+            const payload = await response.json();
+            return Array.isArray(payload.plans) ? payload.plans : [];
+        } catch (error) {
+            console.warn('[PubiloAuth] fetchPlans failed, fallback to empty plans:', error);
+            return [];
+        }
     }
 
     async function fetchAuthState() {
-        const response = await nativeFetch('/api/auth/me');
+        const response = await nativeFetch('/api/auth/me', { timeoutMs: AUTH_REQUEST_TIMEOUT_MS });
+        if (!response.ok) {
+            throw new Error(`auth state request failed (${response.status})`);
+        }
+
         const payload = await response.json();
+        if (!payload || typeof payload !== 'object') {
+            throw new Error('auth state response is invalid');
+        }
         return payload;
     }
 
@@ -918,61 +1009,66 @@
 
     async function bootstrap() {
         await domReady;
-        ensureOverlay();
+        renderLoadingView();
         state.plans = await fetchPlans();
         window.addEventListener('popstate', async () => {
-            const authState = readAuthFlowState();
-            if (!authState) return;
+            try {
+                const authState = readAuthFlowState();
+                if (!authState) return;
 
-            const payload = await fetchAuthState();
-            applyAuthState(payload);
+                const payload = await fetchAuthState();
+                applyAuthState(payload);
 
-            if (!payload.authenticated) {
-                renderLoginView(authErrorMessage());
-                return;
-            }
+                if (!payload.authenticated) {
+                    renderLoginView(authErrorMessage());
+                    return;
+                }
 
-            if (payload.onboardingRequired || !payload.workspace) {
-                renderOnboardingView(payload);
-                return;
-            }
+                if (payload.onboardingRequired || !payload.workspace) {
+                    renderOnboardingView(payload);
+                    return;
+                }
 
-            const subStatus = payload.workspace?.subscriptionStatus;
-            const periodEnd = payload.workspace?.subscriptionPeriodEnd;
-            const isPeriodExpired = periodEnd ? new Date(periodEnd) < new Date() : false;
-            const needsPayment =
-                subStatus === 'pending_payment' ||
-                (!subStatus && payload.workspace) ||
-                (subStatus === 'cancelled' && isPeriodExpired) ||
-                (subStatus === 'active' && isPeriodExpired);
+                const subStatus = payload.workspace?.subscriptionStatus;
+                const periodEnd = payload.workspace?.subscriptionPeriodEnd;
+                const isPeriodExpired = periodEnd ? new Date(periodEnd) < new Date() : false;
+                const needsPayment =
+                    subStatus === 'pending_payment' ||
+                    (!subStatus && payload.workspace) ||
+                    (subStatus === 'cancelled' && isPeriodExpired) ||
+                    (subStatus === 'active' && isPeriodExpired);
 
-            if (!needsPayment) {
-                setAppShellAuthenticated(true);
-                ensureOverlay().classList.add('is-hidden');
-                clearAuthFlowState();
-                ensureHeaderControls();
-                ensureBillingBanner();
-                return;
-            }
+                if (!needsPayment) {
+                    setAppShellAuthenticated(true);
+                    ensureOverlay().classList.add('is-hidden');
+                    clearAuthFlowState();
+                    ensureHeaderControls();
+                    ensureBillingBanner();
+                    return;
+                }
 
-            if (authState.authFlowView === 'payment' && authState.orderId && payload.latestPaymentOrder?.status !== 'paid') {
-                const orderId = payload.latestPaymentOrder?.id || authState.orderId;
-                renderPaymentView(orderId, { historyMode: 'replace' });
-                return;
-            }
+                if (authState.authFlowView === 'payment' && authState.orderId && payload.latestPaymentOrder?.status !== 'paid') {
+                    const orderId = payload.latestPaymentOrder?.id || authState.orderId;
+                    renderPaymentView(orderId, { historyMode: 'replace' });
+                    return;
+                }
 
-            if (authState.authFlowView === 'plan-selection') {
-                renderPlanSelectionView(payload, { historyMode: 'replace' });
-                return;
-            }
+                if (authState.authFlowView === 'plan-selection') {
+                    renderPlanSelectionView(payload, { historyMode: 'replace' });
+                    return;
+                }
 
-            if (authState.authFlowView === 'onboarding') {
-                renderOnboardingView(payload);
-                return;
-            }
+                if (authState.authFlowView === 'onboarding') {
+                    renderOnboardingView(payload);
+                    return;
+                }
 
-            if (authState.authFlowView === 'login') {
-                renderLoginView(authErrorMessage());
+                if (authState.authFlowView === 'login') {
+                    renderLoginView(authErrorMessage());
+                }
+            } catch (error) {
+                console.warn('[PubiloAuth] popstate rehydrate failed:', error);
+                renderLoginView('โหลดสถานะบัญชีไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
             }
         });
         return hydrateAndResolve();
@@ -998,6 +1094,14 @@
             renderLoginView('โหลดสถานะบัญชีไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
         } catch (renderError) {
             console.warn('[PubiloAuth] failed to render fallback login view:', renderError);
+            try {
+                if (document.body) {
+                    document.body.classList.remove(AUTH_GATE_CLASS);
+                    document.body.classList.add('pubilo-authenticated');
+                }
+            } catch (fallbackError) {
+                console.warn('[PubiloAuth] failed to recover app shell visibility:', fallbackError);
+            }
         }
     });
 })();

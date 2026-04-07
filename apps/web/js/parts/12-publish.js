@@ -1527,6 +1527,7 @@ function setupPublishHandler(mode) {
                 callToActionLabel: ctaConfig.label,
                 fbDtsg: fbDtsg, // Required for GraphQL scheduling
                 hideOnPublish: getHideOnPublishEnabledSnapshot(),
+                allowAdCreativePublish: false,
                 scheduleInSystem: scheduleSource === "manual",
                 scheduledTime: scheduledTime
                     ? Math.floor(scheduledTime.getTime() / 1000)
@@ -1747,7 +1748,7 @@ function setupPublishHandler(mode) {
                     // Try robust session recovery chain (cache -> get_data -> refresh token).
                     let recovered = false;
                     if (typeof syncWithExtensionNow === "function") {
-                        recovered = await syncWithExtensionNow();
+                        recovered = await syncWithExtensionNow({ forceRefresh: true });
                     } else if (typeof refreshFacebookTokensFromExtension === "function") {
                         const refreshResult = await refreshFacebookTokensFromExtension();
                         recovered = !!refreshResult?.success;
@@ -1865,6 +1866,83 @@ function normalizePageCacheOwnerId(ownerId = "") {
     ).trim();
 }
 
+function escapePageNameRegExp(value = "") {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isPlaceholderPageName(name = "", pageId = "") {
+    const normalizedName = String(name || "").trim();
+    const normalizedPageId = String(pageId || "").trim();
+    if (!normalizedName) return true;
+
+    const lowered = normalizedName.toLowerCase();
+    if (["page", "unknown page", "saved page"].includes(lowered)) return true;
+    if (normalizedPageId && normalizedName === normalizedPageId) return true;
+
+    if (/^page\s+\d+$/i.test(normalizedName)) {
+        if (!normalizedPageId) return true;
+        const exactPattern = new RegExp(`^page\\s+${escapePageNameRegExp(normalizedPageId)}$`, "i");
+        if (exactPattern.test(normalizedName)) return true;
+    }
+
+    return false;
+}
+
+function normalizePageName(name = "", pageId = "") {
+    const normalizedPageId = String(pageId || "").trim();
+    const normalizedName = String(name || "").trim();
+    if (!isPlaceholderPageName(normalizedName, normalizedPageId)) {
+        return normalizedName;
+    }
+    return normalizedPageId ? `เพจ ${normalizedPageId}` : "เพจไม่ทราบชื่อ";
+}
+
+function pickPreferredPageName(pageId = "", ...candidates) {
+    const normalizedPageId = String(pageId || "").trim();
+    for (const candidate of candidates) {
+        const normalized = String(candidate || "").trim();
+        if (!normalized) continue;
+        if (!isPlaceholderPageName(normalized, normalizedPageId)) {
+            return normalized;
+        }
+    }
+    return normalizePageName("", normalizedPageId);
+}
+
+function extractPagePictureUrl(candidate) {
+    if (!candidate) return "";
+
+    if (typeof candidate === "string") {
+        return candidate.trim();
+    }
+
+    if (typeof candidate === "object") {
+        const nestedCandidate = candidate?.data?.url
+            || candidate?.url
+            || candidate?.picture?.data?.url
+            || candidate?.picture
+            || "";
+        return typeof nestedCandidate === "string" ? nestedCandidate.trim() : "";
+    }
+
+    return "";
+}
+
+function pickPreferredPagePicture(pageId = "", ...candidates) {
+    for (const candidate of candidates) {
+        const normalized = extractPagePictureUrl(candidate);
+        if (normalized) return normalized;
+    }
+    const normalizedPageId = String(pageId || "").trim();
+    return normalizedPageId
+        ? `https://graph.facebook.com/${normalizedPageId}/picture?type=small`
+        : getEmptyPageAvatarUrl();
+}
+
+function getPageDisplayName(page = {}) {
+    return normalizePageName(page?.name || "", page?.id || "");
+}
+
 function readScopedJsonObject(key, ownerId = "") {
     const normalizedOwnerId = normalizePageCacheOwnerId(ownerId);
     const cacheOwnerId = getPageCacheOwnerId();
@@ -1931,6 +2009,7 @@ function mergeLoadedPageTokens(pages, ownerId = "") {
     pages.forEach((page) => {
         const pageId = String(page?.id || "").trim();
         if (!pageId) return;
+        const existingSummary = summaryMap[pageId] || {};
 
         const accessToken = typeof page?.access_token === "string" ? page.access_token.trim() : "";
         if (accessToken) {
@@ -1939,8 +2018,16 @@ function mergeLoadedPageTokens(pages, ownerId = "") {
 
         summaryMap[pageId] = {
             id: pageId,
-            name: String(page?.name || summaryMap[pageId]?.name || "Page"),
-            picture: page?.picture?.data?.url || summaryMap[pageId]?.picture || "",
+            name: pickPreferredPageName(
+                pageId,
+                page?.name,
+                existingSummary?.name,
+            ),
+            picture: pickPreferredPagePicture(
+                pageId,
+                page?.picture?.data?.url,
+                existingSummary?.picture,
+            ),
         };
     });
 
@@ -1957,10 +2044,10 @@ function getScopedCachedPages(ownerId = "") {
             if (!pageId) return null;
             return {
                 id: pageId,
-                name: String(page?.name || "Page"),
+                name: pickPreferredPageName(pageId, page?.name),
                 picture: {
                     data: {
-                        url: page?.picture || `https://graph.facebook.com/${pageId}/picture?type=small`,
+                        url: pickPreferredPagePicture(pageId, page?.picture),
                     },
                 },
                 color: "#f59e0b",
@@ -1972,10 +2059,7 @@ function getScopedCachedPages(ownerId = "") {
 }
 
 function getPageAvatarUrl(page) {
-    return (
-        page.picture?.data?.url ||
-        `https://graph.facebook.com/${page.id}/picture?type=small`
-    );
+    return pickPreferredPagePicture(page?.id, page?.picture?.data?.url, page?.picture);
 }
 
 function loadStoredTargetPageIds() {
@@ -2105,6 +2189,17 @@ function refreshActivePagePanels() {
     }
 }
 
+function emitPagesUpdated(reason = "") {
+    window.dispatchEvent(
+        new CustomEvent("pubilo:pages-updated", {
+            detail: {
+                reason,
+                count: Array.isArray(allPages) ? allPages.length : 0,
+            },
+        }),
+    );
+}
+
 function clearPrimaryPageSelection() {
     const skeleton = document.getElementById("pageSelectorSkeleton");
     const selector = document.getElementById("pageSelector");
@@ -2119,7 +2214,11 @@ function clearPrimaryPageSelection() {
     localStorage.removeItem("fewfeed_selectedPageName");
     localStorage.removeItem("fewfeed_selectedPagePicture");
     localStorage.removeItem("fewfeed_selectedPageToken");
-    document.getElementById("pageSelect").value = "";
+    const pageSelectInput = document.getElementById("pageSelect");
+    if (pageSelectInput) {
+        pageSelectInput.value = "";
+        pageSelectInput.dispatchEvent(new Event("change"));
+    }
     selectedPageIndex = -1;
 
     const previewName = document.getElementById("previewPageName");
@@ -2147,6 +2246,7 @@ function clearPrimaryPageSelection() {
     renderTextComposerUi();
     updatePendingCount();
     refreshActivePagePanels();
+    emitPagesUpdated("primary-cleared");
 }
 
 function setPrimaryPageById(pageId) {
@@ -2203,22 +2303,23 @@ function renderSelectedTargetStrip(selectedPages) {
     multiPageSelectedStrip.style.display = "flex";
 
     selectedPages.forEach((page) => {
+        const displayName = getPageDisplayName(page);
         const chip = document.createElement("div");
         chip.className = "multi-page-chip";
 
         const avatar = document.createElement("img");
         avatar.className = "multi-page-chip-avatar";
         avatar.src = getPageAvatarUrl(page);
-        avatar.alt = page.name || page.id;
+        avatar.alt = displayName;
 
         const label = document.createElement("span");
-        label.textContent = page.name || page.id;
+        label.textContent = displayName;
 
         const removeBtn = document.createElement("button");
         removeBtn.type = "button";
         removeBtn.className = "multi-page-chip-remove";
         removeBtn.textContent = "×";
-        removeBtn.title = `เอา ${page.name || page.id} ออก`;
+        removeBtn.title = `เอา ${displayName} ออก`;
         removeBtn.addEventListener("click", (event) => {
             event.stopPropagation();
             removeTargetPage(page.id);
@@ -2268,6 +2369,7 @@ function renderMultiPageListItems() {
 
     orderedPages.forEach((page) => {
         const normalizedPageId = String(page.id);
+        const displayName = getPageDisplayName(page);
         const hasPrimarySelection = !!currentPageId;
         const isPrimary = normalizedPageId === currentPageId;
         const isSelected = !isPrimary && selectedTargetPageIds.includes(normalizedPageId);
@@ -2286,13 +2388,13 @@ function renderMultiPageListItems() {
         const avatar = document.createElement("img");
         avatar.className = "multi-page-item-media";
         avatar.src = getPageAvatarUrl(page);
-        avatar.alt = page.name || normalizedPageId;
+        avatar.alt = displayName;
 
         const copy = document.createElement("div");
         copy.className = "page-dropdown-item-info multi-page-item-copy";
 
         const title = document.createElement("h4");
-        title.textContent = page.name || "Page";
+        title.textContent = displayName;
 
         const subtitle = document.createElement("p");
         subtitle.textContent = normalizedPageId;
@@ -2311,12 +2413,12 @@ function renderMultiPageListItems() {
                     ? "×"
                     : "✓";
         action.title = isPrimary
-            ? `${page.name || normalizedPageId} คือเพจหลัก`
+            ? `${displayName} คือเพจหลัก`
             : !hasPrimarySelection
-                ? `ตั้ง ${page.name || normalizedPageId} เป็นเพจหลัก`
+                ? `ตั้ง ${displayName} เป็นเพจหลัก`
                 : isSelected
-                    ? `เอา ${page.name || normalizedPageId} ออก`
-                    : `เลือก ${page.name || normalizedPageId}`;
+                    ? `เอา ${displayName} ออก`
+                    : `เลือก ${displayName}`;
         action.addEventListener("click", (event) => {
             event.stopPropagation();
 
@@ -2483,29 +2585,32 @@ function selectPage(index) {
     const page = allPages[index];
     if (!page) return;
 
-    console.log("[FEWFEED] Selected page:", page.name, "id:", page.id);
+    const pageId = String(page.id || "").trim();
+    if (!pageId) return;
+    const displayName = getPageDisplayName(page);
+
+    console.log("[FEWFEED] Selected page:", displayName, "id:", pageId);
 
     // Save selected page ID and name to localStorage for persistence across refreshes
-    localStorage.setItem("fewfeed_selectedPageId", page.id);
-    localStorage.setItem("fewfeed_selectedPageName", page.name || "Page");
+    localStorage.setItem("fewfeed_selectedPageId", pageId);
+    localStorage.setItem("fewfeed_selectedPageName", displayName);
     const imgUrl =
-        page.picture?.data?.url ||
-        `https://graph.facebook.com/${page.id}/picture?type=small`;
+        pickPreferredPagePicture(pageId, page.picture?.data?.url, page.picture);
     const selectedPageToken = typeof page.access_token === "string" ? page.access_token.trim() : "";
     const cacheOwnerId = normalizePageCacheOwnerId();
     const tokenMap = readScopedPageTokenMap(cacheOwnerId);
     const summaryMap = readScopedPageSummaryMap(cacheOwnerId);
 
-    const mappedToken = tokenMap?.[String(page.id)]?.trim() || "";
+    const mappedToken = tokenMap?.[pageId]?.trim() || "";
     const effectivePageToken = selectedPageToken || mappedToken;
 
     if (selectedPageToken) {
-        tokenMap[String(page.id)] = selectedPageToken;
+        tokenMap[pageId] = selectedPageToken;
         writeScopedPageTokenMap(tokenMap, cacheOwnerId);
     }
-    summaryMap[String(page.id)] = {
-        id: String(page.id),
-        name: page.name || "Page",
+    summaryMap[pageId] = {
+        id: pageId,
+        name: displayName,
         picture: imgUrl || "",
     };
     writeScopedPageSummaryMap(summaryMap, cacheOwnerId);
@@ -2535,9 +2640,13 @@ function selectPage(index) {
 
     // Update content
     document.getElementById("previewPageName").textContent =
-        page.name || "Page";
-    document.getElementById("previewPageId").textContent = page.id;
-    document.getElementById("pageSelect").value = page.id;
+        displayName;
+    document.getElementById("previewPageId").textContent = pageId;
+    const pageSelectInput = document.getElementById("pageSelect");
+    if (pageSelectInput) {
+        pageSelectInput.value = pageId;
+        pageSelectInput.dispatchEvent(new Event("change"));
+    }
     document.getElementById("previewAvatarImg").src = imgUrl;
     localStorage.setItem("fewfeed_selectedPagePicture", imgUrl);
 
@@ -2546,8 +2655,8 @@ function selectPage(index) {
         .querySelectorAll(".page-dropdown-item")
         .forEach((item) => {
             const itemPageId = item.dataset.pageId || "";
-            item.classList.toggle("selected", itemPageId === String(page.id));
-            item.classList.toggle("is-primary", itemPageId === String(page.id));
+            item.classList.toggle("selected", itemPageId === pageId);
+            item.classList.toggle("is-primary", itemPageId === pageId);
         });
 
     syncSelectedTargetPageIds();
@@ -2563,8 +2672,8 @@ function selectPage(index) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-            pageId: page.id,
-            pageName: page.name || "Page",
+            pageId,
+            pageName: displayName,
             pictureUrl: imgUrl || "",
         }),
     }).catch((err) => {
@@ -2587,6 +2696,7 @@ function selectPage(index) {
     }
 
     renderTextComposerUi();
+    emitPagesUpdated("primary-selected");
 }
 
 function hydratePageFromLocalStorageFallback() {
@@ -2602,11 +2712,17 @@ function hydratePageFromLocalStorageFallback() {
 
     const summaryMap = readScopedPageSummaryMap(currentUserId || cacheOwnerId);
     const savedSummary = summaryMap[String(savedPageId)] || {};
-    const savedPageName = savedSummary.name || localStorage.getItem("fewfeed_selectedPageName") || "Saved Page";
+    const savedPageName = pickPreferredPageName(
+        savedPageId,
+        savedSummary.name,
+        localStorage.getItem("fewfeed_selectedPageName"),
+    );
     const savedPicture =
-        savedSummary.picture ||
-        localStorage.getItem("fewfeed_selectedPagePicture") ||
-        `https://graph.facebook.com/${savedPageId}/picture?type=small`;
+        pickPreferredPagePicture(
+            savedPageId,
+            savedSummary.picture,
+            localStorage.getItem("fewfeed_selectedPagePicture"),
+        );
 
     renderPagesDropdown([
         {
@@ -2646,6 +2762,7 @@ function renderPagesDropdown(pages) {
 
     renderMultiPageTargetPicker();
     renderTextComposerUi();
+    emitPagesUpdated("dropdown-rendered");
 }
 
 function requestPagesFromExtension(accessToken) {
@@ -3010,6 +3127,42 @@ function buildFacebookSessionSignature(sessionData) {
     ].join("|");
 }
 
+function buildHeaderAvatarCandidates({ userId = "", accessToken = "", postToken = "", storedAvatarUrl = "" } = {}) {
+    const candidateToken = String(accessToken || postToken || "").trim();
+    const normalizedUserId = String(userId || "").trim();
+    const candidates = [];
+    const seen = new Set();
+
+    const pushCandidate = (url) => {
+        const normalized = String(url || "").trim();
+        if (!normalized || seen.has(normalized)) return;
+        seen.add(normalized);
+        candidates.push(normalized);
+    };
+
+    pushCandidate(storedAvatarUrl);
+
+    if (normalizedUserId && candidateToken) {
+        pushCandidate(
+            `https://graph.facebook.com/${encodeURIComponent(normalizedUserId)}/picture?type=normal&width=72&height=72&access_token=${encodeURIComponent(candidateToken)}`,
+        );
+    }
+
+    if (candidateToken) {
+        pushCandidate(
+            `https://graph.facebook.com/me/picture?type=normal&width=72&height=72&access_token=${encodeURIComponent(candidateToken)}`,
+        );
+    }
+
+    if (normalizedUserId) {
+        pushCandidate(
+            `https://graph.facebook.com/${encodeURIComponent(normalizedUserId)}/picture?type=normal&width=72&height=72`,
+        );
+    }
+
+    return candidates;
+}
+
 async function persistWorkspaceFacebookCredentials(sessionData, source = "extension") {
     const workspaceId = getActiveWorkspaceId();
     const session = normalizeExtensionSessionData(sessionData);
@@ -3032,6 +3185,7 @@ async function persistWorkspaceFacebookCredentials(sessionData, source = "extens
             cookie: session.cookie || null,
             fbDtsg: session.fbDtsg || null,
             userName: session.userName || null,
+            avatarUrl: session.avatarUrl || null,
         }),
     });
     const payload = await response.json().catch(() => ({}));
@@ -3049,7 +3203,13 @@ async function hydrateFacebookCredentialsFromWorkspace() {
     const workspaceId = getActiveWorkspaceId();
     if (!workspaceId) return false;
 
-    const response = await fetch("/api/tokens");
+    const hasLocalAdsToken = !!(
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token")
+    );
+    const response = await fetch(
+        `/api/tokens${hasLocalAdsToken ? "" : "?refreshFromCookie=1"}`,
+    );
     const payload = await response.json().catch(() => ({}));
     const tokens = Array.isArray(payload.tokens) ? payload.tokens : [];
 
@@ -3075,6 +3235,7 @@ async function hydrateFacebookCredentialsFromWorkspace() {
         fbDtsg: preferred.fb_dtsg,
         userId: preferred.user_id,
         userName: preferred.user_name,
+        avatarUrl: preferred.avatar_url,
     }, "workspace-backend", { skipPersist: true, fromWorkspace: true });
 
     updateFacebookConnectBanner({ connected: true });
@@ -3106,7 +3267,7 @@ function normalizeExtensionSessionData(rawData = {}) {
         fbDtsg: pickString(rawData.fbDtsg, rawData.fewfeed_fbDtsg),
         userId: pickString(rawData.userId, rawData.fewfeed_userId),
         userName: pickString(rawData.userName, rawData.fewfeed_userName),
-        avatarUrl: pickString(rawData.avatarUrl, rawData.fewfeed_avatarUrl),
+        avatarUrl: pickString(rawData.avatarUrl, rawData.fewfeed_avatarUrl, rawData.avatar_url),
         pageTokenMap: rawData.pageTokenMap || rawData.fewfeed_pageTokenMap || null,
         pageTokenMapOwnerId: pickString(rawData.pageTokenMapOwnerId),
         pageSummaryMap: rawData.pageSummaryMap || null,
@@ -3142,6 +3303,9 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
     if (ownerChanged) {
         clearPageScopedCache(`${currentPageCacheOwnerId || previousUserId} -> ${incomingUserId}`);
         clearPrimaryPageSelection();
+        // Reset identity-bound presentation fields when Facebook account changes.
+        localStorage.removeItem("fewfeed_avatarUrl");
+        localStorage.removeItem("fewfeed_userName");
     }
 
     const previousAdsToken =
@@ -3156,10 +3320,24 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
 
     persistWorkspaceFacebookSessionSnapshot(session);
 
-    // Always overwrite — clear stale tokens so code-190 loops stop.
-    localStorage.setItem("fewfeed_accessToken", session.adsToken || "");
-    localStorage.setItem("fewfeed_token", session.adsToken || "");
-    fbToken = session.adsToken || "";
+    const normalizedIncomingAdsToken = String(session.adsToken || "").trim();
+    if (normalizedIncomingAdsToken) {
+        localStorage.setItem("fewfeed_accessToken", normalizedIncomingAdsToken);
+        localStorage.setItem("fewfeed_token", normalizedIncomingAdsToken);
+        fbToken = normalizedIncomingAdsToken;
+    } else if (ownerChanged) {
+        // Account switched but no replacement token yet.
+        localStorage.setItem("fewfeed_accessToken", "");
+        localStorage.setItem("fewfeed_token", "");
+        fbToken = "";
+    } else {
+        // Keep previous usable token when extension cache has only cookie/page token map.
+        fbToken =
+            localStorage.getItem("fewfeed_accessToken") ||
+            localStorage.getItem("fewfeed_token") ||
+            fbToken ||
+            "";
+    }
     if (session.postToken) {
         localStorage.setItem("fewfeed_postToken", session.postToken);
         fbPostToken = session.postToken;
@@ -3187,18 +3365,27 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
             const raw = typeof session.pageTokenMap === "string" ? JSON.parse(session.pageTokenMap) : session.pageTokenMap;
             if (raw && typeof raw === "object" && Object.keys(raw).length > 0) {
                 const simpleMap = {};
-                const summaryMap = {};
+                const pageCacheOwnerId = incomingUserId || normalizePageCacheOwnerId();
+                const summaryMap = { ...readScopedPageSummaryMap(pageCacheOwnerId) };
                 for (const [pid, entry] of Object.entries(raw)) {
                     const tok = typeof entry === "string" ? entry : entry?.token;
                     if (tok) simpleMap[pid] = tok;
+                    const existingSummary = summaryMap[pid] || {};
                     summaryMap[pid] = {
                         id: pid,
-                        name: typeof entry === "object" ? entry?.name || "" : "",
-                        picture: typeof entry === "object" ? entry?.picture || "" : "",
+                        name: pickPreferredPageName(
+                            pid,
+                            typeof entry === "object" ? entry?.name : "",
+                            existingSummary?.name,
+                        ),
+                        picture: pickPreferredPagePicture(
+                            pid,
+                            typeof entry === "object" ? entry?.picture : "",
+                            existingSummary?.picture,
+                        ),
                     };
                 }
                 if (Object.keys(simpleMap).length > 0) {
-                    const pageCacheOwnerId = incomingUserId || normalizePageCacheOwnerId();
                     writeScopedPageTokenMap(simpleMap, pageCacheOwnerId);
                     writeScopedPageSummaryMap(summaryMap, pageCacheOwnerId);
                     const currentPageId = typeof getCurrentPageId === "function" ? getCurrentPageId() : "";
@@ -3210,14 +3397,16 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
                     for (const [pid, tok] of Object.entries(simpleMap)) {
                         const pageName = typeof raw[pid] === "object" ? raw[pid]?.name : undefined;
                         const pictureUrl = typeof raw[pid] === "object" ? raw[pid]?.picture : undefined;
+                        const normalizedPageName = pickPreferredPageName(pid, pageName, summaryMap?.[pid]?.name);
+                        const normalizedPictureUrl = pickPreferredPagePicture(pid, pictureUrl, summaryMap?.[pid]?.picture);
                         fetch("/api/page-settings", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                                 pageId: pid,
                                 postToken: tok,
-                                ...(pageName ? { pageName } : {}),
-                                ...(pictureUrl ? { pictureUrl } : {}),
+                                ...(normalizedPageName ? { pageName: normalizedPageName } : {}),
+                                ...(normalizedPictureUrl ? { pictureUrl: normalizedPictureUrl } : {}),
                             }),
                         }).catch(() => {});
                     }
@@ -3513,7 +3702,8 @@ setInterval(async () => {
 }, 30000);
 
 // Manual sync function for cached data only
-async function syncWithExtensionNow() {
+async function syncWithExtensionNow(options = {}) {
+    const forceRefresh = !!(options && options.forceRefresh);
     try {
         if (
             typeof window.pubiloExtension !== "undefined" &&
@@ -3521,7 +3711,7 @@ async function syncWithExtensionNow() {
         ) {
             // Get cached tokens only (no Facebook API calls)
             const cachedData = await window.pubiloExtension.getCachedTokens();
-            if (cachedData && cachedData.success && applyExtensionSessionData(cachedData, "manual-sync-cache")) {
+            if (!forceRefresh && cachedData && cachedData.success && applyExtensionSessionData(cachedData, "manual-sync-cache")) {
                 console.log('[manual-sync] Updated from Extension cache');
                 return true;
             }
@@ -3529,7 +3719,7 @@ async function syncWithExtensionNow() {
 
         // Fallback 1: ask content script for extension storage directly.
         const storedResult = await requestStoredTokensFromExtension();
-        if (storedResult?.success && applyExtensionSessionData(storedResult.session, "manual-sync-get-data")) {
+        if (!forceRefresh && storedResult?.success && applyExtensionSessionData(storedResult.session, "manual-sync-get-data")) {
             console.log("[manual-sync] Updated via FEWFEED_GET_DATA");
             return true;
         }
@@ -3550,6 +3740,17 @@ async function syncWithExtensionNow() {
         if (postRefreshStoredResult?.success && applyExtensionSessionData(postRefreshStoredResult.session, "manual-sync-post-refresh-get-data")) {
             console.log("[manual-sync] Updated via FEWFEED_GET_DATA after refresh");
             return true;
+        }
+
+        if (
+            typeof window.pubiloExtension !== "undefined" &&
+            typeof window.pubiloExtension.getCachedTokens === "function"
+        ) {
+            const cachedAfterRefresh = await window.pubiloExtension.getCachedTokens();
+            if (cachedAfterRefresh && cachedAfterRefresh.success && applyExtensionSessionData(cachedAfterRefresh, "manual-sync-cache-after-refresh")) {
+                console.log("[manual-sync] Updated from Extension cache after refresh");
+                return true;
+            }
         }
 
         return false;
@@ -3609,6 +3810,7 @@ async function bootstrapWorkspaceFacebookFlow() {
         fbDtsg: localStorage.getItem("fewfeed_fbDtsg") || "",
         userId: localStorage.getItem("fewfeed_userId") || "",
         userName: localStorage.getItem("fewfeed_userName") || "",
+        avatarUrl: localStorage.getItem("fewfeed_avatarUrl") || "",
     };
 
     const hasLocalSession = hasAnyExtensionSessionData(localSession);
@@ -3681,10 +3883,54 @@ async function fetchPages(accessToken) {
             try {
                 const extensionPages = await requestPagesFromExtension(accessToken);
                 if (Array.isArray(extensionPages) && extensionPages.length > 0) {
-                    mergeLoadedPageTokens(extensionPages, localStorage.getItem("fewfeed_userId") || "");
-                    renderPagesDropdown(extensionPages);
+                    const normalizedPages = extensionPages.map((page) => {
+                        const pageId = String(page?.id || "").trim();
+                        return {
+                            ...page,
+                            id: pageId,
+                            name: pickPreferredPageName(pageId, page?.name),
+                            picture: {
+                                data: {
+                                    url: pickPreferredPagePicture(
+                                        pageId,
+                                        page?.picture?.data?.url,
+                                        page?.picture,
+                                    ),
+                                },
+                            },
+                        };
+                    });
+
+                    mergeLoadedPageTokens(normalizedPages, localStorage.getItem("fewfeed_userId") || "");
+                    renderPagesDropdown(normalizedPages);
                     fetchAdAccounts(accessToken);
                     console.log("[FEWFEED] Pages loaded from extension:", extensionPages.length);
+
+                    normalizedPages.forEach((page) => {
+                        const pageId = String(page?.id || "").trim();
+                        if (!pageId) return;
+                        const pageName = pickPreferredPageName(pageId, page?.name);
+                        const pictureUrl = pickPreferredPagePicture(
+                            pageId,
+                            page?.picture?.data?.url,
+                            page?.picture,
+                        );
+                        const postToken =
+                            typeof page?.access_token === "string"
+                                ? page.access_token.trim()
+                                : "";
+
+                        fetch("/api/page-settings", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                pageId,
+                                pageName,
+                                pictureUrl,
+                                ...(postToken ? { postToken } : {}),
+                            }),
+                        }).catch(() => {});
+                    });
                     return;
                 }
             } catch (error) {
@@ -3712,8 +3958,8 @@ async function fetchPages(accessToken) {
 
                 const pages = data.pages.map((p) => ({
                     id: p.id,
-                    name: p.name || "Unknown Page",
-                    picture: p.picture || { data: { url: "" } },
+                    name: pickPreferredPageName(p.id, p.name),
+                    picture: p.picture || { data: { url: pickPreferredPagePicture(p.id, p?.picture?.data?.url) } },
                     color: p.color || "#f59e0b",
                 }));
 
@@ -3789,11 +4035,14 @@ function showCookieStatus(
     }
 
     // Update header avatar with user photo or initial
-    if (connected) {
+    const shouldUpdateAvatar = connected || hasToken || hasCookie || effectiveHasPostToken;
+    if (shouldUpdateAvatar) {
         const userId = localStorage.getItem("fewfeed_userId");
-        const accessToken = localStorage.getItem(
-            "fewfeed_accessToken",
-        );
+        const accessToken =
+            localStorage.getItem("fewfeed_accessToken") ||
+            localStorage.getItem("fewfeed_token") ||
+            "";
+        const postToken = localStorage.getItem("fewfeed_postToken") || "";
         const storedAvatarUrl = localStorage.getItem("fewfeed_avatarUrl") || "";
         const avatarImg =
             document.getElementById("headerAvatarImg");
@@ -3801,14 +4050,16 @@ function showCookieStatus(
             "headerAvatarInitial",
         );
 
-        if (storedAvatarUrl && avatarImg) {
-            avatarImg.src = storedAvatarUrl;
-            avatarImg.onload = () => {
-                avatarImg.style.display = "block";
-                if (avatarInitial)
-                    avatarInitial.style.display = "none";
-            };
-            avatarImg.onerror = () => {
+        if (avatarImg) {
+            const avatarCandidates = buildHeaderAvatarCandidates({
+                userId,
+                accessToken,
+                postToken,
+                storedAvatarUrl,
+            });
+            let candidateIndex = 0;
+
+            const showInitial = () => {
                 avatarImg.style.display = "none";
                 if (avatarInitial) {
                     avatarInitial.style.display = "flex";
@@ -3817,23 +4068,27 @@ function showCookieStatus(
                         .toUpperCase();
                 }
             };
-        } else if (userId && accessToken && avatarImg) {
-            const avatarUrl = `https://graph.facebook.com/${userId}/picture?type=normal&width=72&height=72&access_token=${accessToken}`;
-            avatarImg.src = avatarUrl;
-            avatarImg.onload = () => {
-                avatarImg.style.display = "block";
-                if (avatarInitial)
-                    avatarInitial.style.display = "none";
-            };
-            avatarImg.onerror = () => {
-                avatarImg.style.display = "none";
-                if (avatarInitial) {
-                    avatarInitial.style.display = "flex";
-                    avatarInitial.textContent = (userName || "U")
-                        .charAt(0)
-                        .toUpperCase();
+
+            const tryNextAvatar = () => {
+                if (candidateIndex >= avatarCandidates.length) {
+                    showInitial();
+                    return;
                 }
+
+                const nextUrl = avatarCandidates[candidateIndex];
+                candidateIndex += 1;
+                avatarImg.onload = () => {
+                    avatarImg.style.display = "block";
+                    if (avatarInitial)
+                        avatarInitial.style.display = "none";
+                };
+                avatarImg.onerror = () => {
+                    tryNextAvatar();
+                };
+                avatarImg.src = nextUrl;
             };
+
+            tryNextAvatar();
         } else if (avatarInitial) {
             avatarInitial.textContent = (userName || "U")
                 .charAt(0)
@@ -3852,9 +4107,11 @@ function showCookieStatus(
 }
 
 // Token Modal Functions
-function openTokenModal(type) {
+async function openTokenModal(type) {
     const modal = document.getElementById("tokenModal");
-    const adsToken =
+    if (!modal) return;
+
+    let adsToken =
         localStorage.getItem("fewfeed_accessToken") ||
         localStorage.getItem("fewfeed_token") ||
         "";
@@ -3867,33 +4124,163 @@ function openTokenModal(type) {
     const adsItem = document.getElementById("modalAdsItem");
     const cookieItem = document.getElementById("modalCookieItem");
     const postItem = document.getElementById("modalPostItem");
+    const titleEl = document.getElementById("tokenModalTitle");
+    const adsStatusEl = document.getElementById("modalAdsTokenStatus");
+    const adsValueEl = document.getElementById("modalAdsTokenValue");
+    const manualAdsInput = document.getElementById("manualAdsTokenInput");
+
+    const showAdsTokenState = (tokenValue, mode = "default") => {
+        if (!adsStatusEl || !adsValueEl) return;
+        const hasToken = !!String(tokenValue || "").trim();
+        if (mode === "loading") {
+            adsStatusEl.textContent = "Checking...";
+            adsStatusEl.className = "token-status invalid";
+            adsValueEl.textContent = "กำลังดึง Ads Token...";
+            adsValueEl.className = "token-value empty";
+            if (manualAdsInput) manualAdsInput.value = "";
+            return;
+        }
+
+        adsStatusEl.textContent = hasToken ? "Valid" : "Invalid";
+        adsStatusEl.className =
+            "token-status " + (hasToken ? "valid" : "invalid");
+        adsValueEl.textContent = hasToken
+            ? `${String(tokenValue).substring(0, 40)}...`
+            : "(No Ads Token)";
+        adsValueEl.className =
+            "token-value" + (hasToken ? "" : " empty");
+        if (manualAdsInput) {
+            manualAdsInput.value = hasToken ? String(tokenValue) : "";
+        }
+    };
+
+    const withTimeout = async (promise, timeoutMs = 12000) => {
+        return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+                setTimeout(
+                    () =>
+                        reject(
+                            new Error(
+                                `timeout_${Math.max(1, Math.round(timeoutMs / 1000))}s`,
+                            ),
+                        ),
+                    timeoutMs,
+                );
+            }),
+        ]);
+    };
 
     // Hide all first
     if (adsItem) adsItem.style.display = "none";
     if (cookieItem) cookieItem.style.display = "none";
     if (postItem) postItem.style.display = "none";
 
+    // Open modal immediately so the UI never feels stuck.
+    modal.classList.add("show");
+
     // Show only the requested type
     if (type === "ads" && adsItem) {
         adsItem.style.display = "block";
-        const adsStatus = document.getElementById(
-            "modalAdsTokenStatus",
-        );
-        const adsValue =
-            document.getElementById("modalAdsTokenValue");
-        adsStatus.textContent = adsToken ? "Valid" : "Invalid";
-        adsStatus.className =
-            "token-status " + (adsToken ? "valid" : "invalid");
-        adsValue.textContent = adsToken
-            ? adsToken.substring(0, 40) + "..."
-            : "(No Ads Token)";
-        adsValue.className =
-            "token-value" + (adsToken ? "" : " empty");
-        // Pre-fill textarea with current value
-        const manualInput = document.getElementById("manualAdsTokenInput");
-        if (manualInput) manualInput.value = adsToken;
-        document.getElementById("tokenModalTitle").textContent =
-            "🔑 Ads Token";
+        if (titleEl) {
+            titleEl.textContent = "🔑 Ads Token";
+        }
+        showAdsTokenState(adsToken);
+
+        if (!adsToken) {
+            showAdsTokenState("", "loading");
+            try {
+                await withTimeout(syncWithExtensionNow({ forceRefresh: true }), 16000);
+            } catch (_) {
+                // Ignore refresh timeout and continue fallback chain.
+            }
+            adsToken =
+                localStorage.getItem("fewfeed_accessToken") ||
+                localStorage.getItem("fewfeed_token") ||
+                "";
+            showAdsTokenState(adsToken, adsToken ? "default" : "loading");
+        }
+
+        if (!adsToken) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 12000);
+            try {
+                const response = await fetch("/api/tokens?refreshFromCookie=1", {
+                    signal: controller.signal,
+                });
+                const payload = await response.json().catch(() => ({}));
+                const tokens = Array.isArray(payload?.tokens) ? payload.tokens : [];
+                const selected =
+                    tokens.find((token) => String(token?.user_id || "") === String(localStorage.getItem("fewfeed_userId") || "")) ||
+                    tokens[0];
+                const refreshedToken = String(selected?.ads_token || "").trim();
+                if (refreshedToken) {
+                    applyExtensionSessionData(
+                        {
+                            adsToken: refreshedToken,
+                            cookie: selected?.cookie || cookie,
+                            fbDtsg: selected?.fb_dtsg || fbDtsg,
+                            userId: selected?.user_id || localStorage.getItem("fewfeed_userId") || "",
+                            userName: selected?.user_name || localStorage.getItem("fewfeed_userName") || "",
+                            avatarUrl: selected?.avatar_url || localStorage.getItem("fewfeed_avatarUrl") || "",
+                        },
+                        "token-modal-backend-refresh",
+                    );
+                    adsToken =
+                        localStorage.getItem("fewfeed_accessToken") ||
+                        localStorage.getItem("fewfeed_token") ||
+                        refreshedToken;
+                }
+            } catch (_) {
+                // Ignore modal refresh failure; current UI state will still be shown.
+            } finally {
+                clearTimeout(timer);
+            }
+            showAdsTokenState(adsToken, adsToken ? "default" : "loading");
+        }
+
+        if (!adsToken) {
+            try {
+                // Trigger full diagnostic/refresh flow once when token is still missing.
+                await withTimeout(runTokenDiagnostic(), 20000);
+                adsToken =
+                    localStorage.getItem("fewfeed_accessToken") ||
+                    localStorage.getItem("fewfeed_token") ||
+                    "";
+            } catch (_) {
+                // Ignore diagnostic errors here.
+            }
+            showAdsTokenState(adsToken, adsToken ? "default" : "loading");
+        }
+
+        if (!adsToken) {
+            try {
+                // Last local fallback: use first page token from cached map.
+                const rawMap = localStorage.getItem("fewfeed_pageTokenMap") || "{}";
+                const parsed = JSON.parse(rawMap);
+                const map = parsed && typeof parsed === "object" ? parsed : {};
+                const firstEntry = Object.values(map).find((entry) => {
+                    const tokenValue =
+                        typeof entry === "string" ? entry : entry?.token;
+                    return !!String(tokenValue || "").trim();
+                });
+                const fallbackToken = String(
+                    typeof firstEntry === "string"
+                        ? firstEntry
+                        : firstEntry?.token || "",
+                ).trim();
+                if (fallbackToken) {
+                    localStorage.setItem("fewfeed_accessToken", fallbackToken);
+                    localStorage.setItem("fewfeed_token", fallbackToken);
+                    fbToken = fallbackToken;
+                    adsToken = fallbackToken;
+                }
+            } catch (_) {
+                // Ignore JSON parse fallback errors.
+            }
+        }
+
+        showAdsTokenState(adsToken);
     } else if (type === "cookie" && cookieItem) {
         cookieItem.style.display = "block";
         const cookieStatus =
@@ -3913,8 +4300,9 @@ function openTokenModal(type) {
         if (manualCookie) manualCookie.value = cookie;
         const manualDtsg = document.getElementById("manualFbDtsgInput");
         if (manualDtsg) manualDtsg.value = fbDtsg;
-        document.getElementById("tokenModalTitle").textContent =
-            "🍪 Cookie";
+        if (titleEl) {
+            titleEl.textContent = "🍪 Cookie";
+        }
     } else if (type === "post" && postItem) {
         postItem.style.display = "block";
         const postStatus = document.getElementById(
@@ -3931,11 +4319,10 @@ function openTokenModal(type) {
             : "(No Post Token)";
         postValue.className =
             "token-value" + (postToken ? "" : " empty");
-        document.getElementById("tokenModalTitle").textContent =
-            "📮 Post Token";
+        if (titleEl) {
+            titleEl.textContent = "📮 Post Token";
+        }
     }
-
-    modal.classList.add("show");
 }
 
 function closeTokenModal() {
@@ -4055,8 +4442,14 @@ async function clearManualToken(type) {
 
         // Update UI status
         const userId = localStorage.getItem("fewfeed_userId") || "";
+        const hasRemainingSession =
+            !!userId ||
+            !!localStorage.getItem("fewfeed_accessToken") ||
+            !!localStorage.getItem("fewfeed_token") ||
+            !!localStorage.getItem("fewfeed_cookie") ||
+            !!localStorage.getItem("fewfeed_postToken");
         showCookieStatus(
-            !!userId,
+            hasRemainingSession,
             userId,
             localStorage.getItem("fewfeed_userName") || "",
             !!localStorage.getItem("fewfeed_accessToken"),
@@ -4111,6 +4504,173 @@ function copyToken(type) {
     }
 }
 
+function readLocalTokenSnapshot() {
+    const accessToken =
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        "";
+    const cookie = localStorage.getItem("fewfeed_cookie") || "";
+    const userId = localStorage.getItem("fewfeed_userId") || "";
+    const userName = localStorage.getItem("fewfeed_userName") || "";
+    const postToken = localStorage.getItem("fewfeed_postToken") || "";
+    const fbDtsg = localStorage.getItem("fewfeed_fbDtsg") || "";
+    return {
+        hasAdsToken: !!accessToken,
+        hasCookie: !!cookie,
+        hasPostToken: !!postToken,
+        hasFbDtsg: !!fbDtsg,
+        userId: userId || null,
+        userName: userName || null,
+        adsTokenPrefix: accessToken ? `${accessToken.slice(0, 10)}...` : null,
+        cookiePrefix: cookie ? `${cookie.slice(0, 18)}...` : null,
+    };
+}
+
+async function runTokenDiagnostic() {
+    const before = readLocalTokenSnapshot();
+    const output = document.getElementById("tokenDiagnosticOutput");
+
+    let syncResult = false;
+    let extensionStored = { success: false };
+    let extensionRefresh = { success: false };
+    let backendRefresh = { success: false };
+    try {
+        syncResult = await syncWithExtensionNow({ forceRefresh: true });
+    } catch (error) {
+        syncResult = false;
+        extensionRefresh = {
+            success: false,
+            error: error?.message || String(error),
+        };
+    }
+
+    try {
+        extensionStored = await requestStoredTokensFromExtension();
+    } catch (error) {
+        extensionStored = {
+            success: false,
+            error: error?.message || String(error),
+        };
+    }
+
+    try {
+        extensionRefresh = await refreshFacebookTokensFromExtension();
+    } catch (error) {
+        extensionRefresh = {
+            success: false,
+            error: error?.message || String(error),
+        };
+    }
+
+    try {
+        const res = await fetch("/api/tokens?refreshFromCookie=1");
+        const payload = await res.json().catch(() => ({}));
+        const tokens = Array.isArray(payload?.tokens) ? payload.tokens : [];
+        const selected =
+            tokens.find((token) => String(token?.user_id || "") === String(localStorage.getItem("fewfeed_userId") || "")) ||
+            tokens[0];
+        if (selected?.ads_token) {
+            applyExtensionSessionData(
+                {
+                    adsToken: selected.ads_token,
+                    cookie: selected.cookie,
+                    fbDtsg: selected.fb_dtsg,
+                    userId: selected.user_id,
+                    userName: selected.user_name,
+                    avatarUrl: selected.avatar_url,
+                },
+                "token-diagnostic-backend",
+            );
+            backendRefresh = {
+                success: true,
+                source: "api/tokens?refreshFromCookie=1",
+                hasAdsToken: true,
+            };
+        } else {
+            backendRefresh = {
+                success: !!payload?.success,
+                source: "api/tokens?refreshFromCookie=1",
+                hasAdsToken: false,
+                error: payload?.error || null,
+            };
+        }
+    } catch (error) {
+        backendRefresh = {
+            success: false,
+            source: "api/tokens?refreshFromCookie=1",
+            error: error?.message || String(error),
+        };
+    }
+
+    const after = readLocalTokenSnapshot();
+    const report = {
+        timestamp: new Date().toISOString(),
+        syncWithExtensionNowForceRefresh: syncResult,
+        before,
+        after,
+        extensionStored: {
+            success: !!extensionStored?.success,
+            hasSession: !!extensionStored?.session && hasAnyExtensionSessionData(extensionStored.session),
+            hasAdsToken: !!extensionStored?.session?.adsToken,
+            hasCookie: !!extensionStored?.session?.cookie,
+            userId: extensionStored?.session?.userId || null,
+            extensionVersion: extensionStored?.payload?.extensionVersion || null,
+            validationStatus:
+                extensionStored?.payload?.fewfeed_accessTokenValidationStatus || null,
+            validationAt:
+                extensionStored?.payload?.fewfeed_accessTokenValidatedAt || null,
+            error: extensionStored?.error || null,
+        },
+        extensionRefresh: {
+            success: !!extensionRefresh?.success,
+            hasSession: !!extensionRefresh?.session && hasAnyExtensionSessionData(extensionRefresh.session),
+            hasAdsToken: !!extensionRefresh?.session?.adsToken,
+            hasCookie: !!extensionRefresh?.session?.cookie,
+            userId: extensionRefresh?.session?.userId || null,
+            extensionVersion: extensionRefresh?.extensionVersion || null,
+            error: extensionRefresh?.error || null,
+        },
+        backendRefresh,
+    };
+
+    if (output) {
+        output.style.display = "block";
+        output.textContent = JSON.stringify(report, null, 2);
+    }
+
+    if (after.hasAdsToken) {
+        showPublishToast("ตรวจสอบเสร็จ: พบ Ads Token แล้ว", "success");
+    } else if (after.hasCookie) {
+        showPublishToast(
+            "ตรวจสอบเสร็จ: มี cookie แต่ยังไม่พบ Ads Token (ลองเปิด facebook.com/adsmanager แล้วกดตรวจสอบอีกครั้ง)",
+            "warning",
+        );
+    } else {
+        showPublishToast(
+            "ตรวจสอบเสร็จ: ยังไม่พบ cookie/token (กรุณา login Facebook ใน browser profile นี้)",
+            "warning",
+        );
+    }
+}
+
+function setupTokenDiagnosticHandler() {
+    const runBtn = document.getElementById("runTokenDiagnosticBtn");
+    if (!runBtn || runBtn.dataset.bound === "true") return;
+
+    runBtn.dataset.bound = "true";
+    runBtn.addEventListener("click", async () => {
+        const originalText = runBtn.textContent;
+        runBtn.disabled = true;
+        runBtn.textContent = "กำลังตรวจสอบ...";
+        try {
+            await runTokenDiagnostic();
+        } finally {
+            runBtn.disabled = false;
+            runBtn.textContent = originalText || "ตรวจสอบ Extension + Token";
+        }
+    });
+}
+
 // Setup click handlers for status indicators
 function setupTokenModalHandlers() {
     const tokenIndicator =
@@ -4121,31 +4681,69 @@ function setupTokenModalHandlers() {
         document.getElementById("postTokenIndicator");
     const modalOverlay = document.getElementById("tokenModal");
 
-    if (tokenIndicator)
-        tokenIndicator.addEventListener("click", () =>
-            openTokenModal("ads"),
-        );
-    if (cookieIndicator)
-        cookieIndicator.addEventListener("click", () =>
-            openTokenModal("cookie"),
-        );
-    if (postTokenIndicator)
-        postTokenIndicator.addEventListener("click", () =>
-            openTokenModal("post"),
-        );
+    const bindModalKeyAccess = (el, modalType) => {
+        if (!el) return;
+        if (!el.hasAttribute("tabindex")) {
+            el.setAttribute("tabindex", "0");
+        }
+        if (!el.hasAttribute("role")) {
+            el.setAttribute("role", "button");
+        }
+        if (el.dataset.modalKeyBound === "true") return;
+        el.dataset.modalKeyBound = "true";
+        el.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openTokenModal(modalType);
+            }
+        });
+    };
 
-    // Close modal when clicking outside
-    if (modalOverlay) {
-        modalOverlay.addEventListener("click", (e) => {
-            if (e.target === modalOverlay) closeTokenModal();
+    bindModalKeyAccess(tokenIndicator, "ads");
+    bindModalKeyAccess(cookieIndicator, "cookie");
+    bindModalKeyAccess(postTokenIndicator, "post");
+
+    if (document.body.dataset.tokenModalClickBound !== "true") {
+        document.body.dataset.tokenModalClickBound = "true";
+        document.addEventListener("click", (event) => {
+            const trigger = event.target?.closest?.(
+                "#tokenIndicator, #cookieIndicator, #postTokenIndicator, [data-token-modal-type]",
+            );
+            if (!trigger) return;
+            if (trigger.id === "tokenIndicator" || trigger.getAttribute("data-token-modal-type") === "ads") {
+                openTokenModal("ads");
+                return;
+            }
+            if (trigger.id === "cookieIndicator" || trigger.getAttribute("data-token-modal-type") === "cookie") {
+                openTokenModal("cookie");
+                return;
+            }
+            if (trigger.id === "postTokenIndicator" || trigger.getAttribute("data-token-modal-type") === "post") {
+                openTokenModal("post");
+            }
         });
     }
 
+    // Close modal when clicking outside
+    if (modalOverlay) {
+        if (modalOverlay.dataset.bound !== "true") {
+            modalOverlay.dataset.bound = "true";
+            modalOverlay.addEventListener("click", (e) => {
+                if (e.target === modalOverlay) closeTokenModal();
+            });
+        }
+    }
+
     // Close modal with Escape key
-    document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") closeTokenModal();
-        if (e.key === "Escape") closeApiKeyModal();
-    });
+    if (document.body.dataset.tokenModalEscBound !== "true") {
+        document.body.dataset.tokenModalEscBound = "true";
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") closeTokenModal();
+            if (e.key === "Escape") closeApiKeyModal();
+        });
+    }
+
+    setupTokenDiagnosticHandler();
 }
 
 // API Key Modal Functions
@@ -4304,7 +4902,7 @@ function loadSavedData() {
     const hasAnySessionData = !!userId || !!accessToken || !!cookie || !!postToken;
     if (hasAnySessionData) {
         showCookieStatus(
-            !!userId,
+            hasAnySessionData,
             userId || "",
             userName || "",
             !!accessToken,

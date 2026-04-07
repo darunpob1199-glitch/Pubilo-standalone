@@ -226,7 +226,7 @@ function PageDetail({ page, onBack, onDeleted }: { page: Page; onBack: () => voi
                 news_image_size: newsImageSize,
                 news_variation_count: newsVariationCount,
                 hide_types: hideEnabled ? hideTypes : '',
-            } as any)
+            })
             setSaveMsg('บันทึกสำเร็จ ✅')
             setTimeout(() => { setSaveMsg(''); onBack() }, 1200)
         } catch {
