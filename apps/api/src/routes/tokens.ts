@@ -22,7 +22,131 @@ function normalizeGraphError(data: any): string {
     );
 }
 
-async function fetchPageTokensFromFacebookCookie(cookieData: string, accessToken?: string): Promise<{
+type GraphTokenValidationResult = {
+    ok: boolean;
+    reason: 'valid' | 'invalid' | 'network_error';
+    error?: string;
+};
+
+function extractAccessTokenFromHtml(html: string): string {
+    const source = String(html || '');
+    if (!source) return '';
+
+    const tokenChars = '[A-Za-z0-9_-]+';
+    const patterns: RegExp[] = [
+        new RegExp(`__accessToken\\s*=\\s*"(EA${tokenChars})"`),
+        new RegExp(`"__accessToken"\\s*:\\s*"(EA${tokenChars})"`),
+        new RegExp(`__window\\.__accessToken="(EA${tokenChars})"`),
+        new RegExp(`"accessToken":\\s*"(EA${tokenChars})"`),
+        new RegExp(`"access_token":\\s*"(EA${tokenChars})"`),
+        new RegExp(`accessToken['"]\\s*:\\s*['"](EA${tokenChars})['"]`),
+        new RegExp(`access_token=(EA${tokenChars})`),
+    ];
+
+    for (const pattern of patterns) {
+        const match = source.match(pattern);
+        if (match?.[1]) {
+            return String(match[1]).trim();
+        }
+    }
+
+    return '';
+}
+
+async function validateGraphAccessToken(accessToken: string, expectedUserId: string = ''): Promise<GraphTokenValidationResult> {
+    const normalizedToken = String(accessToken || '').trim();
+    const normalizedExpectedUserId = String(expectedUserId || '').trim();
+    if (!normalizedToken) {
+        return { ok: false, reason: 'invalid', error: 'missing_token' };
+    }
+
+    try {
+        const response = await fetch(
+            `https://graph.facebook.com/v21.0/me?fields=id&access_token=${encodeURIComponent(normalizedToken)}`,
+            {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                },
+            },
+        );
+        const data: any = await response.json().catch(() => ({}));
+        if (data?.id && !data?.error) {
+            const graphId = String(data.id || '').trim();
+            if (normalizedExpectedUserId && graphId && graphId !== normalizedExpectedUserId) {
+                return {
+                    ok: false,
+                    reason: 'invalid',
+                    error: `token_user_mismatch:${graphId}`,
+                };
+            }
+
+            const accountsResponse = await fetch(
+                `https://graph.facebook.com/v21.0/me/accounts?fields=id&limit=1&access_token=${encodeURIComponent(normalizedToken)}`,
+                {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    },
+                },
+            );
+            const accountsData: any = await accountsResponse.json().catch(() => ({}));
+            if (Array.isArray(accountsData?.data) && !accountsData?.error) {
+                return { ok: true, reason: 'valid' };
+            }
+
+            const accountErrMsg = normalizeGraphError(accountsData).toLowerCase();
+            const accountErrCode = Number(accountsData?.error?.code || 0);
+            const accountErrSubcode = Number(accountsData?.error?.error_subcode || 0);
+            const accountTokenInvalid = accountErrCode === 190
+                || accountErrCode === 102
+                || accountErrSubcode === 463
+                || accountErrSubcode === 467
+                || accountErrMsg.includes('error validating access token')
+                || accountErrMsg.includes('invalid oauth access token')
+                || accountErrMsg.includes('access token is invalid');
+            if (accountTokenInvalid) {
+                return { ok: false, reason: 'invalid', error: normalizeGraphError(accountsData) };
+            }
+
+            return { ok: false, reason: 'network_error', error: normalizeGraphError(accountsData) };
+        }
+
+        const code = Number(data?.error?.code || 0);
+        const subcode = Number(data?.error?.error_subcode || 0);
+        const message = normalizeGraphError(data).toLowerCase();
+        const isDefinitelyInvalid = code === 190
+            || code === 102
+            || subcode === 463
+            || subcode === 467
+            || message.includes('session has been invalidated')
+            || message.includes('error validating access token')
+            || message.includes('invalid oauth access token')
+            || message.includes('access token has expired')
+            || message.includes('access token is invalid')
+            || message.includes('cannot parse access token');
+
+        if (isDefinitelyInvalid) {
+            return { ok: false, reason: 'invalid', error: normalizeGraphError(data) };
+        }
+
+        if (!response.ok) {
+            return { ok: false, reason: 'network_error', error: normalizeGraphError(data) };
+        }
+
+        return { ok: false, reason: 'network_error', error: normalizeGraphError(data) };
+    } catch (error) {
+        return {
+            ok: false,
+            reason: 'network_error',
+            error: String(error instanceof Error ? error.message : error),
+        };
+    }
+}
+
+async function fetchAccessTokenFromFacebookCookie(
+    cookieData: string,
+    currentAccessToken?: string,
+    expectedUserId: string = '',
+): Promise<{
     success: boolean;
     token?: string;
     error?: string;
@@ -32,38 +156,40 @@ async function fetchPageTokensFromFacebookCookie(cookieData: string, accessToken
         return { success: false, error: 'Missing cookie' };
     }
 
-    const base = 'https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token&limit=100';
-    const candidates: string[] = [];
-    const normalizedAccessToken = String(accessToken || '').trim();
+    const normalizedAccessToken = String(currentAccessToken || '').trim();
     if (normalizedAccessToken) {
-        candidates.push(`${base}&access_token=${encodeURIComponent(normalizedAccessToken)}`);
+        const currentValidation = await validateGraphAccessToken(normalizedAccessToken, expectedUserId);
+        if (currentValidation.ok) {
+            return { success: true, token: normalizedAccessToken };
+        }
     }
-    candidates.push(base);
 
+    const probeUrls = [
+        'https://adsmanager.facebook.com/adsmanager/manage/campaigns',
+        'https://business.facebook.com/latest/home',
+        'https://www.facebook.com/',
+    ];
     let lastError = '';
-    for (const endpoint of candidates) {
+    for (const endpoint of probeUrls) {
         try {
             const response = await fetch(endpoint, { headers });
-            const data: any = await response.json().catch(() => ({}));
-            if (!response.ok || data?.error) {
-                lastError = normalizeGraphError(data);
+            const html = await response.text();
+            const extractedToken = extractAccessTokenFromHtml(html);
+            if (!extractedToken) {
                 continue;
             }
 
-            const pages = Array.isArray(data?.data) ? data.data : [];
-            const firstUsable = pages.find((page: any) => String(page?.access_token || '').trim());
-            const token = String(firstUsable?.access_token || '').trim();
-            if (token) {
-                return { success: true, token };
+            const validation = await validateGraphAccessToken(extractedToken, expectedUserId);
+            if (validation.ok) {
+                return { success: true, token: extractedToken };
             }
-
-            lastError = 'No page access token from Facebook';
+            lastError = validation.error || 'Extracted access token is invalid';
         } catch (error) {
             lastError = String(error instanceof Error ? error.message : error);
         }
     }
 
-    return { success: false, error: lastError || 'Cannot fetch token from cookie' };
+    return { success: false, error: lastError || 'Cannot fetch valid access token from cookie' };
 }
 
 // GET /api/tokens?userId=xxx
@@ -85,34 +211,59 @@ app.get('/', async (c) => {
             let adsToken = await decryptSecret(c.env, row.ads_token_encrypted);
             const cookie = await decryptSecret(c.env, row.cookie_encrypted);
             const fbDtsg = await decryptSecret(c.env, row.fb_dtsg_encrypted);
+            const normalizedAdsToken = String(adsToken || '').trim();
+            const currentValidation = normalizedAdsToken
+                ? await validateGraphAccessToken(normalizedAdsToken, String(row.facebook_user_id || ''))
+                : { ok: false, reason: 'invalid' as const };
 
             const needsCookieRefresh = !!(
                 cookie &&
                 (
                     refreshFromCookie ||
-                    !String(adsToken || '').trim()
+                    !normalizedAdsToken ||
+                    currentValidation.reason === 'invalid'
                 )
             );
+            let shouldPersistTokenUpdate = false;
+            let persistedTokenValue = normalizedAdsToken;
 
             if (needsCookieRefresh) {
-                const refreshed = await fetchPageTokensFromFacebookCookie(
+                const refreshed = await fetchAccessTokenFromFacebookCookie(
                     String(cookie || ''),
-                    String(adsToken || ''),
+                    normalizedAdsToken,
+                    String(row.facebook_user_id || ''),
                 );
-                if (refreshed.success && refreshed.token && refreshed.token !== adsToken) {
+                if (refreshed.success && refreshed.token && refreshed.token !== normalizedAdsToken) {
                     adsToken = refreshed.token;
-                    const now = new Date().toISOString();
-                    await c.env.DB.prepare(`
-                        UPDATE facebook_credentials
-                        SET ads_token_encrypted = ?, updated_at = ?
-                        WHERE id = ?
-                    `).bind(
-                        await encryptSecret(c.env, adsToken),
-                        now,
-                        row.id,
-                    ).run();
-                    row.updated_at = now;
+                    persistedTokenValue = String(refreshed.token || '').trim();
+                    shouldPersistTokenUpdate = true;
+                } else if (!refreshed.success && currentValidation.reason === 'invalid') {
+                    // Prevent recurring regressions: never keep a token that Graph has
+                    // already confirmed as invalid (code 190 / invalid token).
+                    adsToken = '';
+                    persistedTokenValue = '';
+                    shouldPersistTokenUpdate = true;
                 }
+            } else if (currentValidation.reason === 'invalid') {
+                adsToken = '';
+                persistedTokenValue = '';
+                shouldPersistTokenUpdate = true;
+            }
+
+            if (shouldPersistTokenUpdate) {
+                const now = new Date().toISOString();
+                await c.env.DB.prepare(`
+                    UPDATE facebook_credentials
+                    SET ads_token_encrypted = ?, updated_at = ?
+                    WHERE id = ?
+                `).bind(
+                    persistedTokenValue
+                        ? await encryptSecret(c.env, persistedTokenValue)
+                        : null,
+                    now,
+                    row.id,
+                ).run();
+                row.updated_at = now;
             }
 
             tokens.push({

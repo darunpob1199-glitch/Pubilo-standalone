@@ -66,14 +66,28 @@ function shouldPreserveExistingAdsToken(data = {}, existingToken = "", existingU
   const debugReason = String(data?.debug?.reason || data?.reason || "").trim();
   const hardFailStatuses = new Set(["token_invalid", "token_format_invalid", "invalid"]);
   const hardFailReasons = new Set(["token_invalid", "token_format_invalid"]);
+  const softKeepStatuses = new Set([
+    "valid",
+    "valid_user_mismatch",
+    "validation_non_fatal_error",
+  ]);
+  const softKeepReasons = new Set([
+    "timeout",
+    "exception",
+    "content_exception",
+    "network_error",
+  ]);
 
   if (hardFailStatuses.has(validationStatus) || hardFailReasons.has(debugReason)) {
     return false;
   }
 
-  // Keep previously cached token only for soft failures where background did not
-  // conclusively prove that the old token is bad.
-  return true;
+  // Keep cached token only for explicitly soft statuses/reasons.
+  // When status is "missing"/empty we should clear stale token to avoid
+  // poisoning page-list fetches with page-token fallback values.
+  if (softKeepStatuses.has(validationStatus)) return true;
+  if (softKeepReasons.has(debugReason)) return true;
+  return false;
 }
 
 function getPageCacheOwnerId() {
