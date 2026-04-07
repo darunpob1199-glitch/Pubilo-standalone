@@ -3,6 +3,7 @@
  * Live typing preview for Facebook One Card Link Ad
  * Syncs Primary Text input → fb-preview-text with typewriter cursor
  * Also syncs page avatar + name from sidebar page selector
+ * Includes character counter (0/220)
  */
 (function () {
     'use strict';
@@ -10,12 +11,13 @@
     // --- Config ---
     const TYPING_DEBOUNCE_MS = 80;
     const CURSOR_HIDE_DELAY_MS = 1500;
+    const MAX_CHARS = 220;
 
-    // --- Mapping: input ID → preview text element ID ---
+    // --- Mapping: input ID → preview text element ID + char counter ID ---
     const TEXT_MAPPINGS = [
-        { input: 'newsPrimaryText', preview: 'newsFbPreviewText' },
-        { input: 'primaryText', preview: 'linkFbPreviewText' },
-        { input: 'imagePrimaryText', preview: 'imageFbPreviewText' },
+        { input: 'newsPrimaryText', preview: 'newsFbPreviewText', counter: 'newsCharCounter' },
+        { input: 'primaryText', preview: 'linkFbPreviewText', counter: 'linkCharCounter' },
+        { input: 'imagePrimaryText', preview: 'imageFbPreviewText', counter: 'imageCharCounter' },
     ];
 
     // --- Mapping: page selector → fb-preview avatars/names ---
@@ -36,7 +38,6 @@
         if (!input || !preview) return;
 
         const text = input.value || '';
-        const cursor = preview.querySelector('.typing-cursor');
 
         // Set text content, preserving whitespace
         if (text) {
@@ -56,6 +57,26 @@
             }, CURSOR_HIDE_DELAY_MS);
         } else {
             preview.innerHTML = '<span class="typing-cursor"></span>';
+        }
+    }
+
+    /**
+     * Update character counter
+     */
+    function updateCharCounter(inputId, counterId) {
+        const input = document.getElementById(inputId);
+        const counter = document.getElementById(counterId);
+        if (!input || !counter) return;
+
+        const len = (input.value || '').length;
+        counter.textContent = len + '/' + MAX_CHARS;
+
+        // Color coding
+        counter.classList.remove('is-warning', 'is-danger');
+        if (len >= MAX_CHARS) {
+            counter.classList.add('is-danger');
+        } else if (len >= MAX_CHARS * 0.8) {
+            counter.classList.add('is-warning');
         }
     }
 
@@ -98,8 +119,8 @@
      * Initialize all live-preview bindings
      */
     function init() {
-        // Bind text inputs → preview
-        TEXT_MAPPINGS.forEach(({ input, preview }) => {
+        // Bind text inputs → preview + char counter
+        TEXT_MAPPINGS.forEach(({ input, preview, counter }) => {
             const el = document.getElementById(input);
             if (!el) return;
 
@@ -107,11 +128,25 @@
                 updatePreviewText(input, preview);
             }, TYPING_DEBOUNCE_MS);
 
-            el.addEventListener('input', handler);
-            el.addEventListener('change', handler);
+            // Char counter updates immediately (no debounce)
+            const counterHandler = () => {
+                updateCharCounter(input, counter);
+            };
+
+            el.addEventListener('input', (e) => {
+                handler();
+                counterHandler();
+            });
+            el.addEventListener('change', (e) => {
+                handler();
+                counterHandler();
+            });
 
             // Initial sync
-            if (el.value) updatePreviewText(input, preview);
+            if (el.value) {
+                updatePreviewText(input, preview);
+                updateCharCounter(input, counter);
+            }
         });
 
         // Watch for page selector changes (MutationObserver on page name)

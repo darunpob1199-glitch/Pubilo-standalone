@@ -373,6 +373,14 @@
             <!-- ========== NEWS MODE ========== -->
             <div class="mode-container" id="newsModeContainer">
                 <div class="preview-panel">
+                    <!-- Ad Preview Section Header -->
+                    <div class="ad-section-header">
+                        <h3 class="ad-section-title">Ad Preview</h3>
+                        <div class="ad-preview-device-select">
+                            <span>Mobile News Feed</span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                        </div>
+                    </div>
                     <div class="card-preview">
                         <!-- FB Ad Header -->
                         <div class="fb-preview-header">
@@ -414,6 +422,16 @@
                                 <button class="btn-learn-more" id="newsPreviewCardButton">Shop Now</button>
                             </div>
                         </div>
+                        <!-- FB Reactions -->
+                        <div class="fb-preview-reactions">
+                            <div class="fb-reactions-left">
+                                <span class="fb-reaction-icons">👍❤️</span>
+                                <span class="fb-reaction-count"></span>
+                            </div>
+                            <div class="fb-reactions-right">
+                                <span class="fb-comment-count"></span>
+                            </div>
+                        </div>
                         <!-- FB Actions Bar -->
                         <div class="fb-preview-actions">
                             <button class="fb-preview-action"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg> Like</button>
@@ -423,67 +441,71 @@
                     </div>
                 </div>
                 <div class="form-panel">
-                    <div class="card" style="display: flex; flex-direction: column; height: 100%;">
-                        <div
-                            style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: 1rem;">
-                            <button class="btn-publish disabled" id="newsPublishBtn" disabled>SCHEDULE</button>
-                        </div>
+                    <!-- Ad Setup Section Header -->
+                    <div class="ad-section-header">
+                        <h3 class="ad-section-title">Ad Setup</h3>
+                    </div>
+                    <div class="card" style="display: flex; flex-direction: column;">
                         <div class="form-group">
-                            <div
-                                style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.4rem;">
-                                <label class="form-label" for="newsManualScheduleInput" style="margin-bottom: 0;">ตั้งวันเวลา</label>
-                                <button type="button" id="newsManualScheduleClearBtn"
-                                    style="border: 1px solid #d1d5db; background: #fff; color: #4b5563; border-radius: 10px; padding: 0.45rem 0.75rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; white-space: nowrap;">
-                                    ล้างเวลา
-                                </button>
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <label class="form-label" style="margin-bottom: 0;">Primary Text</label>
+                                <span class="char-counter" id="newsCharCounter">0/220</span>
                             </div>
-                            <input type="datetime-local" class="form-input" id="newsManualScheduleInput" step="60">
-                            <small id="newsManualScheduleHint" style="color: #888; margin-top: 4px; display: block;">
-                                ถ้ากรอกไว้ ระบบจะใช้เวลานี้ก่อน auto schedule ใน Settings
-                            </small>
+                            <textarea class="form-textarea" id="newsPrimaryText"
+                                placeholder="เขียนข้อความหลักที่จะแสดงเหนือการ์ดลิงก์ข่าว..." maxlength="220"></textarea>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Link URL</label>
-                            <input type="text" class="form-input" id="newsUrlInput" placeholder="">
+                            <label class="form-label">Website URL</label>
+                            <input type="text" class="form-input" id="newsUrlInput" placeholder="https://...">
                             <small id="newsLazadaStatus" style="color: #888; margin-top: 4px; display: block;"></small>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Primary Text</label>
-                            <textarea class="form-textarea" id="newsPrimaryText"
-                                placeholder="เขียนข้อความหลักที่จะแสดงเหนือการ์ดลิงก์ข่าว..."></textarea>
-                            <small style="color: #888; margin-top: 4px; display: block;">
-                                ข้อความนี้จะเป็นข้อความหลักของโพสต์เหนือการ์ดลิงก์
-                            </small>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">พิกัด</label>
-                            <input type="text" class="form-input" id="newsDescriptionInput"
-                                placeholder="เช่น Telegram Premium ราคาพิเศษ">
-                            <small style="color: #888; margin-top: 4px; display: block;">
-                                ข้อความนี้จะแสดงใต้รูปตรงคำว่า พิกัด :
-                            </small>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">ข้อความปุ่ม</label>
+                            <label class="form-label">Call to Action</label>
                             <select class="form-select" id="newsCtaTypeSelect">
                                 <option value="SHOP_NOW" selected>Shop Now</option>
                                 <option value="LEARN_MORE">Learn More</option>
                                 <option value="SIGN_UP">Sign Up</option>
                                 <option value="BOOK_NOW">Book Now</option>
                             </select>
-                            <small style="color: #888; margin-top: 4px; display: block;">
-                                เลือกประเภทปุ่มที่ต้องการให้แสดงบนโพสต์
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">พิกัด</label>
+                            <input type="text" class="form-input" id="newsDescriptionInput"
+                                placeholder="เช่น Telegram Premium ราคาพิเศษ">
+                        </div>
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+                                <label class="form-label" for="newsManualScheduleInput" style="margin-bottom: 0;">Schedule</label>
+                                <button type="button" id="newsManualScheduleClearBtn" class="schedule-clear-btn">ล้างเวลา</button>
+                            </div>
+                            <input type="datetime-local" class="form-input" id="newsManualScheduleInput" step="60">
+                            <small id="newsManualScheduleHint" style="color: #888; margin-top: 4px; display: block;">
+                                ถ้ากรอกไว้ ระบบจะใช้เวลานี้ก่อน auto schedule ใน Settings
                             </small>
+                        </div>
+                        <div style="margin-top: auto; padding-top: 1rem;">
+                            <button class="btn-publish disabled" id="newsPublishBtn" disabled>Schedule Post</button>
                         </div>
                     </div>
                 </div>
             </div>
             <!-- End newsModeContainer -->
 
+
+
+
             <!-- ========== LINK MODE ========== -->
             <div class="mode-container" id="linkModeContainer">
                 <!-- Preview Panel - Center -->
                 <div class="preview-panel">
+                    <!-- Ad Preview Section Header -->
+                    <div class="ad-section-header">
+                        <h3 class="ad-section-title">Ad Preview</h3>
+                        <div class="ad-preview-device-select">
+                            <span>Mobile News Feed</span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                        </div>
+                    </div>
                     <!-- Card Preview -->
                     <div class="card-preview">
                         <!-- FB Ad Header -->
@@ -558,78 +580,57 @@
                     <input type="hidden" id="pageSelect" value="" />
                     <input type="hidden" id="adAccountSelect" value="" />
 
-                    <div class="card">
-                        <div style="
-                                    display: flex;
-                                    justify-content: flex-start;
-                                    align-items: center;
-                                    margin-bottom: 1rem;
-                                ">
-                            <button class="btn-publish" id="publishBtn">
-                                PUBLISH
-                            </button>
+                    <!-- Ad Setup Section Header -->
+                    <div class="ad-section-header">
+                        <h3 class="ad-section-title">Ad Setup</h3>
+                    </div>
+                    <div class="card" style="display: flex; flex-direction: column;">
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <label class="form-label" style="margin-bottom: 0;">Primary Text</label>
+                                <span class="char-counter" id="linkCharCounter">0/220</span>
+                            </div>
+                            <textarea class="form-textarea" id="primaryText"
+                                placeholder="Write something about your post..." maxlength="220"></textarea>
                         </div>
                         <!-- Link-only fields (hidden in Image mode) -->
                         <div id="linkOnlyFields">
                             <div class="form-group">
-                                <label class="form-label">Link URL</label>
-                                <input type="text" class="form-input" id="linkUrl" placeholder="" />
-                                <small id="lazadaStatus" style="
-                                            color: #888;
-                                            margin-top: 4px;
-                                            display: block;
-                                        "></small>
+                                <label class="form-label">Website URL</label>
+                                <input type="text" class="form-input" id="linkUrl" placeholder="https://..." />
+                                <small id="lazadaStatus" style="color: #888; margin-top: 4px; display: block;"></small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Call to Action</label>
+                                <select class="form-select" id="cardButton">
+                                    <option value="SHOP_NOW" selected>Shop Now</option>
+                                    <option value="LEARN_MORE">Learn More</option>
+                                    <option value="SIGN_UP">Sign Up</option>
+                                    <option value="BOOK_NOW">Book Now</option>
+                                </select>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">พิกัด</label>
                                 <input type="text" class="form-input" id="linkDescriptionInput"
                                     placeholder="เช่น Telegram Premium ราคาพิเศษ" />
-                                <small style="
-                                            color: #888;
-                                            margin-top: 4px;
-                                            display: block;
-                                        ">
-                                    ข้อความนี้จะแสดงใต้รูปตรงคำว่า พิกัด :
-                                </small>
                             </div>
-                            <!-- Hidden inputs for Link Name, Caption, Description (editable via double-click in preview) -->
+                            <!-- Hidden inputs for Link Name, Caption, Description -->
                             <input type="hidden" id="linkName" value="S.LAZADA.CO.TH" />
                             <input type="hidden" id="caption" value="S.LAZADA.CO.TH" />
                             <input type="hidden" id="description" value="" />
                         </div>
                         <div class="form-group">
-                            <div
-                                style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.4rem;">
-                                <label class="form-label" for="linkManualScheduleInput" style="margin-bottom: 0;">ตั้งวันเวลา</label>
-                                <button type="button" id="linkManualScheduleClearBtn"
-                                    style="border: 1px solid #d1d5db; background: #fff; color: #4b5563; border-radius: 10px; padding: 0.45rem 0.75rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; white-space: nowrap;">
-                                    ล้างเวลา
-                                </button>
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+                                <label class="form-label" for="linkManualScheduleInput" style="margin-bottom: 0;">Schedule</label>
+                                <button type="button" id="linkManualScheduleClearBtn" class="schedule-clear-btn">ล้างเวลา</button>
                             </div>
                             <input type="datetime-local" class="form-input" id="linkManualScheduleInput" step="60" />
-                            <small id="linkManualScheduleHint" style="
-                                        color: #888;
-                                        margin-top: 4px;
-                                        display: block;
-                                    ">
+                            <small id="linkManualScheduleHint" style="color: #888; margin-top: 4px; display: block;">
                                 ถ้ากรอกไว้ ระบบจะใช้เวลานี้ก่อน auto schedule ใน Settings
                             </small>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Primary Text</label>
-                            <textarea class="form-textarea" id="primaryText"
-                                placeholder="Write something about your post..."></textarea>
-                        </div>
-                        <!-- Card Button - now controlled from preview -->
-                        <div id="cardButtonGroup" class="form-group" style="display: none">
-                            <select class="form-select" id="cardButton">
-                                <option value="LEARN_MORE">
-                                    Learn More
-                                </option>
-                                <option value="SHOP_NOW" selected>Shop Now</option>
-                                <option value="SIGN_UP">Sign Up</option>
-                                <option value="BOOK_NOW">Book Now</option>
-                            </select>
+                        <div style="margin-top: auto; padding-top: 1rem;">
+                            <button class="btn-publish" id="publishBtn">Schedule Post</button>
                         </div>
                     </div>
                 </div>

@@ -387,6 +387,78 @@ header.header {
     background: #f0f2f5;
 }
 
+/* Facebook reactions row (above action bar) */
+.fb-preview-reactions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px 4px;
+    font-size: 0.82rem;
+    color: #65676B;
+}
+.fb-reactions-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.fb-reaction-icons {
+    font-size: 1rem;
+    letter-spacing: -2px;
+}
+.fb-reaction-count,
+.fb-comment-count {
+    color: #65676B;
+    font-weight: 400;
+}
+
+/* --- AD SECTION HEADERS (Ads Manager style) --- */
+.ad-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 0 16px 0;
+}
+.ad-section-title {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #1d2129;
+    letter-spacing: -0.01em;
+}
+.ad-preview-device-select {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+    background: #ffffff;
+    transition: all 0.15s ease;
+}
+.ad-preview-device-select:hover {
+    border-color: #9ca3af;
+    background: #f9fafb;
+}
+
+/* --- CHARACTER COUNTER --- */
+.char-counter {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #9ca3af;
+    letter-spacing: 0.01em;
+}
+.char-counter.is-warning {
+    color: #f59e0b;
+}
+.char-counter.is-danger {
+    color: #ef4444;
+    font-weight: 600;
+}
+
 /* --- UPLOAD PROMPT REDESIGN --- */
 .upload-prompt {
     display: flex !important;
@@ -426,10 +498,19 @@ header.header {
 .schedule-clear-btn {
     flex-shrink: 0 !important;
     white-space: nowrap !important;
-    padding: 0.6rem 1rem !important;
+    padding: 0.45rem 0.75rem !important;
     border-radius: 10px !important;
-    font-size: 0.85rem !important;
+    font-size: 0.8rem !important;
     font-weight: 600 !important;
+    border: 1px solid #d1d5db !important;
+    background: #fff !important;
+    color: #4b5563 !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+}
+.schedule-clear-btn:hover {
+    background: #f3f4f6 !important;
+    border-color: #9ca3af !important;
 }
 
 /* --- STAT CARDS (Pending/Published/Delete) --- */
