@@ -693,23 +693,33 @@ header.header {
     align-items: center !important;
     justify-content: center !important;
     min-height: 280px !important;
-    gap: 12px !important;
+    gap: 0 !important;
 }
 
 .upload-btn {
-    border: 2px dashed #d1d5db !important;
-    background: rgba(255,255,255,0.7) !important;
-    border-radius: 14px !important;
+    border: none !important;
+    background: transparent !important;
+    border-radius: 16px !important;
     padding: 2rem 3rem !important;
-    color: #6b7280 !important;
-    transition: all 0.2s ease !important;
+    color: #9ca3af !important;
+    transition: all 0.25s ease !important;
     cursor: pointer !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 12px !important;
 }
 .upload-btn:hover {
-    border-color: #8b5cf6 !important;
     background: rgba(139,92,246,0.04) !important;
     color: #7c3aed !important;
-    transform: translateY(-1px) !important;
+    transform: scale(1.05) !important;
+}
+.upload-btn:hover svg {
+    color: #8b5cf6 !important;
+    transform: translateY(-2px);
+}
+.upload-btn svg {
+    transition: all 0.25s ease !important;
 }
 
 /* --- SCHEDULE ROW FIX --- */
