@@ -20,10 +20,10 @@
         { input: 'imagePrimaryText', preview: 'imageFbPreviewText', counter: 'imageCharCounter' },
     ];
 
-    // --- Mapping: URL input → domain display in card link info ---
-    const URL_MAPPINGS = [
-        { input: 'newsUrlInput', caption: 'newsPreviewCaption' },
-        { input: 'linkUrl', caption: 'previewCaption' },
+    // --- Mapping: Caption input → domain display in card link info ---
+    const CAPTION_MAPPINGS = [
+        { input: 'linkName', caption: 'previewCaption' },
+        { input: 'linkName', caption: 'newsPreviewCaption' },
     ];
 
     // --- Mapping: พิกัด input → description display in card link info ---
@@ -40,23 +40,6 @@
     ];
 
     let cursorTimers = {};
-
-    /**
-     * Extract domain from URL string
-     */
-    function extractDomain(url) {
-        if (!url) return '';
-        try {
-            // Add protocol if missing
-            let u = url.trim();
-            if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
-            const hostname = new URL(u).hostname;
-            return hostname.toUpperCase().replace(/^WWW\./, '');
-        } catch (e) {
-            // Fallback: just uppercase the input
-            return url.toUpperCase().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').replace(/^WWW\./, '');
-        }
-    }
 
     /**
      * Update FB preview text with typing cursor
@@ -106,15 +89,17 @@
     }
 
     /**
-     * Update domain display from URL input
+     * Update caption display (user types any text they want)
      */
-    function updateDomainPreview(inputId, captionId) {
+    function updateCaptionPreview(inputId, captionId) {
         const input = document.getElementById(inputId);
         const caption = document.getElementById(captionId);
         if (!input || !caption) return;
 
-        const domain = extractDomain(input.value);
-        caption.textContent = domain || 'DOMAIN.COM';
+        caption.textContent = input.value || '';
+        // Also sync to hidden caption input
+        const hiddenCaption = document.getElementById('caption');
+        if (hiddenCaption) hiddenCaption.value = input.value || '';
     }
 
     /**
@@ -196,9 +181,9 @@
             }
         });
 
-        // 2. URL → domain display
-        URL_MAPPINGS.forEach(({ input, caption }) => {
-            bindInput(input, () => updateDomainPreview(input, caption));
+        // 2. Caption → preview domain text
+        CAPTION_MAPPINGS.forEach(({ input, caption }) => {
+            bindInput(input, () => updateCaptionPreview(input, caption));
         });
 
         // 3. พิกัด → description display
