@@ -34,6 +34,30 @@ function buildFacebookHeaders(cookieData?: string): Record<string, string> | und
     };
 }
 
+function isAuthRelatedErrorMessage(rawMessage: unknown): boolean {
+    const message = String(rawMessage || '').toLowerCase();
+    if (!message) return false;
+    return (
+        message.includes('session has been invalidated') ||
+        message.includes('error validating access token') ||
+        message.includes('invalid oauth access token') ||
+        message.includes('access token has expired') ||
+        message.includes('access token is invalid') ||
+        message.includes('cannot parse access token') ||
+        message.includes('the access token could not be decrypted')
+    );
+}
+
+function isSessionInvalidatedFacebookError(errorLike: any): boolean {
+    const code = Number(errorLike?.code || 0);
+    const type = String(errorLike?.type || '').toLowerCase();
+    const message = String(errorLike?.message || '');
+    if (code === 190) return true;
+    if (code === 463 || code === 467) return true;
+    if (type === 'oauthexception' && isAuthRelatedErrorMessage(message)) return true;
+    return false;
+}
+
 function normalizeBase64Input(raw?: string): string {
     if (!raw || typeof raw !== 'string') return '';
 
@@ -233,7 +257,7 @@ async function fetchFreshPageTokenFromWorkspaceCredentials(
         for (const row of rows.results || []) {
             const adsToken = String(await decryptSecret(env, row?.ads_token_encrypted) || '').trim();
             const cookie = String(await decryptSecret(env, row?.cookie_encrypted) || '').trim();
-            if (!adsToken) continue;
+            if (!adsToken && !cookie) continue;
 
             const token = await fetchFreshPageToken(pageId, adsToken, cookie);
             if (token) {
@@ -2284,6 +2308,7 @@ app.post('/', async (c) => {
             }
 
             let lastFeedError = '';
+            let lastFeedFacebookError: any = null;
             for (const candidateToken of pageTokenCandidates) {
                 let candidateLastError = '';
                 for (let linkIndex = 0; linkIndex < feedLinkCandidates.length; linkIndex += 1) {
@@ -2343,6 +2368,7 @@ app.post('/', async (c) => {
                         });
                     } catch (feedError) {
                         candidateLastError = feedError instanceof Error ? feedError.message : String(feedError);
+                        lastFeedFacebookError = (feedError as { facebookError?: any })?.facebookError || lastFeedFacebookError;
                         if (linkIndex + 1 < feedLinkCandidates.length) {
                             console.warn(
                                 `[publish] feed link attempt failed, retrying with fallback link (${linkIndex + 1}/${feedLinkCandidates.length}):`,
@@ -2395,9 +2421,12 @@ app.post('/', async (c) => {
                 }
             }
 
-            const isSessionInvalidated = /session has been invalidated|error validating access token|changed.*password|security reasons|forbidden/i.test(
-                `${adCreativeError || ''} ${lastFeedError || ''}`
-            );
+            const isSessionInvalidated =
+                isSessionInvalidatedFacebookError(lastFeedFacebookError) ||
+                isAuthRelatedErrorMessage(lastFeedError) ||
+                /changed.*password|security reasons/i.test(
+                    `${adCreativeError || ''} ${lastFeedError || ''}`,
+                );
             const isExpectedCreativeStoryMiss = /did not return object_story_id|materialization disabled/i.test(
                 String(adCreativeError || '')
             );

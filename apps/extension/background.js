@@ -110,6 +110,15 @@ chrome.runtime.onStartup.addListener(() => {
   injectScriptsIntoExistingTabs().catch(() => { });
 });
 
+// On every service-worker start (including extension reload), try to re-inject
+// scripts into already-open tabs so stale invalidated content scripts recover
+// without requiring a manual page refresh.
+setTimeout(() => {
+  injectScriptsIntoExistingTabs().catch((error) => {
+    console.warn("[Pubilo] Initial tab script injection failed:", error?.message || error);
+  });
+}, 250);
+
 // App URLs - supports both local dev and production
 const APP_URLS = [
   "http://localhost:3000/*",
@@ -123,6 +132,7 @@ const APP_URLS = [
 ];
 const PRODUCTION_URL = "https://pubilo.com/";
 const FB_TAB_URLS = [
+  "https://facebook.com/*",
   "https://www.facebook.com/*",
   "https://business.facebook.com/*",
   "https://adsmanager.facebook.com/*"
@@ -132,6 +142,7 @@ const PAGE_TOKEN_MAP_OWNER_KEY = "fewfeed_pageTokenMapOwnerId";
 const ACCESS_TOKEN_VALIDATED_AT_KEY = "fewfeed_accessTokenValidatedAt";
 const ACCESS_TOKEN_VALIDATION_STATUS_KEY = "fewfeed_accessTokenValidationStatus";
 const ACCESS_TOKEN_REVALIDATE_INTERVAL_MS = 2 * 60 * 1000;
+let autoRefreshInFlight = null;
 
 function parseStoredPageTokenMap(rawValue) {
   try {
@@ -140,6 +151,20 @@ function parseStoredPageTokenMap(rawValue) {
   } catch (_) {
     return {};
   }
+}
+
+function scheduleAutoSessionRefresh(reason = "auto_refresh") {
+  if (autoRefreshInFlight) return;
+  autoRefreshInFlight = (async () => {
+    try {
+      await fetchAndStoreToken();
+      await notifyAppTabsSessionUpdated(reason);
+    } catch (error) {
+      console.warn("[FEWFEED] Auto session refresh failed:", error?.message || error);
+    } finally {
+      autoRefreshInFlight = null;
+    }
+  })();
 }
 
 async function notifyAppTabsSessionUpdated(reason = "session_updated") {
@@ -699,6 +724,7 @@ async function extractTokenFromExistingTabs() {
   const tabs = await listUniqueTabsByPatterns([
     "https://adsmanager.facebook.com/*",
     "https://business.facebook.com/*",
+    "https://facebook.com/*",
     "https://www.facebook.com/*",
   ]);
 
@@ -886,6 +912,7 @@ async function fetchAndStoreToken() {
   try {
     const previousData = await chrome.storage.local.get([
       "fewfeed_accessToken",
+      "fewfeed_token",
       "fewfeed_fbDtsg",
       "fewfeed_userId",
       "fewfeed_userName",
@@ -1063,7 +1090,9 @@ async function fetchAndStoreToken() {
     // Fallback: if fresh extraction failed, reuse previous token from the same account
     // when it still validates (or validation endpoint is temporarily unreachable).
     if (!accessToken) {
-      const previousAccessToken = String(previousData.fewfeed_accessToken || "").trim();
+      const previousAccessToken = String(
+        previousData.fewfeed_accessToken || previousData.fewfeed_token || "",
+      ).trim();
       const previousUserId = String(previousData.fewfeed_userId || "").trim();
       const canReusePreviousAccessToken = !!(
         previousAccessToken &&
@@ -1495,7 +1524,7 @@ async function handleTokenExtractedMessage(request = {}) {
     }
   }
 
-  if (extractedDtsg && (acceptedToken || existingData.fewfeed_accessToken)) {
+  if (extractedDtsg && (acceptedToken || existingData.fewfeed_accessToken || existingData.fewfeed_token)) {
     updates.fewfeed_fbDtsg = extractedDtsg;
   }
 
@@ -1503,7 +1532,9 @@ async function handleTokenExtractedMessage(request = {}) {
     updates.fewfeed_avatarUrl = extractedAvatarUrl;
   }
 
-  const resultingToken = acceptedToken || String(existingData.fewfeed_accessToken || "").trim();
+  const resultingToken = acceptedToken || String(
+    existingData.fewfeed_accessToken || existingData.fewfeed_token || "",
+  ).trim();
   updates.fewfeed_ready = !!(resultingToken || cookieString);
 
   await chrome.storage.local.set(updates);
@@ -1604,70 +1635,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           storedUserId &&
           currentCookieUserId !== storedUserId
         );
+
+        // Keep FEWFEED_GET_DATA fast: return cached values immediately and refresh async.
         if (accountChanged) {
-          console.log("[FEWFEED] Stored session belongs to a different Facebook account, forcing refresh:", storedUserId, "->", currentCookieUserId);
-          await fetchAndStoreToken();
+          console.log("[FEWFEED] Account changed, clearing stale token cache and scheduling refresh:", storedUserId, "->", currentCookieUserId);
+          await chrome.storage.local.set({
+            fewfeed_accessToken: "",
+            fewfeed_token: "",
+            fewfeed_fbDtsg: "",
+            [ACCESS_TOKEN_VALIDATED_AT_KEY]: 0,
+            [ACCESS_TOKEN_VALIDATION_STATUS_KEY]: "account_changed",
+          });
           data = await chrome.storage.local.get(readKeys);
-        }
-
-        const currentAccessToken = String(data.fewfeed_accessToken || data.fewfeed_token || "").trim();
-        const tokenCheckedAt = Number(data[ACCESS_TOKEN_VALIDATED_AT_KEY] || 0);
-        const shouldRevalidateAccessToken = !!(
-          currentAccessToken &&
-          (!tokenCheckedAt || (Date.now() - tokenCheckedAt) > ACCESS_TOKEN_REVALIDATE_INTERVAL_MS)
-        );
-        if (shouldRevalidateAccessToken) {
-          const validation = await validateGraphAccessToken(
-            currentAccessToken,
-            currentCookieUserId || storedUserId,
-            cookieSnapshot.cookieString || String(data.fewfeed_cookie || ""),
+          scheduleAutoSessionRefresh("account_changed");
+        } else {
+          const hasPageTokenMap = (() => {
+            const parsed = parseStoredPageTokenMap(data[PAGE_TOKEN_MAP_KEY]);
+            return Object.keys(parsed).length > 0;
+          })();
+          const hasAccessToken = !!String(data.fewfeed_accessToken || data.fewfeed_token || "").trim();
+          const hasUsableSession = !!(hasAccessToken || hasPageTokenMap);
+          const lastFetchAt = Number(data.fewfeed_lastFetch || 0);
+          const shouldRefreshMissingAdsToken = !!(
+            !hasAccessToken &&
+            data.fewfeed_cookie &&
+            (!lastFetchAt || (Date.now() - lastFetchAt) > 60 * 1000)
           );
-          if (validation.ok) {
-            await chrome.storage.local.set({
-              [ACCESS_TOKEN_VALIDATED_AT_KEY]: Date.now(),
-              [ACCESS_TOKEN_VALIDATION_STATUS_KEY]: validation.userMismatch ? "valid_user_mismatch" : "valid",
-            });
-            data[ACCESS_TOKEN_VALIDATED_AT_KEY] = Date.now();
-            data[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = validation.userMismatch ? "valid_user_mismatch" : "valid";
-          } else if (validation.reason !== "network_error") {
-            console.warn("[FEWFEED] Stored access token failed validation, clearing stale token:", validation.reason, validation.error || "");
-            await chrome.storage.local.set({
-              fewfeed_accessToken: "",
-              fewfeed_token: "",
-              fewfeed_fbDtsg: "",
-              [ACCESS_TOKEN_VALIDATED_AT_KEY]: Date.now(),
-              [ACCESS_TOKEN_VALIDATION_STATUS_KEY]: validation.reason || "invalid",
-            });
-            data = await chrome.storage.local.get(readKeys);
-          } else {
-            await chrome.storage.local.set({
-              [ACCESS_TOKEN_VALIDATED_AT_KEY]: Date.now(),
-              [ACCESS_TOKEN_VALIDATION_STATUS_KEY]: "network_error",
-            });
-            data[ACCESS_TOKEN_VALIDATED_AT_KEY] = Date.now();
-            data[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = "network_error";
-          }
-        }
+          const tokenCheckedAt = Number(data[ACCESS_TOKEN_VALIDATED_AT_KEY] || 0);
+          const shouldRevalidateAccessToken = !!(
+            hasAccessToken &&
+            (!tokenCheckedAt || (Date.now() - tokenCheckedAt) > ACCESS_TOKEN_REVALIDATE_INTERVAL_MS)
+          );
 
-        const hasPageTokenMap = (() => {
-          const parsed = parseStoredPageTokenMap(data[PAGE_TOKEN_MAP_KEY]);
-          return Object.keys(parsed).length > 0;
-        })();
-        const hasAccessToken = !!String(data.fewfeed_accessToken || data.fewfeed_token || "").trim();
-        const hasUsableSession = !!(hasAccessToken || hasPageTokenMap);
-        const lastFetchAt = Number(data.fewfeed_lastFetch || 0);
-        const shouldRefreshMissingAdsToken = !!(
-          !hasAccessToken &&
-          data.fewfeed_cookie &&
-          (!lastFetchAt || (Date.now() - lastFetchAt) > 60 * 1000)
-        );
-        if (!hasUsableSession || shouldRefreshMissingAdsToken) {
-          // Auto-refresh once so FEWFEED_GET_DATA can recover without manual retries.
-          try {
-            await fetchAndStoreToken();
-            data = await chrome.storage.local.get(readKeys);
-          } catch (refreshError) {
-            console.warn("[FEWFEED] getStoredData auto-refresh failed:", refreshError?.message || refreshError);
+          if (!hasUsableSession || shouldRefreshMissingAdsToken || shouldRevalidateAccessToken) {
+            scheduleAutoSessionRefresh(
+              !hasUsableSession
+                ? "missing_session"
+                : shouldRefreshMissingAdsToken
+                  ? "missing_ads_token"
+                  : "revalidate_stale_access_token",
+            );
           }
         }
 
@@ -1675,12 +1682,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           success: true,
           extensionVersion: chrome.runtime.getManifest().version,
           accessToken: data.fewfeed_accessToken,
+          fewfeed_token: data.fewfeed_token || "",
           fbDtsg: data.fewfeed_fbDtsg,
           userId: data.fewfeed_userId,
           userName: data.fewfeed_userName,
           avatarUrl: data.fewfeed_avatarUrl || "",
           cookie: data.fewfeed_cookie,
           ready: data.fewfeed_ready,
+          fewfeed_accessTokenValidatedAt: data[ACCESS_TOKEN_VALIDATED_AT_KEY] || 0,
+          fewfeed_accessTokenValidationStatus: data[ACCESS_TOKEN_VALIDATION_STATUS_KEY] || "",
           pageTokenMap: data[PAGE_TOKEN_MAP_KEY] || "{}",
           pageTokenMapOwnerId: data[PAGE_TOKEN_MAP_OWNER_KEY] || ""
         });
@@ -1823,6 +1833,7 @@ async function schedulePostViaGraphQL(postId, pageId, fbDtsg, scheduledTime) {
     const tabs = await chrome.tabs.query({});
     let fbTab = tabs.find(tab =>
       tab.url && (
+        tab.url.includes("facebook.com") ||
         tab.url.includes("www.facebook.com") ||
         tab.url.includes("business.facebook.com")
       )
@@ -2415,4 +2426,4 @@ async function getLazadaCookies() {
 // END LAZADA SECTION
 // ============================================
 
-console.log("[Pubilo] Background v9.1.3 loaded - MAIN-world token probe + resilient extraction");
+console.log("[Pubilo] Background v9.1.6 loaded - supports facebook.com root domain + resilient extraction");

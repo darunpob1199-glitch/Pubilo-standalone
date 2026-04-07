@@ -1411,11 +1411,25 @@ function setupPublishHandler(mode) {
                 fbToken ||
                 localStorage.getItem("fewfeed_accessToken") ||
                 localStorage.getItem("fewfeed_token");
-            const freshPageToken = await getFreshPageTokenFromExtension(pageId, adsToken);
+            let freshPageToken = await getFreshPageTokenFromExtension(pageId, adsToken);
             const cachedPageToken =
                 localStorage.getItem("fewfeed_selectedPageToken") ||
                 localStorage.getItem("fewfeed_postToken") ||
                 "";
+            let resolvedPageToken =
+                freshPageToken ||
+                getPageToken() ||
+                cachedPageToken ||
+                "";
+            if (!resolvedPageToken) {
+                const workspacePageToken = await hydrateSelectedPageTokenFromWorkspace(pageId, {
+                    silent: true,
+                });
+                if (workspacePageToken) {
+                    freshPageToken = freshPageToken || workspacePageToken;
+                    resolvedPageToken = workspacePageToken;
+                }
+            }
             const cookie =
                 fbCookie || localStorage.getItem("fewfeed_cookie");
             let adAccountId =
@@ -1428,9 +1442,9 @@ function setupPublishHandler(mode) {
                 }
             }
 
-            if (!adsToken) {
+            if (!adsToken && !resolvedPageToken) {
                 throw new Error(
-                    "ไม่มี Ads Token กรุณาคลิก icon extension เพื่อ login",
+                    "ไม่มี Ads Token หรือ Page Token กรุณาคลิก icon extension เพื่อ login",
                 );
             }
 
@@ -1452,9 +1466,13 @@ function setupPublishHandler(mode) {
                 );
             }
 
-            console.log(
-                "[FEWFEED] Publishing with Ads Token only (server fetches Page Token)",
-            );
+            if (!adsToken && resolvedPageToken) {
+                console.warn("[FEWFEED] Ads token missing; publishing with page token fallback");
+            } else {
+                console.log(
+                    "[FEWFEED] Publishing with Ads Token only (server fetches Page Token)",
+                );
+            }
 
             const { scheduledTime, scheduleSource } =
                 await resolveScheduledTimeForMode(mode, pageId);
@@ -1518,8 +1536,8 @@ function setupPublishHandler(mode) {
                 primaryText: publishSnapshot.primaryText || "",
                 targetPageIds,
                 postMode: mode,
-                accessToken: adsToken, // Ads Token (server fetches Page Token from this)
-                pageToken: freshPageToken || getPageToken() || cachedPageToken || "",
+                accessToken: adsToken || resolvedPageToken,
+                pageToken: resolvedPageToken,
                 cookieData: cookie,
                 pageId: pageId,
                 adAccountId: adAccountId,
@@ -1748,7 +1766,10 @@ function setupPublishHandler(mode) {
                     // Try robust session recovery chain (cache -> get_data -> refresh token).
                     let recovered = false;
                     if (typeof syncWithExtensionNow === "function") {
-                        recovered = await syncWithExtensionNow({ forceRefresh: true });
+                        recovered = await syncWithExtensionNow({
+                            forceRefresh: true,
+                            requireAdsToken: true,
+                        });
                     } else if (typeof refreshFacebookTokensFromExtension === "function") {
                         const refreshResult = await refreshFacebookTokensFromExtension();
                         recovered = !!refreshResult?.success;
@@ -1762,8 +1783,11 @@ function setupPublishHandler(mode) {
                                 localStorage.getItem("fewfeed_accessToken") ||
                                 localStorage.getItem("fewfeed_token") ||
                                 "";
-                            if (typeof getFreshPageTokenFromExtension === "function" && pageId && latestToken) {
-                                await getFreshPageTokenFromExtension(pageId, latestToken);
+                            if (typeof getFreshPageTokenFromExtension === "function" && pageId) {
+                                await getFreshPageTokenFromExtension(pageId, latestToken || "");
+                            }
+                            if (typeof hydrateSelectedPageTokenFromWorkspace === "function" && pageId) {
+                                await hydrateSelectedPageTokenFromWorkspace(pageId, { silent: true });
                             }
                         } catch (_) {
                             // Best-effort token warm-up; retry can still continue.
@@ -1835,6 +1859,7 @@ let activeAdAccountsFetchPromise = null;
 let activeAdAccountsFetchKey = "";
 let lastAdAccountsFetchAttemptKey = "";
 let lastAdAccountsFetchAttemptAt = 0;
+const pageTokenHydrationInFlight = new Map();
 const TARGET_PAGE_STORAGE_KEY = "fewfeed_targetPageIds";
 const PAGE_TOKEN_MAP_KEY = "fewfeed_pageTokenMap";
 const PAGE_SUMMARY_MAP_KEY = "fewfeed_pageSummaryMap";
@@ -2033,6 +2058,129 @@ function mergeLoadedPageTokens(pages, ownerId = "") {
 
     writeScopedPageTokenMap(tokenMap, normalizedOwnerId);
     writeScopedPageSummaryMap(summaryMap, normalizedOwnerId);
+}
+
+function getTokenFromPageTokenMapByPageId(pageTokenMap, pageId = "") {
+    const normalizedPageId = String(pageId || "").trim();
+    if (!normalizedPageId) return "";
+    try {
+        const parsed =
+            typeof pageTokenMap === "string"
+                ? JSON.parse(pageTokenMap || "{}")
+                : pageTokenMap;
+        const tokenValue =
+            parsed && typeof parsed === "object"
+                ? parsed?.[normalizedPageId]
+                : "";
+        const normalized =
+            typeof tokenValue === "string"
+                ? tokenValue.trim()
+                : String(tokenValue?.token || "").trim();
+        return normalized;
+    } catch (_) {
+        return "";
+    }
+}
+
+function resolveFallbackAdsToken(options = {}) {
+    const localAdsToken = String(
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        "",
+    ).trim();
+    if (localAdsToken) return localAdsToken;
+
+    const fallbackPageId = String(
+        options.pageId ||
+        (typeof getCurrentPageId === "function" ? getCurrentPageId() : "") ||
+        localStorage.getItem("fewfeed_selectedPageId") ||
+        "",
+    ).trim();
+    const selectedPageToken = String(
+        localStorage.getItem("fewfeed_selectedPageToken") ||
+        (typeof getPageToken === "function" ? getPageToken() : "") ||
+        "",
+    ).trim();
+    if (selectedPageToken) return selectedPageToken;
+
+    const mapSource = options.pageTokenMap || localStorage.getItem(PAGE_TOKEN_MAP_KEY) || "{}";
+    const mappedByPageId = getTokenFromPageTokenMapByPageId(mapSource, fallbackPageId);
+    if (mappedByPageId) return mappedByPageId;
+
+    return pickFirstTokenFromPageTokenMap(mapSource);
+}
+
+function ensureLocalAdsTokenFromFallback(options = {}) {
+    const token = resolveFallbackAdsToken(options);
+    if (!token) return "";
+
+    const currentAdsToken = String(
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        "",
+    ).trim();
+    if (!currentAdsToken) {
+        localStorage.setItem("fewfeed_accessToken", token);
+        localStorage.setItem("fewfeed_token", token);
+        fbToken = token;
+    }
+    return token;
+}
+
+async function hydrateSelectedPageTokenFromWorkspace(pageId, options = {}) {
+    const normalizedPageId = String(pageId || "").trim();
+    if (!normalizedPageId) return "";
+
+    if (pageTokenHydrationInFlight.has(normalizedPageId)) {
+        return pageTokenHydrationInFlight.get(normalizedPageId);
+    }
+
+    const hydratePromise = (async () => {
+        try {
+            const response = await fetch(`/api/page-settings?pageId=${encodeURIComponent(normalizedPageId)}`);
+            const payload = await response.json().catch(() => ({}));
+            const workspacePageToken = String(payload?.settings?.post_token || "").trim();
+            if (!workspacePageToken) return "";
+
+            const ownerId = normalizePageCacheOwnerId();
+            const tokenMap = readScopedPageTokenMap(ownerId);
+            tokenMap[normalizedPageId] = workspacePageToken;
+            writeScopedPageTokenMap(tokenMap, ownerId);
+            localStorage.setItem("fewfeed_selectedPageToken", workspacePageToken);
+
+            const tokenInput = document.getElementById("pageTokenInputPanel");
+            if (tokenInput && !tokenInput.value.trim()) {
+                tokenInput.value = workspacePageToken;
+            }
+
+            ensureLocalAdsTokenFromFallback({
+                pageId: normalizedPageId,
+                pageTokenMap: tokenMap,
+            });
+
+            showCookieStatus(
+                true,
+                localStorage.getItem("fewfeed_userId") || "",
+                localStorage.getItem("fewfeed_userName") || "",
+                !!String(localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token") || "").trim(),
+                !!String(localStorage.getItem("fewfeed_cookie") || "").trim(),
+                !!String(localStorage.getItem("fewfeed_postToken") || "").trim(),
+            );
+
+            if (!options.silent) {
+                showPublishToast("กู้คืน Page Token จาก workspace สำเร็จ", "success");
+            }
+            return workspacePageToken;
+        } catch (error) {
+            console.warn("[FEWFEED] Failed to hydrate page token from workspace:", error);
+            return "";
+        }
+    })().finally(() => {
+        pageTokenHydrationInFlight.delete(normalizedPageId);
+    });
+
+    pageTokenHydrationInFlight.set(normalizedPageId, hydratePromise);
+    return hydratePromise;
 }
 
 function getScopedCachedPages(ownerId = "") {
@@ -2615,6 +2763,8 @@ function selectPage(index) {
     };
     writeScopedPageSummaryMap(summaryMap, cacheOwnerId);
 
+    const pageHasStoredToken = Boolean(page?.has_token || page?.hasToken);
+
     if (effectivePageToken) {
         localStorage.setItem("fewfeed_selectedPageToken", effectivePageToken);
         const tokenInput = document.getElementById("pageTokenInputPanel");
@@ -2627,6 +2777,9 @@ function selectPage(index) {
         }
     } else {
         localStorage.removeItem("fewfeed_selectedPageToken");
+        if (pageHasStoredToken) {
+            hydrateSelectedPageTokenFromWorkspace(pageId, { silent: true }).catch(() => {});
+        }
     }
 
     // Hide skeleton, show real selector
@@ -2767,38 +2920,59 @@ function renderPagesDropdown(pages) {
 
 function requestPagesFromExtension(accessToken) {
     return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            window.removeEventListener("message", handleMessage);
-            reject(new Error("Extension ไม่ตอบกลับรายการเพจ"));
-        }, 8000);
+        let requestInterval = null;
+        let settled = false;
 
-        function cleanup() {
+        const finish = (error, pages) => {
+            if (settled) return;
+            settled = true;
             clearTimeout(timeout);
+            if (requestInterval) {
+                clearInterval(requestInterval);
+                requestInterval = null;
+            }
             window.removeEventListener("message", handleMessage);
-        }
+            if (error) {
+                reject(error);
+            } else {
+                resolve(pages || []);
+            }
+        };
+
+        const timeout = setTimeout(() => {
+            finish(new Error("Extension ไม่ตอบกลับรายการเพจ"));
+        }, 8000);
 
         function handleMessage(event) {
             if (event.source !== window) return;
             if (event.data.type !== "FEWFEED_PAGES_RESPONSE") return;
 
-            cleanup();
             const response = event.data.data;
             if (response?.success && Array.isArray(response.pages)) {
-                resolve(response.pages);
+                finish(null, response.pages);
                 return;
             }
 
-            reject(new Error(response?.error || "ดึงรายชื่อเพจไม่สำเร็จ"));
+            finish(new Error(response?.error || "ดึงรายชื่อเพจไม่สำเร็จ"));
         }
 
+        const postRequest = () => {
+            window.postMessage(
+                {
+                    type: "FEWFEED_FETCH_PAGES",
+                    accessToken: accessToken || "",
+                },
+                "*",
+            );
+        };
+
         window.addEventListener("message", handleMessage);
-        window.postMessage(
-            {
-                type: "FEWFEED_FETCH_PAGES",
-                accessToken,
-            },
-            "*",
-        );
+        postRequest();
+        // Retry handshake in case content-script listener is not ready yet.
+        requestInterval = setInterval(() => {
+            if (settled) return;
+            postRequest();
+        }, 1200);
     });
 }
 
@@ -2917,49 +3091,78 @@ async function fetchAdAccounts(accessToken) {
 }
 
 async function getFreshPageTokenFromExtension(pageId, accessToken) {
-    if (!pageId || !accessToken) return "";
+    const normalizedPageId = String(pageId || "").trim();
+    const normalizedAccessToken = String(accessToken || "").trim();
+    const hasCookie = !!String(localStorage.getItem("fewfeed_cookie") || "").trim();
+    if (!normalizedPageId || (!normalizedAccessToken && !hasCookie)) return "";
 
-    try {
-        const pages = await requestPagesFromExtension(accessToken);
-        if (!Array.isArray(pages) || pages.length === 0) return "";
-
-        const matchedPage = pages.find((page) => String(page.id) === String(pageId));
-        const nextToken = typeof matchedPage?.access_token === "string" ? matchedPage.access_token.trim() : "";
-        if (!nextToken) return "";
-
-        const cacheOwnerId = normalizePageCacheOwnerId();
-        const tokenMap = readScopedPageTokenMap(cacheOwnerId);
-        tokenMap[String(pageId)] = nextToken;
-        writeScopedPageTokenMap(tokenMap, cacheOwnerId);
-        localStorage.setItem("fewfeed_selectedPageToken", nextToken);
-
-        const tokenInput = document.getElementById("pageTokenInputPanel");
-        if (tokenInput) {
-            tokenInput.value = nextToken;
-        }
-
-        try {
-            await fetch("/api/page-settings", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    pageId,
-                    postToken: nextToken,
-                    pageName: matchedPage?.name || undefined,
-                    pictureUrl: matchedPage?.picture?.data?.url || undefined,
-                }),
-            });
-        } catch (persistError) {
-            console.warn("[FEWFEED] Failed to persist fresh page token:", persistError);
-        }
-
-        mergeLoadedPageTokens(pages, cacheOwnerId);
-
-        return nextToken;
-    } catch (error) {
-        console.warn("[FEWFEED] Fresh page token fetch failed:", error);
-        return "";
+    let lastError = null;
+    const extensionFetchCandidates = [];
+    if (normalizedAccessToken) {
+        extensionFetchCandidates.push(normalizedAccessToken);
     }
+    if (hasCookie) {
+        extensionFetchCandidates.push("");
+    }
+
+    for (const tokenCandidate of extensionFetchCandidates) {
+        try {
+            const pages = await requestPagesFromExtension(tokenCandidate);
+            if (!Array.isArray(pages) || pages.length === 0) continue;
+
+            const matchedPage = pages.find((page) => String(page.id) === normalizedPageId);
+            const nextToken = typeof matchedPage?.access_token === "string" ? matchedPage.access_token.trim() : "";
+            if (!nextToken) continue;
+
+            const cacheOwnerId = normalizePageCacheOwnerId();
+            const tokenMap = readScopedPageTokenMap(cacheOwnerId);
+            tokenMap[normalizedPageId] = nextToken;
+            writeScopedPageTokenMap(tokenMap, cacheOwnerId);
+            localStorage.setItem("fewfeed_selectedPageToken", nextToken);
+
+            const tokenInput = document.getElementById("pageTokenInputPanel");
+            if (tokenInput) {
+                tokenInput.value = nextToken;
+            }
+
+            try {
+                await fetch("/api/page-settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        pageId: normalizedPageId,
+                        postToken: nextToken,
+                        pageName: matchedPage?.name || undefined,
+                        pictureUrl: matchedPage?.picture?.data?.url || undefined,
+                    }),
+                });
+            } catch (persistError) {
+                console.warn("[FEWFEED] Failed to persist fresh page token:", persistError);
+            }
+
+            mergeLoadedPageTokens(pages, cacheOwnerId);
+
+            ensureLocalAdsTokenFromFallback({
+                pageId: normalizedPageId,
+                pageTokenMap: tokenMap,
+            });
+            return nextToken;
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    const workspaceToken = await hydrateSelectedPageTokenFromWorkspace(normalizedPageId, {
+        silent: true,
+    });
+    if (workspaceToken) {
+        return workspaceToken;
+    }
+
+    if (lastError) {
+        console.warn("[FEWFEED] Fresh page token fetch failed:", lastError);
+    }
+    return "";
 }
 
 function isInvalidFacebookSessionError(data) {
@@ -2989,14 +3192,54 @@ function writeWorkspaceFacebookSessionMap(sessionMap) {
     localStorage.setItem(WORKSPACE_FACEBOOK_SESSION_MAP_KEY, JSON.stringify(sessionMap || {}));
 }
 
+function clearWorkspaceFacebookSessionSnapshot(reason = "") {
+    const workspaceId = getActiveWorkspaceId();
+    if (!workspaceId) return;
+
+    const sessionMap = readWorkspaceFacebookSessionMap();
+    if (!(workspaceId in sessionMap)) return;
+
+    delete sessionMap[workspaceId];
+    writeWorkspaceFacebookSessionMap(sessionMap);
+    if (reason) {
+        console.log("[FEWFEED] Cleared workspace Facebook session snapshot:", reason);
+    }
+}
+
+function extractFacebookUserIdFromCookie(cookieValue = "") {
+    const normalizedCookie = String(cookieValue || "").trim();
+    if (!normalizedCookie) return "";
+
+    const match = normalizedCookie.match(/(?:^|;\s*)c_user=([^;]+)/i);
+    if (!match?.[1]) return "";
+
+    try {
+        return decodeURIComponent(String(match[1] || "").trim());
+    } catch (_) {
+        return String(match[1] || "").trim();
+    }
+}
+
+function getCurrentFacebookBrowserUserId() {
+    const cookieUserId = extractFacebookUserIdFromCookie(
+        localStorage.getItem("fewfeed_cookie") || "",
+    );
+    if (cookieUserId) return cookieUserId;
+    return String(localStorage.getItem("fewfeed_userId") || "").trim();
+}
+
 function persistWorkspaceFacebookSessionSnapshot(sessionData) {
     const workspaceId = getActiveWorkspaceId();
     const normalized = normalizeExtensionSessionData(sessionData);
+    const resolvedUserId = String(
+        normalized.userId || extractFacebookUserIdFromCookie(normalized.cookie),
+    ).trim();
     if (!workspaceId || !hasAnyExtensionSessionData(normalized)) return;
 
     const sessionMap = readWorkspaceFacebookSessionMap();
     sessionMap[workspaceId] = {
         ...normalized,
+        userId: resolvedUserId || normalized.userId || "",
         updatedAt: new Date().toISOString(),
     };
     writeWorkspaceFacebookSessionMap(sessionMap);
@@ -3065,7 +3308,10 @@ function ensureFacebookConnectBanner() {
         }
 
         try {
-            const synced = await syncWithExtensionNow();
+            const synced = await syncWithExtensionNow({
+                forceRefresh: shouldRequireAdsTokenSync(),
+                requireAdsToken: shouldRequireAdsTokenSync(),
+            });
             if (synced) {
                 showPublishToast("เชื่อม Facebook เข้ากับ workspace แล้ว");
             } else {
@@ -3116,9 +3362,12 @@ function updateFacebookConnectBanner(options = {}) {
 
 function buildFacebookSessionSignature(sessionData) {
     const session = normalizeExtensionSessionData(sessionData);
+    const resolvedUserId = String(
+        session.userId || extractFacebookUserIdFromCookie(session.cookie),
+    ).trim();
     return [
         getActiveWorkspaceId(),
-        session.userId,
+        resolvedUserId,
         session.adsToken,
         session.postToken,
         session.cookie,
@@ -3166,27 +3415,41 @@ function buildHeaderAvatarCandidates({ userId = "", accessToken = "", postToken 
 async function persistWorkspaceFacebookCredentials(sessionData, source = "extension") {
     const workspaceId = getActiveWorkspaceId();
     const session = normalizeExtensionSessionData(sessionData);
+    const resolvedUserId = String(
+        session.userId || extractFacebookUserIdFromCookie(session.cookie),
+    ).trim();
 
     if (!workspaceId) return false;
-    if (!session.userId) return false;
+    if (!resolvedUserId) return false;
     if (!(session.adsToken || session.cookie || session.fbDtsg)) return false;
 
-    const signature = buildFacebookSessionSignature(session);
+    const signature = buildFacebookSessionSignature({
+        ...session,
+        userId: resolvedUserId,
+    });
     if (signature === lastPersistedFacebookSessionSignature) {
         return true;
+    }
+
+    const requestBody = {
+        userId: resolvedUserId,
+        userName: session.userName || null,
+        avatarUrl: session.avatarUrl || null,
+    };
+    if (session.adsToken) {
+        requestBody.adsToken = session.adsToken;
+    }
+    if (session.cookie) {
+        requestBody.cookie = session.cookie;
+    }
+    if (session.fbDtsg) {
+        requestBody.fbDtsg = session.fbDtsg;
     }
 
     const response = await fetch("/api/tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            userId: session.userId,
-            adsToken: session.adsToken || null,
-            cookie: session.cookie || null,
-            fbDtsg: session.fbDtsg || null,
-            userName: session.userName || null,
-            avatarUrl: session.avatarUrl || null,
-        }),
+        body: JSON.stringify(requestBody),
     });
     const payload = await response.json().catch(() => ({}));
 
@@ -3218,13 +3481,26 @@ async function hydrateFacebookCredentialsFromWorkspace() {
         return false;
     }
 
-    const currentUserId = localStorage.getItem("fewfeed_userId") || "";
+    const currentBrowserUserId = getCurrentFacebookBrowserUserId();
+    const currentUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
     const preferred =
+        tokens.find((token) => String(token.user_id || "") === currentBrowserUserId) ||
         tokens.find((token) => String(token.user_id || "") === currentUserId) ||
-        tokens[0];
+        (!currentBrowserUserId ? tokens[0] : null);
 
     if (!preferred) {
-        updateFacebookConnectBanner({ connected: false });
+        if (currentBrowserUserId) {
+            console.warn(
+                "[FEWFEED] Skipping workspace token hydration because browser Facebook account does not match any stored token:",
+                currentBrowserUserId,
+            );
+            updateFacebookConnectBanner({
+                connected: false,
+                message: "Facebook ใน browser นี้ยังไม่ตรงกับ token ที่บันทึกใน workspace กดดึงจาก Extension อีกครั้งเพื่อ sync account ปัจจุบัน",
+            });
+        } else {
+            updateFacebookConnectBanner({ connected: false });
+        }
         return false;
     }
 
@@ -3257,6 +3533,7 @@ function normalizeExtensionSessionData(rawData = {}) {
             rawData.adsToken,
             rawData.accessToken,
             rawData.fewfeed_accessToken,
+            rawData.fewfeed_token,
             rawData.token,
         ),
         postToken: pickString(
@@ -3269,9 +3546,40 @@ function normalizeExtensionSessionData(rawData = {}) {
         userName: pickString(rawData.userName, rawData.fewfeed_userName),
         avatarUrl: pickString(rawData.avatarUrl, rawData.fewfeed_avatarUrl, rawData.avatar_url),
         pageTokenMap: rawData.pageTokenMap || rawData.fewfeed_pageTokenMap || null,
-        pageTokenMapOwnerId: pickString(rawData.pageTokenMapOwnerId),
+        pageTokenMapOwnerId: pickString(rawData.pageTokenMapOwnerId, rawData.fewfeed_pageTokenMapOwnerId),
         pageSummaryMap: rawData.pageSummaryMap || null,
     };
+}
+
+function hasExtensionPageTokenMap(pageTokenMap) {
+    try {
+        const parsed =
+            typeof pageTokenMap === "string"
+                ? JSON.parse(pageTokenMap || "{}")
+                : pageTokenMap;
+        return !!(parsed && typeof parsed === "object" && Object.keys(parsed).length > 0);
+    } catch (_) {
+        return false;
+    }
+}
+
+function pickFirstTokenFromPageTokenMap(pageTokenMap) {
+    try {
+        const parsed =
+            typeof pageTokenMap === "string"
+                ? JSON.parse(pageTokenMap || "{}")
+                : pageTokenMap;
+        if (!parsed || typeof parsed !== "object") return "";
+        for (const entry of Object.values(parsed)) {
+            const tokenValue =
+                typeof entry === "string" ? entry : entry?.token;
+            const normalized = String(tokenValue || "").trim();
+            if (normalized) return normalized;
+        }
+        return "";
+    } catch (_) {
+        return "";
+    }
 }
 
 function hasAnyExtensionSessionData(session = {}) {
@@ -3280,8 +3588,22 @@ function hasAnyExtensionSessionData(session = {}) {
         session.postToken ||
         session.cookie ||
         session.userId ||
-        session.userName
+        session.userName ||
+        hasExtensionPageTokenMap(session.pageTokenMap)
     );
+}
+
+function getEffectiveAdsTokenForSession(session = {}) {
+    const directToken = String(
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        session.adsToken ||
+        "",
+    ).trim();
+    if (directToken) return directToken;
+    return ensureLocalAdsTokenFromFallback({
+        pageTokenMap: session.pageTokenMap || localStorage.getItem(PAGE_TOKEN_MAP_KEY) || "{}",
+    });
 }
 
 function applyExtensionSessionData(sessionData, source = "extension", options = {}) {
@@ -3291,7 +3613,10 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
     }
 
     const previousUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
-    const incomingUserId = String(session.userId || session.pageTokenMapOwnerId || "").trim();
+    const cookieUserId = extractFacebookUserIdFromCookie(session.cookie);
+    const incomingUserId = String(
+        session.userId || session.pageTokenMapOwnerId || cookieUserId || "",
+    ).trim();
     const currentPageCacheOwnerId = getPageCacheOwnerId();
     const ownerChanged = !!(
         incomingUserId &&
@@ -3303,9 +3628,11 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
     if (ownerChanged) {
         clearPageScopedCache(`${currentPageCacheOwnerId || previousUserId} -> ${incomingUserId}`);
         clearPrimaryPageSelection();
+        clearWorkspaceFacebookSessionSnapshot(`${previousUserId} -> ${incomingUserId}`);
         // Reset identity-bound presentation fields when Facebook account changes.
         localStorage.removeItem("fewfeed_avatarUrl");
         localStorage.removeItem("fewfeed_userName");
+        localStorage.removeItem("fewfeed_postToken");
     }
 
     const previousAdsToken =
@@ -3317,8 +3644,6 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
         localStorage.getItem("fewfeed_postToken") ||
         fbPostToken ||
         "";
-
-    persistWorkspaceFacebookSessionSnapshot(session);
 
     const normalizedIncomingAdsToken = String(session.adsToken || "").trim();
     if (normalizedIncomingAdsToken) {
@@ -3349,8 +3674,8 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
     if (session.fbDtsg) {
         localStorage.setItem("fewfeed_fbDtsg", session.fbDtsg);
     }
-    if (session.userId) {
-        localStorage.setItem("fewfeed_userId", session.userId);
+    if (incomingUserId) {
+        localStorage.setItem("fewfeed_userId", incomingUserId);
     }
     if (session.userName) {
         localStorage.setItem("fewfeed_userName", session.userName);
@@ -3417,7 +3742,13 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
         }
     }
 
-    const effectiveUserId = localStorage.getItem("fewfeed_userId") || session.userId || "";
+    const effectiveUserId =
+        extractFacebookUserIdFromCookie(
+            localStorage.getItem("fewfeed_cookie") || session.cookie || "",
+        ) ||
+        localStorage.getItem("fewfeed_userId") ||
+        incomingUserId ||
+        "";
     const effectiveUserName = localStorage.getItem("fewfeed_userName") || session.userName || "";
     const effectiveAdsToken =
         localStorage.getItem("fewfeed_accessToken") ||
@@ -3432,6 +3763,12 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
         localStorage.getItem("fewfeed_cookie") ||
         session.cookie ||
         "";
+
+    persistWorkspaceFacebookSessionSnapshot({
+        ...session,
+        userId: effectiveUserId,
+        cookie: effectiveCookie,
+    });
 
     showCookieStatus(
         !!(effectiveUserId || effectiveAdsToken || effectiveCookie || effectivePostToken),
@@ -3598,7 +3935,10 @@ window.addEventListener("message", (event) => {
 
         // Request a fresh token sync when extension becomes ready.
         setTimeout(() => {
-            syncWithExtensionNow().catch(() => {});
+            syncWithExtensionNow({
+                forceRefresh: shouldRequireAdsTokenSync(),
+                requireAdsToken: shouldRequireAdsTokenSync(),
+            }).catch(() => {});
         }, 250);
     }
 
@@ -3704,6 +4044,22 @@ setInterval(async () => {
 // Manual sync function for cached data only
 async function syncWithExtensionNow(options = {}) {
     const forceRefresh = !!(options && options.forceRefresh);
+    const requireAdsToken = !!(options && options.requireAdsToken);
+    const applySyncedSession = (sessionLike, source) => {
+        const normalized = normalizeExtensionSessionData(sessionLike);
+        if (!hasAnyExtensionSessionData(normalized)) {
+            return false;
+        }
+        if (!applyExtensionSessionData(normalized, source)) {
+            return false;
+        }
+        const effectiveToken = getEffectiveAdsTokenForSession(normalized);
+        if (requireAdsToken) {
+            if (effectiveToken) return true;
+            return false;
+        }
+        return true;
+    };
     try {
         if (
             typeof window.pubiloExtension !== "undefined" &&
@@ -3711,7 +4067,7 @@ async function syncWithExtensionNow(options = {}) {
         ) {
             // Get cached tokens only (no Facebook API calls)
             const cachedData = await window.pubiloExtension.getCachedTokens();
-            if (!forceRefresh && cachedData && cachedData.success && applyExtensionSessionData(cachedData, "manual-sync-cache")) {
+            if (!forceRefresh && cachedData && cachedData.success && applySyncedSession(cachedData, "manual-sync-cache")) {
                 console.log('[manual-sync] Updated from Extension cache');
                 return true;
             }
@@ -3719,7 +4075,7 @@ async function syncWithExtensionNow(options = {}) {
 
         // Fallback 1: ask content script for extension storage directly.
         const storedResult = await requestStoredTokensFromExtension();
-        if (!forceRefresh && storedResult?.success && applyExtensionSessionData(storedResult.session, "manual-sync-get-data")) {
+        if (!forceRefresh && storedResult?.success && applySyncedSession(storedResult.session, "manual-sync-get-data")) {
             console.log("[manual-sync] Updated via FEWFEED_GET_DATA");
             return true;
         }
@@ -3730,14 +4086,14 @@ async function syncWithExtensionNow(options = {}) {
             return false;
         }
 
-        if (applyExtensionSessionData(refreshResult.session || {}, "manual-sync-refresh")) {
+        if (applySyncedSession(refreshResult.session || {}, "manual-sync-refresh")) {
             console.log("[manual-sync] Updated via FEWFEED_REFRESH_TOKEN");
             return true;
         }
 
         // Final fallback: after refresh, request storage once more (some flows write async to storage).
         const postRefreshStoredResult = await requestStoredTokensFromExtension();
-        if (postRefreshStoredResult?.success && applyExtensionSessionData(postRefreshStoredResult.session, "manual-sync-post-refresh-get-data")) {
+        if (postRefreshStoredResult?.success && applySyncedSession(postRefreshStoredResult.session, "manual-sync-post-refresh-get-data")) {
             console.log("[manual-sync] Updated via FEWFEED_GET_DATA after refresh");
             return true;
         }
@@ -3747,7 +4103,7 @@ async function syncWithExtensionNow(options = {}) {
             typeof window.pubiloExtension.getCachedTokens === "function"
         ) {
             const cachedAfterRefresh = await window.pubiloExtension.getCachedTokens();
-            if (cachedAfterRefresh && cachedAfterRefresh.success && applyExtensionSessionData(cachedAfterRefresh, "manual-sync-cache-after-refresh")) {
+            if (cachedAfterRefresh && cachedAfterRefresh.success && applySyncedSession(cachedAfterRefresh, "manual-sync-cache-after-refresh")) {
                 console.log("[manual-sync] Updated from Extension cache after refresh");
                 return true;
             }
@@ -3769,12 +4125,39 @@ function hasLocalSessionData() {
     );
 }
 
+function hasLocalUsableTokenLike() {
+    const directToken =
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        localStorage.getItem("fewfeed_postToken") ||
+        localStorage.getItem("fewfeed_selectedPageToken") ||
+        "";
+    if (String(directToken || "").trim()) return true;
+
+    if (typeof getPageToken === "function" && String(getPageToken() || "").trim()) {
+        return true;
+    }
+
+    const fromMap = pickFirstTokenFromPageTokenMap(
+        localStorage.getItem("fewfeed_pageTokenMap") || "{}",
+    );
+    return !!String(fromMap || "").trim();
+}
+
+function shouldRequireAdsTokenSync() {
+    const hasCookie = !!String(localStorage.getItem("fewfeed_cookie") || "").trim();
+    return hasCookie && !hasLocalUsableTokenLike();
+}
+
 function scheduleEarlyExtensionSyncRetries() {
     const retryDelaysMs = [700, 1500, 3000, 5000, 8000];
     retryDelaysMs.forEach((delay) => {
         setTimeout(async () => {
-            if (hasLocalSessionData()) return;
-            await syncWithExtensionNow().catch(() => {});
+            if (hasLocalUsableTokenLike()) return;
+            await syncWithExtensionNow({
+                forceRefresh: shouldRequireAdsTokenSync(),
+                requireAdsToken: shouldRequireAdsTokenSync(),
+            }).catch(() => {});
         }, delay);
     });
 
@@ -3824,33 +4207,45 @@ async function bootstrapWorkspaceFacebookFlow() {
         }
     }
 
-    const hydrated = await hydrateFacebookCredentialsFromWorkspace().catch((error) => {
-        console.warn("[FEWFEED] Failed to load Facebook credentials from workspace:", error);
+    const synced = await syncWithExtensionNow({
+        forceRefresh: shouldRequireAdsTokenSync(),
+        requireAdsToken: shouldRequireAdsTokenSync(),
+    }).catch((error) => {
+        console.warn("[FEWFEED] Workspace bootstrap sync failed:", error);
         return false;
     });
 
-    if (!hydrated && !hasLocalSessionData()) {
-        const synced = await syncWithExtensionNow().catch((error) => {
-            console.warn("[FEWFEED] Workspace bootstrap sync failed:", error);
+    const hasAdsTokenAfterSync = !!(
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token")
+    );
+    let hydrated = false;
+    if (!hasAdsTokenAfterSync) {
+        hydrated = await hydrateFacebookCredentialsFromWorkspace().catch((error) => {
+            console.warn("[FEWFEED] Failed to load Facebook credentials from workspace:", error);
             return false;
         });
+    }
 
-        if (!synced) {
-            updateFacebookConnectBanner({ connected: false });
-        }
+    if (!synced && !hydrated) {
+        updateFacebookConnectBanner({ connected: false });
     }
 }
 
 // Sync when page becomes visible (user switches back to tab)
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
-        syncWithExtensionNow();
+        syncWithExtensionNow({
+            forceRefresh: shouldRequireAdsTokenSync(),
+            requireAdsToken: shouldRequireAdsTokenSync(),
+        }).catch(() => {});
     }
 });
 
 // Fetch pages, preferring the live list from extension and falling back to D1.
 async function fetchPages(accessToken) {
-    const requestKey = `${String(localStorage.getItem("fewfeed_userId") || "").trim()}::${String(accessToken || "").trim()}`;
+    const activeBrowserUserId = getCurrentFacebookBrowserUserId();
+    const requestKey = `${activeBrowserUserId}::${String(accessToken || "").trim()}`;
     const now = Date.now();
     if (activePagesFetchPromise && activePagesFetchKey === requestKey) {
         return activePagesFetchPromise;
@@ -3879,15 +4274,18 @@ async function fetchPages(accessToken) {
 
     activePagesFetchKey = requestKey;
     activePagesFetchPromise = (async () => {
-        if (accessToken) {
+        const hasCookie = !!String(localStorage.getItem("fewfeed_cookie") || "").trim();
+        const canRequestPagesFromExtension = !!String(accessToken || "").trim() || hasCookie;
+        if (canRequestPagesFromExtension) {
             try {
-                const extensionPages = await requestPagesFromExtension(accessToken);
+                const extensionPages = await requestPagesFromExtension(accessToken || "");
                 if (Array.isArray(extensionPages) && extensionPages.length > 0) {
                     const normalizedPages = extensionPages.map((page) => {
                         const pageId = String(page?.id || "").trim();
                         return {
                             ...page,
                             id: pageId,
+                            has_token: !!String(page?.access_token || "").trim(),
                             name: pickPreferredPageName(pageId, page?.name),
                             picture: {
                                 data: {
@@ -3901,9 +4299,25 @@ async function fetchPages(accessToken) {
                         };
                     });
 
+                    const shouldSeedFallbackToken = !String(accessToken || "").trim();
+                    if (shouldSeedFallbackToken) {
+                        const firstPageToken = normalizedPages
+                            .map((page) => String(page?.access_token || "").trim())
+                            .find(Boolean);
+                        if (firstPageToken) {
+                            localStorage.setItem("fewfeed_accessToken", firstPageToken);
+                            localStorage.setItem("fewfeed_token", firstPageToken);
+                            fbToken = firstPageToken;
+                            accessToken = firstPageToken;
+                            console.log("[FEWFEED] Seeded access token from extension page list fallback");
+                        }
+                    }
+
                     mergeLoadedPageTokens(normalizedPages, localStorage.getItem("fewfeed_userId") || "");
                     renderPagesDropdown(normalizedPages);
-                    fetchAdAccounts(accessToken);
+                    if (accessToken) {
+                        fetchAdAccounts(accessToken);
+                    }
                     console.log("[FEWFEED] Pages loaded from extension:", extensionPages.length);
 
                     normalizedPages.forEach((page) => {
@@ -3938,7 +4352,7 @@ async function fetchPages(accessToken) {
             }
         }
 
-        const currentUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+        const currentUserId = activeBrowserUserId;
         const scopedCachedPages = getScopedCachedPages(currentUserId);
         if (scopedCachedPages.length > 0) {
             renderPagesDropdown(scopedCachedPages);
@@ -3946,33 +4360,37 @@ async function fetchPages(accessToken) {
             return;
         }
 
-        // Workspace-scoped pages from D1 (safe: tied to Pubilo session, not "unscoped Facebook data").
-        // Previously we skipped this when fewfeed_userId was set, which left the sidebar empty whenever
-        // the extension did not return /me/accounts (common on pubilo.com or after token-only sync).
-        try {
-            const response = await fetch("/api/pages");
-            const data = await response.json();
+        // Only use workspace DB pages when we do not know which Facebook account
+        // the current browser belongs to. Once we know the active browser account,
+        // showing unscoped workspace pages risks rendering pages from a previous account.
+        const canUseWorkspaceDbFallback = !currentUserId || !hasLocalUsableTokenLike();
+        if (canUseWorkspaceDbFallback) {
+            try {
+                const response = await fetch("/api/pages");
+                const data = await response.json();
 
-            if (data.success && data.pages && data.pages.length > 0) {
-                console.log("[FEWFEED] Loaded", data.pages.length, "pages from workspace DB");
+                if (data.success && data.pages && data.pages.length > 0) {
+                    console.log("[FEWFEED] Loaded", data.pages.length, "pages from workspace DB");
 
-                const pages = data.pages.map((p) => ({
-                    id: p.id,
-                    name: pickPreferredPageName(p.id, p.name),
-                    picture: p.picture || { data: { url: pickPreferredPagePicture(p.id, p?.picture?.data?.url) } },
-                    color: p.color || "#f59e0b",
-                }));
+                    const pages = data.pages.map((p) => ({
+                        id: p.id,
+                        name: pickPreferredPageName(p.id, p.name),
+                        picture: p.picture || { data: { url: pickPreferredPagePicture(p.id, p?.picture?.data?.url) } },
+                        color: p.color || "#f59e0b",
+                        has_token: Boolean(p.has_token || p.hasToken),
+                    }));
 
-                renderPagesDropdown(pages);
-                return;
+                    renderPagesDropdown(pages);
+                    return;
+                }
+                console.log("[FEWFEED] No pages returned from /api/pages");
+            } catch (error) {
+                console.error("[FEWFEED] Failed to fetch pages from API:", error);
             }
-            console.log("[FEWFEED] No pages returned from /api/pages");
-        } catch (error) {
-            console.error("[FEWFEED] Failed to fetch pages from API:", error);
         }
 
-        if (currentUserId) {
-            console.warn("[FEWFEED] No pages from extension, scoped cache, or workspace DB for this account");
+        if (currentUserId && !canUseWorkspaceDbFallback) {
+            console.warn("[FEWFEED] No pages from extension or scoped cache for this Facebook account; skipped workspace DB fallback to avoid showing stale pages");
         }
         hydratePageFromLocalStorageFallback();
     })().finally(() => {
@@ -3992,6 +4410,8 @@ function showCookieStatus(
     hasCookie,
     hasPostToken = false,
 ) {
+    const fallbackAdsToken = resolveFallbackAdsToken();
+    const effectiveHasAdsToken = !!hasToken || !!fallbackAdsToken;
     const localPostToken = localStorage.getItem("fewfeed_postToken") || "";
     const panelPostToken = document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
     const selectedPageToken = typeof getPageToken === "function" ? getPageToken() : "";
@@ -4014,7 +4434,7 @@ function showCookieStatus(
     if (tokenIndicator) {
         tokenIndicator.classList.remove("valid", "invalid");
         tokenIndicator.classList.add(
-            hasToken ? "valid" : "invalid",
+            effectiveHasAdsToken ? "valid" : "invalid",
         );
     }
 
@@ -4098,7 +4518,7 @@ function showCookieStatus(
 
     console.log(
         "[FEWFEED] Status updated - AdsToken:",
-        hasToken ? "valid" : "invalid",
+        effectiveHasAdsToken ? "valid" : "invalid",
         "Cookie:",
         hasCookie ? "valid" : "invalid",
         "PostToken:",
@@ -4111,10 +4531,7 @@ async function openTokenModal(type) {
     const modal = document.getElementById("tokenModal");
     if (!modal) return;
 
-    let adsToken =
-        localStorage.getItem("fewfeed_accessToken") ||
-        localStorage.getItem("fewfeed_token") ||
-        "";
+    let adsToken = ensureLocalAdsTokenFromFallback();
     const cookie = localStorage.getItem("fewfeed_cookie") || "";
     const postToken =
         localStorage.getItem("fewfeed_postToken") || "";
@@ -4190,7 +4607,8 @@ async function openTokenModal(type) {
         if (!adsToken) {
             showAdsTokenState("", "loading");
             try {
-                await withTimeout(syncWithExtensionNow({ forceRefresh: true }), 16000);
+                // Quick path first: pull whatever extension already has without forcing a slow refresh.
+                await withTimeout(syncWithExtensionNow({ forceRefresh: false, requireAdsToken: true }), 5000);
             } catch (_) {
                 // Ignore refresh timeout and continue fallback chain.
             }
@@ -4198,12 +4616,37 @@ async function openTokenModal(type) {
                 localStorage.getItem("fewfeed_accessToken") ||
                 localStorage.getItem("fewfeed_token") ||
                 "";
+            if (!adsToken) {
+                adsToken = ensureLocalAdsTokenFromFallback();
+            }
+            showAdsTokenState(adsToken, "default");
+        }
+
+        if (!adsToken) {
+            try {
+                // Slow path: force extension to extract fresh token from Facebook session.
+                await withTimeout(syncWithExtensionNow({ forceRefresh: true, requireAdsToken: true }), 9000);
+            } catch (_) {
+                // Ignore refresh timeout and continue fallback chain.
+            }
+            adsToken =
+                localStorage.getItem("fewfeed_accessToken") ||
+                localStorage.getItem("fewfeed_token") ||
+                "";
+            if (!adsToken) {
+                adsToken = ensureLocalAdsTokenFromFallback();
+            }
             showAdsTokenState(adsToken, adsToken ? "default" : "loading");
         }
 
         if (!adsToken) {
+            try {
+                await withTimeout(syncLocalCookieTokenToWorkspace({ preferLocalToken: false }), 7000);
+            } catch (_) {
+                // Keep fallback chain running even when local->backend sync times out.
+            }
             const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 12000);
+            const timer = setTimeout(() => controller.abort(), 8000);
             try {
                 const response = await fetch("/api/tokens?refreshFromCookie=1", {
                     signal: controller.signal,
@@ -4236,48 +4679,11 @@ async function openTokenModal(type) {
             } finally {
                 clearTimeout(timer);
             }
-            showAdsTokenState(adsToken, adsToken ? "default" : "loading");
+            showAdsTokenState(adsToken, "default");
         }
 
         if (!adsToken) {
-            try {
-                // Trigger full diagnostic/refresh flow once when token is still missing.
-                await withTimeout(runTokenDiagnostic(), 20000);
-                adsToken =
-                    localStorage.getItem("fewfeed_accessToken") ||
-                    localStorage.getItem("fewfeed_token") ||
-                    "";
-            } catch (_) {
-                // Ignore diagnostic errors here.
-            }
-            showAdsTokenState(adsToken, adsToken ? "default" : "loading");
-        }
-
-        if (!adsToken) {
-            try {
-                // Last local fallback: use first page token from cached map.
-                const rawMap = localStorage.getItem("fewfeed_pageTokenMap") || "{}";
-                const parsed = JSON.parse(rawMap);
-                const map = parsed && typeof parsed === "object" ? parsed : {};
-                const firstEntry = Object.values(map).find((entry) => {
-                    const tokenValue =
-                        typeof entry === "string" ? entry : entry?.token;
-                    return !!String(tokenValue || "").trim();
-                });
-                const fallbackToken = String(
-                    typeof firstEntry === "string"
-                        ? firstEntry
-                        : firstEntry?.token || "",
-                ).trim();
-                if (fallbackToken) {
-                    localStorage.setItem("fewfeed_accessToken", fallbackToken);
-                    localStorage.setItem("fewfeed_token", fallbackToken);
-                    fbToken = fallbackToken;
-                    adsToken = fallbackToken;
-                }
-            } catch (_) {
-                // Ignore JSON parse fallback errors.
-            }
+            adsToken = ensureLocalAdsTokenFromFallback();
         }
 
         showAdsTokenState(adsToken);
@@ -4393,15 +4799,23 @@ async function saveManualToken(type) {
 
             // Sync to D1
             const userId = localStorage.getItem("fewfeed_userId") || "manual";
+            const existingAdsToken = String(
+                localStorage.getItem("fewfeed_accessToken") ||
+                localStorage.getItem("fewfeed_token") ||
+                "",
+            ).trim();
+            const requestBody = {
+                userId: userId,
+                cookie: cookieValue,
+                fbDtsg: dtsgValue || null,
+            };
+            if (existingAdsToken) {
+                requestBody.adsToken = existingAdsToken;
+            }
             await fetch("/api/tokens", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    userId: userId,
-                    adsToken: localStorage.getItem("fewfeed_accessToken") || null,
-                    cookie: cookieValue,
-                    fbDtsg: dtsgValue || null
-                })
+                body: JSON.stringify(requestBody)
             });
 
             // Update UI status
@@ -4505,10 +4919,7 @@ function copyToken(type) {
 }
 
 function readLocalTokenSnapshot() {
-    const accessToken =
-        localStorage.getItem("fewfeed_accessToken") ||
-        localStorage.getItem("fewfeed_token") ||
-        "";
+    const accessToken = resolveFallbackAdsToken();
     const cookie = localStorage.getItem("fewfeed_cookie") || "";
     const userId = localStorage.getItem("fewfeed_userId") || "";
     const userName = localStorage.getItem("fewfeed_userName") || "";
@@ -4526,6 +4937,61 @@ function readLocalTokenSnapshot() {
     };
 }
 
+async function syncLocalCookieTokenToWorkspace(options = {}) {
+    const preferLocalToken = options?.preferLocalToken !== false;
+    const userId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+    const cookie = String(localStorage.getItem("fewfeed_cookie") || "").trim();
+    const fbDtsg = String(localStorage.getItem("fewfeed_fbDtsg") || "").trim();
+    const userName = String(localStorage.getItem("fewfeed_userName") || "").trim();
+    const avatarUrl = String(localStorage.getItem("fewfeed_avatarUrl") || "").trim();
+    const adsTokenLocal = String(
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        "",
+    ).trim();
+
+    if (!userId || !cookie) {
+        return {
+            success: false,
+            reason: "missing_user_or_cookie",
+            hasUserId: !!userId,
+            hasCookie: !!cookie,
+        };
+    }
+
+    const body = {
+        userId,
+        cookie,
+        fbDtsg: fbDtsg || null,
+        userName: userName || userId,
+        avatarUrl: avatarUrl || null,
+    };
+    if (preferLocalToken && adsTokenLocal) {
+        body.adsToken = adsTokenLocal;
+    }
+
+    try {
+        const response = await fetch("/api/tokens", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        const payload = await response.json().catch(() => ({}));
+        return {
+            success: !!payload?.success,
+            status: response.status,
+            error: payload?.error || null,
+            sentAdsToken: !!body.adsToken,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            error: error?.message || String(error),
+            sentAdsToken: !!body.adsToken,
+        };
+    }
+}
+
 async function runTokenDiagnostic() {
     const before = readLocalTokenSnapshot();
     const output = document.getElementById("tokenDiagnosticOutput");
@@ -4534,8 +5000,9 @@ async function runTokenDiagnostic() {
     let extensionStored = { success: false };
     let extensionRefresh = { success: false };
     let backendRefresh = { success: false };
+    let backendCookieSync = { success: false };
     try {
-        syncResult = await syncWithExtensionNow({ forceRefresh: true });
+        syncResult = await syncWithExtensionNow({ forceRefresh: true, requireAdsToken: true });
     } catch (error) {
         syncResult = false;
         extensionRefresh = {
@@ -4557,6 +5024,15 @@ async function runTokenDiagnostic() {
         extensionRefresh = await refreshFacebookTokensFromExtension();
     } catch (error) {
         extensionRefresh = {
+            success: false,
+            error: error?.message || String(error),
+        };
+    }
+
+    try {
+        backendCookieSync = await syncLocalCookieTokenToWorkspace({ preferLocalToken: false });
+    } catch (error) {
+        backendCookieSync = {
             success: false,
             error: error?.message || String(error),
         };
@@ -4630,6 +5106,7 @@ async function runTokenDiagnostic() {
             extensionVersion: extensionRefresh?.extensionVersion || null,
             error: extensionRefresh?.error || null,
         },
+        backendCookieSync,
         backendRefresh,
     };
 
@@ -4885,13 +5362,43 @@ if (document.readyState === "loading") {
 
 // Load saved data from localStorage on page load
 function loadSavedData() {
-    const accessToken =
+    let accessToken = String(
         localStorage.getItem("fewfeed_accessToken") ||
-        localStorage.getItem("fewfeed_token");
-    const postToken = localStorage.getItem("fewfeed_postToken");
+        localStorage.getItem("fewfeed_token") ||
+        "",
+    ).trim();
+    let postToken = localStorage.getItem("fewfeed_postToken");
     const cookie = localStorage.getItem("fewfeed_cookie");
-    const userId = localStorage.getItem("fewfeed_userId");
-    const userName = localStorage.getItem("fewfeed_userName");
+    let userId = localStorage.getItem("fewfeed_userId");
+    let userName = localStorage.getItem("fewfeed_userName");
+    const cookieUserId = extractFacebookUserIdFromCookie(cookie);
+
+    if (cookieUserId && userId && cookieUserId !== userId) {
+        console.warn("[FEWFEED] Clearing stale local Facebook identity because cookie user changed:", userId, "->", cookieUserId);
+        clearPageScopedCache(`startup cookie owner mismatch ${userId} -> ${cookieUserId}`);
+        clearPrimaryPageSelection();
+        clearWorkspaceFacebookSessionSnapshot(`startup cookie owner mismatch ${userId} -> ${cookieUserId}`);
+        localStorage.removeItem("fewfeed_accessToken");
+        localStorage.removeItem("fewfeed_token");
+        localStorage.removeItem("fewfeed_postToken");
+        localStorage.removeItem("fewfeed_fbDtsg");
+        localStorage.removeItem("fewfeed_userName");
+        localStorage.removeItem("fewfeed_avatarUrl");
+        localStorage.setItem("fewfeed_userId", cookieUserId);
+        accessToken = "";
+        postToken = "";
+        userId = cookieUserId;
+        userName = "";
+    } else if (cookieUserId && !userId) {
+        localStorage.setItem("fewfeed_userId", cookieUserId);
+        userId = cookieUserId;
+    }
+
+    if (!accessToken) {
+        accessToken = ensureLocalAdsTokenFromFallback({
+            pageId: localStorage.getItem("fewfeed_selectedPageId") || "",
+        });
+    }
 
     console.log("[FEWFEED] Loaded saved data from localStorage");
 
@@ -4912,14 +5419,18 @@ function loadSavedData() {
     }
 
     const pageCacheOwnerId = getPageCacheOwnerId();
-    if (pageCacheOwnerId && userId && pageCacheOwnerId !== userId) {
-        clearPageScopedCache(`startup owner mismatch ${pageCacheOwnerId} -> ${userId}`);
+    const effectiveUserId = cookieUserId || userId || "";
+    if (pageCacheOwnerId && effectiveUserId && pageCacheOwnerId !== effectiveUserId) {
+        clearPageScopedCache(`startup owner mismatch ${pageCacheOwnerId} -> ${effectiveUserId}`);
     } else {
         hydratePageFromLocalStorageFallback();
     }
 
     // Try to refresh tokens from extension cache immediately on startup.
-    syncWithExtensionNow().then((synced) => {
+    syncWithExtensionNow({
+        forceRefresh: shouldRequireAdsTokenSync(),
+        requireAdsToken: shouldRequireAdsTokenSync(),
+    }).then((synced) => {
         if (synced) {
             const nextAccessToken =
                 localStorage.getItem("fewfeed_accessToken") ||
@@ -4933,7 +5444,10 @@ function loadSavedData() {
 
     // Extra retry in case extension init finishes slightly after first sync call.
     setTimeout(() => {
-        syncWithExtensionNow().catch(() => {});
+        syncWithExtensionNow({
+            forceRefresh: shouldRequireAdsTokenSync(),
+            requireAdsToken: shouldRequireAdsTokenSync(),
+        }).catch(() => {});
     }, 2500);
     scheduleEarlyExtensionSyncRetries();
 

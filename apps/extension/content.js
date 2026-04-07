@@ -12,7 +12,7 @@ async function safeSendMessage(msg, retries = 3) {
       return result;
     } catch (err) {
       const isDisconnected =
-        /receiving end does not exist|extension context invalidated|message port closed/i.test(
+        /receiving end does not exist|extension context invalidated|message port closed|message channel closed before a response was received|asynchronous response by returning true/i.test(
           err?.message || ""
         );
       console.warn(`[Pubilo Content] sendMessage attempt ${attempt}/${retries} failed:`, err?.message);
@@ -36,6 +36,45 @@ const PAGE_SCOPED_LOCAL_KEYS = [
   "fewfeed_selectedAdAccountId",
   "fewfeed_targetPageIds",
 ];
+
+function pickSessionString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function shouldPreserveExistingAdsToken(data = {}, existingToken = "", existingUserId = "") {
+  const normalizedExistingToken = String(existingToken || "").trim();
+  if (!normalizedExistingToken) return false;
+
+  const incomingToken = pickSessionString(
+    data?.fewfeed_accessToken,
+    data?.fewfeed_token,
+    data?.accessToken,
+  );
+  if (incomingToken) return false;
+
+  const incomingUserId = pickSessionString(data?.fewfeed_userId, data?.userId);
+  if (incomingUserId && existingUserId && incomingUserId !== existingUserId) {
+    return false;
+  }
+
+  const validationStatus = String(data?.fewfeed_accessTokenValidationStatus || "").trim();
+  const debugReason = String(data?.debug?.reason || data?.reason || "").trim();
+  const hardFailStatuses = new Set(["token_invalid", "token_format_invalid", "invalid"]);
+  const hardFailReasons = new Set(["token_invalid", "token_format_invalid"]);
+
+  if (hardFailStatuses.has(validationStatus) || hardFailReasons.has(debugReason)) {
+    return false;
+  }
+
+  // Keep previously cached token only for soft failures where background did not
+  // conclusively prove that the old token is bad.
+  return true;
+}
 
 function getPageCacheOwnerId() {
   return String(localStorage.getItem(PAGE_CACHE_USER_ID_KEY) || "").trim();
@@ -161,6 +200,9 @@ async function initializeTokens() {
     const existingAvatarUrl = localStorage.getItem("fewfeed_avatarUrl");
 
     const shouldTrustBackgroundSession = data?.success === true;
+    const shouldKeepExistingAdsToken =
+      shouldTrustBackgroundSession &&
+      shouldPreserveExistingAdsToken(data, existingToken, existingUserId);
 
     // Only fallback to page localStorage when background messaging fails.
     // If background explicitly returns empty token/cookie, treat that as authoritative
@@ -170,7 +212,7 @@ async function initializeTokens() {
     let finalFbDtsg = data?.fewfeed_fbDtsg || data?.fbDtsg || "";
     let finalCookie = data?.fewfeed_cookie || data?.cookie || "";
 
-    if (!shouldTrustBackgroundSession) {
+    if (!shouldTrustBackgroundSession || shouldKeepExistingAdsToken) {
       finalToken = finalToken || existingToken || "";
       finalFbDtsg = finalFbDtsg || existingFbDtsg || "";
       finalCookie = finalCookie || existingCookie || "";
@@ -198,7 +240,10 @@ async function initializeTokens() {
       hasUserId: !!finalUserId,
       hasCookie: !!finalCookie,
       fromFetch: !!(data?.fewfeed_accessToken || data?.accessToken),
-      fromStorage: !!existingToken
+      fromStorage: !!existingToken,
+      preservedExistingAdsToken: shouldKeepExistingAdsToken,
+      backgroundValidationStatus: data?.fewfeed_accessTokenValidationStatus || "",
+      backgroundReason: data?.debug?.reason || data?.reason || "",
     });
 
     const currentPageCacheOwnerId = getPageCacheOwnerId();
@@ -283,6 +328,11 @@ async function initializeTokens() {
   } catch (error) {
     console.error("[FEWFEED Content] Error:", error);
     hideLoadingIndicator();
+    const errorMessage = String(error?.message || error || "");
+    const isTransientMessageChannelError =
+      /receiving end does not exist|extension context invalidated|message port closed|message channel closed before a response was received|asynchronous response by returning true/i.test(
+        errorMessage
+      );
 
     // Even when background is unreachable, inject whatever localStorage has
     // so the web page can proceed with cached tokens.
@@ -320,8 +370,15 @@ async function initializeTokens() {
       window.postMessage({
         type: "FEWFEED_EXTENSION_DIAGNOSTIC",
         reason: "content_exception",
-        detail: error?.message || String(error)
+        detail: errorMessage
       }, "*");
+    }
+
+    if (isTransientMessageChannelError && initializeRetryCount < 4) {
+      initializeRetryCount += 1;
+      setTimeout(() => {
+        initializeTokens();
+      }, 900 * initializeRetryCount);
     }
   }
 }
@@ -421,20 +478,35 @@ async function fetchPageTokenFromExtension(pageId) {
     return cachedToken;
   }
 
-  const accessToken = localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
+  let accessToken = localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
   const cookie = localStorage.getItem("fewfeed_cookie");
 
-  if (!accessToken) {
-    throw new Error("ไม่พบ Ads Token จาก extension");
+  if (!accessToken && cookie) {
+    try {
+      const refreshed = await safeSendMessage({ action: "fetchToken" });
+      accessToken = String(
+        refreshed?.fewfeed_accessToken ||
+        refreshed?.fewfeed_token ||
+        refreshed?.accessToken ||
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        "",
+      ).trim();
+    } catch (_) {
+      // Keep going with cookie-only fallback.
+    }
   }
 
   const response = await safeSendMessage({
     action: "fetchPages",
-    accessToken,
+    accessToken: accessToken || "",
     cookie
   });
 
   if (!response?.success || !Array.isArray(response.pages)) {
+    if (!accessToken && cookie) {
+      throw new Error(response?.error || "มี cookie แต่ดึงรายการเพจไม่สำเร็จ (ลองเปิด adsmanager.facebook.com แล้วลองอีกครั้ง)");
+    }
     throw new Error(response?.error || "ดึงรายชื่อเพจไม่สำเร็จ");
   }
 
@@ -709,4 +781,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Mark that extension is installed
 document.documentElement.setAttribute("data-fewfeed-extension", "true");
 window.postMessage({ type: "FEWFEED_EXTENSION_READY" }, "*");
-console.log("[Pubilo Content] Extension v9.1.3 ready - token validation + main-world probe fallback");
+console.log("[Pubilo Content] Extension v9.1.6 ready - token validation + root-domain Facebook support");

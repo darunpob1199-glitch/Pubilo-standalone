@@ -909,6 +909,78 @@ if (newsPublishBtn) {
                 clearTimeout(timeoutId);
             }
         };
+        const isSessionExpiredErrorMessage = (value) =>
+            /session has been invalidated|error validating access token|facebook session หมดอายุ|errorcode["']?\s*:\s*190/i.test(
+                String(value || ""),
+            );
+        const attemptNewsSessionRecovery = async () => {
+            let recovered = false;
+            const latestTokenFromLocal = () =>
+                String(
+                    fbToken ||
+                    localStorage.getItem("fewfeed_accessToken") ||
+                    localStorage.getItem("fewfeed_token") ||
+                    "",
+                ).trim();
+
+            try {
+                if (typeof syncWithExtensionNow === "function") {
+                    recovered = !!(await withTimeout(
+                        syncWithExtensionNow({ forceRefresh: true }),
+                        20000,
+                        false,
+                    ));
+                }
+            } catch (_) {
+                // Ignore and continue next recovery strategy.
+            }
+
+            if (!recovered) {
+                try {
+                    if (typeof refreshFacebookTokensFromExtension === "function") {
+                        const refreshResult = await withTimeout(
+                            refreshFacebookTokensFromExtension(),
+                            15000,
+                            { success: false },
+                        );
+                        recovered = !!refreshResult?.success;
+                    }
+                } catch (_) {
+                    // Ignore and continue next recovery strategy.
+                }
+            }
+
+            try {
+                if (typeof syncLocalCookieTokenToWorkspace === "function") {
+                    await withTimeout(
+                        syncLocalCookieTokenToWorkspace({ preferLocalToken: false }),
+                        7000,
+                        null,
+                    );
+                }
+            } catch (_) {
+                // Workspace sync is best-effort only.
+            }
+
+            if (!recovered && latestTokenFromLocal()) {
+                recovered = true;
+            }
+
+            try {
+                const warmToken = latestTokenFromLocal();
+                if (recovered && warmToken && pageId && typeof getFreshPageTokenFromExtension === "function") {
+                    await withTimeout(
+                        getFreshPageTokenFromExtension(pageId, warmToken),
+                        9000,
+                        "",
+                    );
+                }
+            } catch (_) {
+                // Token warm-up is best-effort only.
+            }
+
+            return recovered;
+        };
 
         // Show immediate feedback so click is never silent.
         newsPublishBtn.disabled = true;
@@ -1058,13 +1130,19 @@ if (newsPublishBtn) {
             };
 
             let { response, data } = await sendPublishRequest();
+            let didSessionAutoRetry = false;
 
-            if (typeof isInvalidFacebookSessionError === "function" && isInvalidFacebookSessionError(data)) {
-                const refreshResult = typeof refreshFacebookTokensFromExtension === "function"
-                    ? await refreshFacebookTokensFromExtension()
-                    : { success: false };
-
-                if (refreshResult?.success) {
+            if (
+                typeof isInvalidFacebookSessionError === "function" &&
+                isInvalidFacebookSessionError(data)
+            ) {
+                const recovered = await attemptNewsSessionRecovery();
+                if (recovered) {
+                    didSessionAutoRetry = true;
+                    window.showPublishToast?.(
+                        "รีเฟรช Facebook session แล้ว กำลังลองโพสต์ให้อีกครั้ง",
+                        "warning",
+                    );
                     ({ response, data } = await sendPublishRequest());
                 }
             }
@@ -1092,7 +1170,9 @@ if (newsPublishBtn) {
                 const detail = meta.length > 0 ? ` (${meta.join(", ")})` : "";
                 let message = (data.error || "Facebook API error") + detail;
                 if (typeof isInvalidFacebookSessionError === "function" && isInvalidFacebookSessionError(data)) {
-                    message = "Facebook session หมดอายุ กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง" + detail;
+                    message = didSessionAutoRetry
+                        ? "Facebook session หมดอายุ แม้ระบบลองรีเฟรชอัตโนมัติแล้ว กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง" + detail
+                        : "Facebook session หมดอายุ กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง" + detail;
                 }
                 throw new Error(message);
             }
@@ -1167,9 +1247,14 @@ if (newsPublishBtn) {
         } catch (err) {
             console.error("[News] Publish error:", err);
             const isPublishTimeout = isPublishTimeoutError(err);
+            const isSessionExpiredError = isSessionExpiredErrorMessage(
+                err?.message || err,
+            );
             if (isPublishTimeout) {
                 window.showPublishToast?.("คำขอโพสต์นานกว่าปกติ โพสต์อาจสำเร็จไปแล้ว กรุณาตรวจที่หน้า Published ก่อนกดซ้ำ", "warning");
                 alert(String(err?.message || err || "คำขอโพสต์ใช้เวลานานกว่าปกติ"));
+            } else if (isSessionExpiredError) {
+                alert("Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง");
             } else {
                 alert("เกิดข้อผิดพลาด: " + err.message);
             }

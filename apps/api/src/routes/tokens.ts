@@ -144,7 +144,16 @@ app.post('/', async (c) => {
         const workspaceId = getWorkspaceId(c);
         const createdByUserId = getUserId(c);
         const now = new Date().toISOString();
-        const normalizedToken = adsToken || null;
+        const normalizeOptionalString = (value: unknown): string | null => {
+            if (typeof value !== 'string') return null;
+            const trimmed = value.trim();
+            return trimmed ? trimmed : null;
+        };
+        const normalizedToken = normalizeOptionalString(adsToken);
+        const normalizedCookie = normalizeOptionalString(cookie);
+        const normalizedFbDtsg = normalizeOptionalString(fbDtsg);
+        const normalizedUserName = normalizeOptionalString(userName) || String(userId).trim();
+        const normalizedAvatarUrl = normalizeOptionalString(avatarUrl);
 
         await c.env.DB.prepare(`
             INSERT INTO facebook_credentials (
@@ -153,21 +162,21 @@ app.post('/', async (c) => {
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
-                ads_token_encrypted = excluded.ads_token_encrypted,
-                cookie_encrypted = excluded.cookie_encrypted,
-                fb_dtsg_encrypted = excluded.fb_dtsg_encrypted,
-                account_name = excluded.account_name,
-                avatar_url = excluded.avatar_url,
+                ads_token_encrypted = COALESCE(excluded.ads_token_encrypted, facebook_credentials.ads_token_encrypted),
+                cookie_encrypted = COALESCE(excluded.cookie_encrypted, facebook_credentials.cookie_encrypted),
+                fb_dtsg_encrypted = COALESCE(excluded.fb_dtsg_encrypted, facebook_credentials.fb_dtsg_encrypted),
+                account_name = COALESCE(excluded.account_name, facebook_credentials.account_name),
+                avatar_url = COALESCE(excluded.avatar_url, facebook_credentials.avatar_url),
                 updated_at = excluded.updated_at
         `).bind(
             `${workspaceId}:${userId}`,
             workspaceId,
             userId,
             await encryptSecret(c.env, normalizedToken),
-            await encryptSecret(c.env, cookie || null),
-            await encryptSecret(c.env, fbDtsg || null),
-            userName || userId,
-            avatarUrl || null,
+            await encryptSecret(c.env, normalizedCookie),
+            await encryptSecret(c.env, normalizedFbDtsg),
+            normalizedUserName,
+            normalizedAvatarUrl,
             createdByUserId,
             now,
             now,
