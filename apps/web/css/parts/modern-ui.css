@@ -1006,49 +1006,50 @@ header.header {
     display: flex !important;
     align-items: center !important;
     gap: 12px !important;
-    background: #eff6ff !important;
-    border: 1px solid #dbeafe !important;
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
     border-radius: 9999px !important;
     padding: 6px 6px 6px 20px !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
 }
 
 .pubilo-workspace-label {
-    color: #0f172a !important;
-    font-weight: 800 !important;
+    color: #111827 !important;
+    font-weight: 700 !important;
     font-size: 0.95rem !important;
     letter-spacing: -0.01em !important;
 }
 
 .pubilo-days-badge {
-    background: #ecfdf5 !important;
-    color: #047857 !important;
+    background: #f3f4f6 !important;
+    color: #374151 !important;
     padding: 4px 12px !important;
     border-radius: 9999px !important;
     font-size: 0.78rem !important;
-    font-weight: 800 !important;
+    font-weight: 700 !important;
 }
 
 .pubilo-days-badge.is-warning {
-    background: #fef2f2 !important;
-    color: #dc2626 !important;
+    background: #fdf2f8 !important; /* Keep a very subtle warning color */
+    color: #be185d !important;
 }
 
 #pubiloLogoutBtn {
     background: #ffffff !important;
-    color: #2563eb !important;
-    border: none !important;
+    color: #111827 !important;
+    border: 1px solid #e5e7eb !important;
     border-radius: 9999px !important;
-    padding: 8px 18px !important;
+    padding: 6px 16px !important;
     font-size: 0.85rem !important;
-    font-weight: 800 !important;
+    font-weight: 700 !important;
     cursor: pointer !important;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
     transition: all 0.2s ease !important;
 }
 
 #pubiloLogoutBtn:hover {
-    background: #f8fafc !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+    background: #f9fafb !important;
+    border-color: #d1d5db !important;
 }
 
 /* Override existing tokens */
@@ -1059,31 +1060,39 @@ header.header {
 }
 
 .status-indicator {
-    border-radius: 12px !important;
+    border-radius: 9999px !important;
     padding: 8px 16px !important;
-    font-size: 0.9rem !important;
-    font-weight: 800 !important;
-    background: #fdfdfd !important;
+    font-size: 0.88rem !important;
+    font-weight: 700 !important;
+    background: #ffffff !important;
     border: 1px solid #e5e7eb !important;
+    color: #111827 !important;
     display: flex !important;
     align-items: center !important;
     gap: 8px !important;
     transition: all 0.2s ease !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
 }
 
 .status-indicator svg {
     width: 18px !important;
     height: 18px !important;
+    color: #4b5563 !important;
+}
+
+.status-indicator:hover {
+    background: #f9fafb !important;
+    border-color: #d1d5db !important;
 }
 
 .status-indicator.invalid {
-    background: #fdf2f8 !important;
-    color: #e11d48 !important;
-    border-color: #fbcfe8 !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    border-color: #e5e7eb !important;
 }
 
 .status-indicator.valid {
-    background: #ecfdf5 !important;
-    color: #059669 !important;
-    border-color: #a7f3d0 !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    border-color: #e5e7eb !important;
 }
