@@ -25,6 +25,10 @@
     background: rgba(255,255,255,0.1) !important;
     border-color: rgba(255,255,255,0.15) !important;
 }
+.page-selector.open {
+    border-color: rgba(139,92,246,0.4) !important;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15) !important;
+}
 .page-selector h3,
 .page-selector p,
 .preview-page-info h3,
@@ -41,7 +45,8 @@
     color: rgba(255,255,255,0.7) !important;
 }
 .page-selector-target-count {
-    color: rgba(255,255,255,0.6) !important;
+    background: linear-gradient(135deg, #7c3aed, #6d28d9) !important;
+    color: #ffffff !important;
 }
 .page-dropdown-icon {
     color: rgba(255,255,255,0.4) !important;
@@ -49,6 +54,225 @@
 .page-selector-skeleton .sk-avatar,
 .page-selector-skeleton .sk-line {
     background: rgba(255,255,255,0.08) !important;
+}
+
+/* --- PAGE DROPDOWN — FULL SIDEBAR EXPANSION --- */
+.page-dropdown {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: var(--sidebar-w, 280px) !important;
+    height: 100vh !important;
+    border-radius: 0 !important;
+    background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%) !important;
+    border: none !important;
+    box-shadow: 4px 0 40px rgba(0,0,0,0.3) !important;
+    z-index: 2000 !important;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideInDropdown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.page-dropdown.visible {
+    display: flex !important;
+}
+
+@keyframes slideInDropdown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Dropdown head — dark */
+.multi-page-dropdown-head {
+    padding: 1.25rem 1rem 0.75rem !important;
+    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+    background: transparent !important;
+}
+.multi-page-eyebrow {
+    color: rgba(139,92,246,0.8) !important;
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.1em !important;
+}
+.multi-page-dropdown-head h4 {
+    color: rgba(255,255,255,0.9) !important;
+    font-size: 0.92rem !important;
+    font-weight: 600 !important;
+    margin-top: 4px !important;
+}
+.multi-page-selected-meta {
+    color: rgba(255,255,255,0.4) !important;
+    font-size: 0.78rem !important;
+}
+
+/* Search bar — dark theme */
+.multi-page-search-shell {
+    margin: 0.75rem 0.75rem 0 !important;
+    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 12px !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    transition: all 0.2s ease !important;
+}
+.multi-page-search-shell:focus-within {
+    border-color: rgba(139,92,246,0.4) !important;
+    background: rgba(255,255,255,0.08) !important;
+    box-shadow: 0 0 0 3px rgba(139,92,246,0.1) !important;
+}
+.multi-page-search-shell svg {
+    width: 16px !important;
+    height: 16px !important;
+    color: rgba(255,255,255,0.3) !important;
+    margin-left: 12px !important;
+    flex-shrink: 0 !important;
+}
+.multi-page-search-input {
+    background: transparent !important;
+    border: none !important;
+    color: rgba(255,255,255,0.9) !important;
+    font-size: 0.85rem !important;
+    padding: 0.7rem 0.75rem 0.7rem 0 !important;
+    width: 100% !important;
+    outline: none !important;
+}
+.multi-page-search-input::placeholder {
+    color: rgba(255,255,255,0.25) !important;
+}
+
+/* Selected chips strip */
+.multi-page-selected-strip {
+    padding: 0.5rem 0.75rem !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+}
+.multi-page-chip {
+    background: rgba(139,92,246,0.15) !important;
+    border: 1px solid rgba(139,92,246,0.25) !important;
+    border-radius: 20px !important;
+    color: #c4b5fd !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+}
+.multi-page-chip-remove {
+    background: rgba(255,255,255,0.15) !important;
+    color: #fff !important;
+}
+.multi-page-chip-remove:hover {
+    background: rgba(239,68,68,0.6) !important;
+}
+
+/* Page list — scrollable */
+.multi-page-list {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    padding: 0.5rem 0.5rem 1rem !important;
+    max-height: none !important;
+}
+
+/* Individual page item */
+.multi-page-item {
+    border-radius: 12px !important;
+    padding: 0.65rem 0.7rem !important;
+    transition: all 0.15s ease !important;
+}
+.multi-page-item:hover {
+    background: rgba(255,255,255,0.06) !important;
+}
+.multi-page-item.is-selected {
+    background: rgba(139,92,246,0.08) !important;
+}
+
+/* Page item text — light on dark */
+.multi-page-item-copy h4 {
+    color: rgba(255,255,255,0.9) !important;
+    font-size: 0.88rem !important;
+}
+.multi-page-item-copy p {
+    color: rgba(255,255,255,0.4) !important;
+    font-size: 0.75rem !important;
+}
+
+/* Page avatar ring */
+.multi-page-item-media {
+    border: 2px solid rgba(255,255,255,0.1) !important;
+    transition: border-color 0.15s ease !important;
+}
+.multi-page-item.is-selected .multi-page-item-media {
+    border-color: rgba(16,185,129,0.5) !important;
+}
+
+/* --- CHECK BUTTON: Unselected = transparent circle, Selected/Primary = green --- */
+.multi-page-item-action {
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 50% !important;
+    border: 2px solid rgba(255,255,255,0.15) !important;
+    background: transparent !important;
+    color: transparent !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.multi-page-item-action:hover {
+    border-color: rgba(255,255,255,0.3) !important;
+    background: rgba(255,255,255,0.05) !important;
+}
+
+/* Selected = green check */
+.multi-page-item.is-selected .multi-page-item-action {
+    background: linear-gradient(135deg, #10b981, #059669) !important;
+    border-color: #10b981 !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(16,185,129,0.35) !important;
+}
+
+/* Primary page (first selected) = brighter green + glow */
+.multi-page-item.is-primary .multi-page-item-action {
+    background: linear-gradient(135deg, #34d399, #10b981) !important;
+    border-color: #34d399 !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 14px rgba(52,211,153,0.4) !important;
+}
+
+/* Check icon SVG inside button */
+.multi-page-item-action svg {
+    width: 14px !important;
+    height: 14px !important;
+    stroke-width: 3 !important;
+}
+
+/* Empty state */
+.multi-page-empty {
+    color: rgba(255,255,255,0.4) !important;
+    padding: 2rem 1rem !important;
+}
+.multi-page-empty strong {
+    color: rgba(255,255,255,0.7) !important;
+}
+
+/* Page list scrollbar — subtle */
+.multi-page-list::-webkit-scrollbar {
+    width: 4px;
+}
+.multi-page-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+.multi-page-list::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.12);
+    border-radius: 4px;
+}
+.multi-page-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.2);
 }
 
 .nav-section-title {
