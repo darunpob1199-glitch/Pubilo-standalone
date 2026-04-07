@@ -1,7 +1,7 @@
 /**
  * 13-live-preview.js
  * Live typing preview for Facebook One Card Link Ad
- * Syncs Primary Text input → fb-preview-text with typewriter cursor
+ * Syncs: Primary Text → preview, URL → domain, พิกัด → description
  * Also syncs page avatar + name from sidebar page selector
  * Includes character counter (0/220)
  */
@@ -20,6 +20,18 @@
         { input: 'imagePrimaryText', preview: 'imageFbPreviewText', counter: 'imageCharCounter' },
     ];
 
+    // --- Mapping: URL input → domain display in card link info ---
+    const URL_MAPPINGS = [
+        { input: 'newsUrlInput', caption: 'newsPreviewCaption' },
+        { input: 'linkUrl', caption: 'previewCaption' },
+    ];
+
+    // --- Mapping: พิกัด input → description display in card link info ---
+    const DESC_MAPPINGS = [
+        { input: 'newsDescriptionInput', desc: 'newsPreviewDescription' },
+        { input: 'linkDescriptionInput', desc: 'previewDescription' },
+    ];
+
     // --- Mapping: page selector → fb-preview avatars/names ---
     const AVATAR_MAPPINGS = [
         { avatar: 'newsFbAvatar', name: 'newsFbPageName' },
@@ -28,6 +40,23 @@
     ];
 
     let cursorTimers = {};
+
+    /**
+     * Extract domain from URL string
+     */
+    function extractDomain(url) {
+        if (!url) return '';
+        try {
+            // Add protocol if missing
+            let u = url.trim();
+            if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+            const hostname = new URL(u).hostname;
+            return hostname.toUpperCase().replace(/^WWW\./, '');
+        } catch (e) {
+            // Fallback: just uppercase the input
+            return url.toUpperCase().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').replace(/^WWW\./, '');
+        }
+    }
 
     /**
      * Update FB preview text with typing cursor
@@ -39,9 +68,7 @@
 
         const text = input.value || '';
 
-        // Set text content, preserving whitespace
         if (text) {
-            // Build: textNode + cursor
             preview.innerHTML = '';
             const textNode = document.createTextNode(text);
             preview.appendChild(textNode);
@@ -50,7 +77,6 @@
             cursorEl.className = 'typing-cursor is-active';
             preview.appendChild(cursorEl);
 
-            // Hide cursor after delay
             if (cursorTimers[previewId]) clearTimeout(cursorTimers[previewId]);
             cursorTimers[previewId] = setTimeout(() => {
                 cursorEl.classList.remove('is-active');
@@ -71,13 +97,35 @@
         const len = (input.value || '').length;
         counter.textContent = len + '/' + MAX_CHARS;
 
-        // Color coding
         counter.classList.remove('is-warning', 'is-danger');
         if (len >= MAX_CHARS) {
             counter.classList.add('is-danger');
         } else if (len >= MAX_CHARS * 0.8) {
             counter.classList.add('is-warning');
         }
+    }
+
+    /**
+     * Update domain display from URL input
+     */
+    function updateDomainPreview(inputId, captionId) {
+        const input = document.getElementById(inputId);
+        const caption = document.getElementById(captionId);
+        if (!input || !caption) return;
+
+        const domain = extractDomain(input.value);
+        caption.textContent = domain || 'DOMAIN.COM';
+    }
+
+    /**
+     * Update description display from พิกัด input
+     */
+    function updateDescPreview(inputId, descId) {
+        const input = document.getElementById(inputId);
+        const desc = document.getElementById(descId);
+        if (!input || !desc) return;
+
+        desc.textContent = input.value || '';
     }
 
     /**
@@ -116,68 +164,69 @@
     }
 
     /**
+     * Bind input → handler with input + change events
+     */
+    function bindInput(inputId, handler) {
+        const el = document.getElementById(inputId);
+        if (!el) return;
+        el.addEventListener('input', handler);
+        el.addEventListener('change', handler);
+        // Initial sync
+        if (el.value) handler();
+    }
+
+    /**
      * Initialize all live-preview bindings
      */
     function init() {
-        // Bind text inputs → preview + char counter
+        // 1. Primary Text → preview + char counter
         TEXT_MAPPINGS.forEach(({ input, preview, counter }) => {
+            const handler = debounce(() => updatePreviewText(input, preview), TYPING_DEBOUNCE_MS);
+            const counterHandler = () => updateCharCounter(input, counter);
+
             const el = document.getElementById(input);
             if (!el) return;
 
-            const handler = debounce(() => {
-                updatePreviewText(input, preview);
-            }, TYPING_DEBOUNCE_MS);
+            el.addEventListener('input', () => { handler(); counterHandler(); });
+            el.addEventListener('change', () => { handler(); counterHandler(); });
 
-            // Char counter updates immediately (no debounce)
-            const counterHandler = () => {
-                updateCharCounter(input, counter);
-            };
-
-            el.addEventListener('input', (e) => {
-                handler();
-                counterHandler();
-            });
-            el.addEventListener('change', (e) => {
-                handler();
-                counterHandler();
-            });
-
-            // Initial sync
             if (el.value) {
                 updatePreviewText(input, preview);
                 updateCharCounter(input, counter);
             }
         });
 
-        // Watch for page selector changes (MutationObserver on page name)
+        // 2. URL → domain display
+        URL_MAPPINGS.forEach(({ input, caption }) => {
+            bindInput(input, () => updateDomainPreview(input, caption));
+        });
+
+        // 3. พิกัด → description display
+        DESC_MAPPINGS.forEach(({ input, desc }) => {
+            bindInput(input, () => updateDescPreview(input, desc));
+        });
+
+        // 4. Page selector sync (MutationObserver)
         const pageNameEl = document.getElementById('previewPageName');
         if (pageNameEl) {
-            const observer = new MutationObserver(() => {
-                syncPageInfo();
-            });
+            const observer = new MutationObserver(() => syncPageInfo());
             observer.observe(pageNameEl, { childList: true, characterData: true, subtree: true });
         }
 
-        // Also watch avatar image src changes
         const avatarImg = document.getElementById('previewAvatarImg');
         if (avatarImg) {
-            const observer = new MutationObserver(() => {
-                syncPageInfo();
-            });
+            const observer = new MutationObserver(() => syncPageInfo());
             observer.observe(avatarImg, { attributes: true, attributeFilter: ['src'] });
         }
 
-        // Initial page info sync
         setTimeout(syncPageInfo, 500);
 
-        console.log('[LivePreview] Initialized');
+        console.log('[LivePreview] Initialized — text + URL + พิกัด + avatar');
     }
 
-    // Wait for DOM ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
-        // DOM already loaded, init after a tick to let other scripts run
         setTimeout(init, 100);
     }
 })();
