@@ -207,10 +207,10 @@
     border-color: rgba(16,185,129,0.5) !important;
 }
 
-/* --- CHECK BUTTON: Unselected = transparent circle, Selected/Primary = green --- */
+/* --- CHECK BUTTON: Unselected = transparent circle, Selected = green circle (no icon) --- */
 .multi-page-item-action {
-    width: 30px !important;
-    height: 30px !important;
+    width: 28px !important;
+    height: 28px !important;
     border-radius: 50% !important;
     border: 2px solid rgba(255,255,255,0.15) !important;
     background: transparent !important;
@@ -221,6 +221,9 @@
     cursor: pointer !important;
     flex-shrink: 0 !important;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    overflow: hidden !important;
 }
 
 .multi-page-item-action:hover {
@@ -228,27 +231,27 @@
     background: rgba(255,255,255,0.05) !important;
 }
 
-/* Selected = green check */
-.multi-page-item.is-selected .multi-page-item-action {
-    background: linear-gradient(135deg, #10b981, #059669) !important;
-    border-color: #10b981 !important;
-    color: #ffffff !important;
-    box-shadow: 0 2px 8px rgba(16,185,129,0.35) !important;
-}
-
-/* Primary page (first selected) = brighter green + glow */
+/* Selected = solid green circle, no content */
+.multi-page-item.is-selected .multi-page-item-action,
 .multi-page-item.is-primary .multi-page-item-action {
     background: linear-gradient(135deg, #34d399, #10b981) !important;
     border-color: #34d399 !important;
-    color: #ffffff !important;
-    box-shadow: 0 4px 14px rgba(52,211,153,0.4) !important;
+    color: transparent !important;
+    box-shadow: 0 2px 10px rgba(16,185,129,0.35) !important;
+}
+
+/* Hide ALL content inside the button (SVG, text, etc) */
+.multi-page-item-action svg,
+.multi-page-item-action span,
+.multi-page-item-action * {
+    display: none !important;
 }
 
 /* Check icon SVG inside button */
 .multi-page-item-action svg {
-    width: 14px !important;
-    height: 14px !important;
-    stroke-width: 3 !important;
+    width: 0 !important;
+    height: 0 !important;
+    display: none !important;
 }
 
 /* Empty state */
