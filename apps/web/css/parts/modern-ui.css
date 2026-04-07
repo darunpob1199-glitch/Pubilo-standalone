@@ -755,25 +755,41 @@ header.header {
 }
 
 .ad-account-refresh-btn {
-    border: 1px solid #d1d5db;
-    background: #fff;
-    color: #374151;
-    border-radius: 10px;
-    padding: 0.35rem 0.7rem;
-    font-size: 0.78rem;
-    font-weight: 600;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #a855f7;
+    border-radius: 12px;
+    padding: 0.45rem 1rem;
+    font-size: 0.8rem;
+    font-weight: 700;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
 }
 
 .ad-account-refresh-btn:hover:not(:disabled) {
-    background: #f9fafb;
-    border-color: #9ca3af;
+    background: #f3e8ff;
+    border-color: #d8b4fe;
+    color: #9333ea;
+    box-shadow: 0 2px 4px rgba(168,85,247,0.1);
 }
 
 .ad-account-refresh-btn:disabled {
-    opacity: 0.6;
-    cursor: wait;
+    opacity: 0.5;
+    background: #f3f4f6;
+    color: #9ca3af;
+    border-color: #e5e7eb;
+    cursor: not-allowed;
+}
+
+#adAccountStatusText {
+    font-size: 0.75rem !important;
+    font-weight: 500 !important;
+    color: #6b7280 !important;
+    margin-top: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
 }
 
 /* --- UPLOAD PROMPT REDESIGN --- */
@@ -984,4 +1000,106 @@ header.header {
     .status-indicator {
         padding: 6px !important;
     }
+}
+
+/* --- WORKSPACE CHIP (NBI THEME) --- */
+.header-right {
+    display: flex !important;
+    align-items: center !important;
+    gap: 16px !important;
+}
+
+.pubilo-workspace-chip {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 9999px !important;
+    padding: 6px 6px 6px 20px !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
+}
+
+.pubilo-workspace-label {
+    color: #111827 !important;
+    font-weight: 700 !important;
+    font-size: 0.95rem !important;
+    letter-spacing: -0.01em !important;
+}
+
+.pubilo-days-badge {
+    background: #f3f4f6 !important;
+    color: #374151 !important;
+    padding: 4px 12px !important;
+    border-radius: 9999px !important;
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+}
+
+.pubilo-days-badge.is-warning {
+    background: #fdf2f8 !important; /* Keep a very subtle warning color */
+    color: #be185d !important;
+}
+
+#pubiloLogoutBtn {
+    background: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 9999px !important;
+    padding: 6px 16px !important;
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
+    transition: all 0.2s ease !important;
+}
+
+#pubiloLogoutBtn:hover {
+    background: #f9fafb !important;
+    border-color: #d1d5db !important;
+}
+
+/* Override existing tokens */
+.status-indicators {
+    display: flex !important;
+    gap: 12px !important;
+    align-items: center !important;
+}
+
+.status-indicator {
+    border-radius: 9999px !important;
+    padding: 8px 16px !important;
+    font-size: 0.88rem !important;
+    font-weight: 700 !important;
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    color: #111827 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
+}
+
+.status-indicator svg {
+    width: 18px !important;
+    height: 18px !important;
+    color: #4b5563 !important;
+}
+
+.status-indicator:hover {
+    background: #f9fafb !important;
+    border-color: #d1d5db !important;
+}
+
+.status-indicator.invalid {
+    background: #ffffff !important;
+    color: #111827 !important;
+    border-color: #e5e7eb !important;
+}
+
+.status-indicator.valid {
+    background: #ffffff !important;
+    color: #111827 !important;
+    border-color: #e5e7eb !important;
 }
