@@ -8,6 +8,8 @@ const app = new Hono<{ Bindings: Env }>();
 
 const FB_API = 'https://graph.facebook.com/v21.0';
 const DEFAULT_GHOST_TARGET_COUNTRIES = ['TH'];
+const FACEBOOK_USER_AGENT =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 type GhostAdSeed = {
     adId: string;
@@ -30,8 +32,64 @@ function buildFacebookHeaders(cookieData?: string): Record<string, string> | und
 
     return {
         Cookie: normalizedCookie,
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'User-Agent': FACEBOOK_USER_AGENT,
     };
+}
+
+function buildFacebookGraphHeaders(): Record<string, string> {
+    return {
+        'User-Agent': FACEBOOK_USER_AGENT,
+    };
+}
+
+function extractAccessTokenFromHtml(html: string): string {
+    const source = String(html || '');
+    if (!source) return '';
+
+    const tokenChars = '[A-Za-z0-9_-]+';
+    const patterns: RegExp[] = [
+        new RegExp(`__accessToken\\s*=\\s*"(EA${tokenChars})"`),
+        new RegExp(`"__accessToken"\\s*:\\s*"(EA${tokenChars})"`),
+        new RegExp(`__window\\.__accessToken="(EA${tokenChars})"`),
+        new RegExp(`"accessToken":\\s*"(EAABsbCS${tokenChars})"`),
+        new RegExp(`"access_token":\\s*"(EAABsbCS${tokenChars})"`),
+        new RegExp(`accessToken['"]\\s*:\\s*['"](EA${tokenChars})['"]`),
+        new RegExp(`"accessToken":\\s*"(EA${tokenChars})"`),
+        new RegExp(`"access_token":\\s*"(EA${tokenChars})"`),
+        new RegExp(`access_token=(EA${tokenChars})`),
+    ];
+
+    for (const pattern of patterns) {
+        const match = source.match(pattern);
+        if (match?.[1]) {
+            return String(match[1]).trim();
+        }
+    }
+    return '';
+}
+
+async function fetchCookieDerivedAccessToken(headers: Record<string, string>): Promise<string> {
+    const probeUrls = [
+        'https://adsmanager.facebook.com/adsmanager/manage/campaigns',
+        'https://business.facebook.com/latest/home',
+        'https://www.facebook.com/',
+    ];
+
+    for (const url of probeUrls) {
+        try {
+            const response = await fetch(url, { headers });
+            const html = await response.text();
+            const token = extractAccessTokenFromHtml(html);
+            if (token) {
+                console.log('[publish] Derived access token from cookie HTML probe:', url);
+                return token;
+            }
+        } catch (error) {
+            console.warn('[publish] Cookie HTML token probe failed:', url, error);
+        }
+    }
+
+    return '';
 }
 
 function isAuthRelatedErrorMessage(rawMessage: unknown): boolean {
@@ -124,14 +182,16 @@ async function uploadImageToHost(imageData: string, apiKey?: string): Promise<st
 }
 
 async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieData?: string): Promise<string> {
-    const headers = buildFacebookHeaders(cookieData);
+    const cookieHeaders = buildFacebookHeaders(cookieData);
+    const tokenHeaders = buildFacebookGraphHeaders();
+    const normalizedAccessToken = String(accessToken || '').trim();
 
     // Try with access token first (standard Graph API)
-    if (accessToken) {
+    if (normalizedAccessToken) {
         try {
             const accountsRes = await fetch(
-                `${FB_API}/me/accounts?access_token=${encodeURIComponent(accessToken)}&fields=id,access_token&limit=100`,
-                headers ? { headers } : undefined
+                `${FB_API}/me/accounts?access_token=${encodeURIComponent(normalizedAccessToken)}&fields=id,access_token&limit=100`,
+                { headers: tokenHeaders },
             );
             const accountsData = await accountsRes.json() as any;
             const matchedPage = accountsData?.data?.find((page: any) => String(page.id) === String(pageId));
@@ -145,8 +205,8 @@ async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieD
 
         try {
             const tokenRes = await fetch(
-                `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(accessToken)}`,
-                headers ? { headers } : undefined
+                `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(normalizedAccessToken)}`,
+                { headers: tokenHeaders },
             );
             const tokenData = await tokenRes.json() as any;
 
@@ -159,11 +219,11 @@ async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieD
     }
 
     // Cookie-only fallback: call Graph API with just Cookie header (no access_token param).
-    if (headers) {
+    if (cookieHeaders) {
         try {
             const cookieRes = await fetch(
                 `${FB_API}/me/accounts?fields=id,access_token&limit=100`,
-                { headers },
+                { headers: cookieHeaders },
             );
             const cookieData2 = await cookieRes.json() as any;
             if (cookieData2?.data) {
@@ -175,6 +235,26 @@ async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieD
             }
         } catch (error) {
             console.warn('[publish] cookie-only page token fetch failed:', error);
+        }
+
+        // Last fallback: derive a temporary access token from Facebook HTML using cookie
+        // and retry Graph page-token extraction with that token.
+        const derivedAccessToken = await fetchCookieDerivedAccessToken(cookieHeaders);
+        if (derivedAccessToken) {
+            try {
+                const derivedAccountsRes = await fetch(
+                    `${FB_API}/me/accounts?access_token=${encodeURIComponent(derivedAccessToken)}&fields=id,access_token&limit=100`,
+                    { headers: tokenHeaders },
+                );
+                const derivedAccountsData = await derivedAccountsRes.json() as any;
+                const matchedPage = derivedAccountsData?.data?.find((page: any) => String(page.id) === String(pageId));
+                if (matchedPage?.access_token) {
+                    console.log('[publish] Got page token via cookie-derived access token');
+                    return String(matchedPage.access_token).trim();
+                }
+            } catch (error) {
+                console.warn('[publish] cookie-derived token /me/accounts fetch failed:', error);
+            }
         }
     }
 
@@ -1704,7 +1784,7 @@ app.post('/', async (c) => {
             console.error('[publish] D1 error:', dbErr);
         }
 
-        const facebookHeaders = buildFacebookHeaders(cookieData);
+        const tokenRequestHeaders = buildFacebookGraphHeaders();
         const workspaceCookieCandidates = await getWorkspaceCookieCandidates(c.env, organizationId);
         const cookieHeaderCandidates: Array<Record<string, string>> = [];
         const seenCookies = new Set<string>();
@@ -1718,7 +1798,31 @@ app.post('/', async (c) => {
         };
         addCookieHeaderCandidate(cookieData);
         workspaceCookieCandidates.forEach((cookie) => addCookieHeaderCandidate(cookie));
-        let freshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
+        let effectiveAccessToken = String(accessToken || '').trim();
+        let freshPageToken = await fetchFreshPageToken(pageId, effectiveAccessToken, cookieData);
+        if (!freshPageToken) {
+            for (const cookieCandidate of workspaceCookieCandidates) {
+                if (!cookieCandidate || cookieCandidate === cookieData) continue;
+                freshPageToken = await fetchFreshPageToken(pageId, effectiveAccessToken, cookieCandidate);
+                if (freshPageToken) {
+                    console.log('[publish] Recovered fresh page token via workspace cookie candidate');
+                    break;
+                }
+            }
+        }
+        if (!effectiveAccessToken) {
+            const workspaceFreshAdsToken = await recoverAdsTokenFromWorkspaceCredentials(
+                c.env,
+                organizationId,
+            );
+            if (workspaceFreshAdsToken) {
+                effectiveAccessToken = workspaceFreshAdsToken;
+                console.log('[publish] Recovered valid ads token from workspace credentials');
+            }
+        }
+        if (!freshPageToken && effectiveAccessToken) {
+            freshPageToken = await fetchFreshPageToken(pageId, effectiveAccessToken, cookieData);
+        }
         if (!freshPageToken) {
             const workspaceFreshPageToken = await fetchFreshPageTokenFromWorkspaceCredentials(
                 c.env,
@@ -1734,7 +1838,7 @@ app.post('/', async (c) => {
             freshPageToken,
             storedPageToken,
             requestedPageToken,
-            accessToken,
+            effectiveAccessToken,
         ]);
 
         if (authCandidates.length === 0) {
@@ -1899,7 +2003,7 @@ app.post('/', async (c) => {
                 try {
                     const res = await fetch(
                         `${FB_API}/${encodeURIComponent(inputId)}?fields=id,post_id&access_token=${encodeURIComponent(token)}`,
-                        facebookHeaders ? { headers: facebookHeaders } : undefined,
+                        { headers: tokenRequestHeaders },
                     );
                     const data = await res.json() as any;
                     const postId = parsePostId(data);
@@ -1943,7 +2047,7 @@ app.post('/', async (c) => {
                 const result = await hidePagePostFromTimeline(
                     timelineHideTarget,
                     authToken,
-                    facebookHeaders,
+                    tokenRequestHeaders,
                 );
                 if (result.success) {
                     try {
@@ -2182,16 +2286,16 @@ app.post('/', async (c) => {
             : parseBooleanFlag(rawClientAdCreativeFlag);
         const adCreativeFlowEnabled = adCreativeAllowedByEnv && adCreativeRequestedByClient;
 
-        if (adCreativeFlowEnabled && isLinkAttachmentPost && accessToken && !resolvedAdAccountId) {
+        if (adCreativeFlowEnabled && isLinkAttachmentPost && effectiveAccessToken && !resolvedAdAccountId) {
             try {
-                accessibleAdAccounts = await fetchAccessibleAdAccountIds(accessToken, facebookHeaders);
+                accessibleAdAccounts = await fetchAccessibleAdAccountIds(effectiveAccessToken, tokenRequestHeaders);
                 resolvedAdAccountId = accessibleAdAccounts[0] || '';
             } catch (error) {
                 console.warn('[publish] Failed to auto-resolve ad account from access token:', error);
             }
         }
         const normalizedCallToAction = normalizeCallToActionType(callToAction);
-        const canUseAdCreativeFlow = adCreativeFlowEnabled && isLinkAttachmentPost && !!accessToken && !!resolvedAdAccountId;
+        const canUseAdCreativeFlow = adCreativeFlowEnabled && isLinkAttachmentPost && !!effectiveAccessToken && !!resolvedAdAccountId;
 
         if (isLinkAttachmentPost) {
             // Include access token as last-resort candidate for feed fallback.
@@ -2201,7 +2305,7 @@ app.post('/', async (c) => {
                 freshPageToken,
                 requestedPageToken,
                 storedPageToken,
-                accessToken,
+                effectiveAccessToken,
             ]);
             const feedLinkCandidates = (() => {
                 if (publishLinkUrl && finalLink && publishLinkUrl !== finalLink) {
@@ -2219,7 +2323,7 @@ app.post('/', async (c) => {
             };
 
             console.log('[publish] Link post diagnostics:', {
-                hasClientAccessToken: !!accessToken,
+                hasClientAccessToken: !!effectiveAccessToken,
                 resolvedAdAccountId: resolvedAdAccountId || '(none)',
                 adCreativeAllowedByEnv,
                 adCreativeRequestedByClient,
@@ -2235,8 +2339,8 @@ app.post('/', async (c) => {
                         env: c.env,
                         organizationId,
                         pageId,
-                        accessToken,
-                        cookieHeaders: facebookHeaders,
+                        accessToken: effectiveAccessToken,
+                        cookieHeaders: tokenRequestHeaders,
                         adAccountId: resolvedAdAccountId,
                         // Ad creative should point to the real outbound destination.
                         // Using preview URL here causes posts to render as api.pubilo.com cards.
@@ -2251,7 +2355,7 @@ app.post('/', async (c) => {
                     });
 
                     if (!scheduleTimestamp && pageTokenForPublish) {
-                        await publishExistingUnpublishedPost(creativeResult.postId, pageTokenForPublish, facebookHeaders);
+                        await publishExistingUnpublishedPost(creativeResult.postId, pageTokenForPublish, tokenRequestHeaders);
                     }
 
                     const publishedUrl = buildFacebookPostUrl(creativeResult.postId, pageId);
@@ -2317,7 +2421,7 @@ app.post('/', async (c) => {
                         const feedResult = await publishLinkCardViaFeed({
                             pageId,
                             pageToken: candidateToken,
-                            headers: facebookHeaders,
+                            headers: tokenRequestHeaders,
                             message: finalMessage,
                             linkUrl: feedLinkUrl,
                             title: attachmentTitle || undefined,
@@ -2331,7 +2435,7 @@ app.post('/', async (c) => {
                             allowMetadataDropRetry: true,
                         });
                         if (feedResult.createdAsDraft && !scheduleTimestamp) {
-                            await publishExistingUnpublishedPost(feedResult.postId, candidateToken, facebookHeaders);
+                            await publishExistingUnpublishedPost(feedResult.postId, candidateToken, tokenRequestHeaders);
                         }
 
                         const feedUrl = buildFacebookPostUrl(feedResult.postId, pageId);
@@ -2475,7 +2579,7 @@ app.post('/', async (c) => {
                 multipartBody.append('access_token', authToken);
                 multipartBody.append('source', dataUrlToBlob(finalImageUrl), 'pubilo-upload.jpg');
                 if (finalCaption) multipartBody.append('caption', finalCaption);
-                console.log('[publish] Trying worker multipart upload', { tokenSource: authToken === accessToken ? 'accessToken' : 'pageToken' });
+                console.log('[publish] Trying worker multipart upload', { tokenSource: authToken === effectiveAccessToken ? 'accessToken' : 'pageToken' });
             } else if (finalImageUrl && finalImageUrl.startsWith('http')) {
                 endpoint += '/photos';
                 params.append('url', finalImageUrl);
@@ -2520,12 +2624,12 @@ app.post('/', async (c) => {
                 method: 'POST',
                 ...(multipartBody
                     ? {
-                        ...(facebookHeaders ? { headers: facebookHeaders } : {}),
+                        headers: tokenRequestHeaders,
                         body: multipartBody,
                     }
                     : {
                         headers: {
-                            ...(facebookHeaders || {}),
+                            ...tokenRequestHeaders,
                             'Content-Type': 'application/x-www-form-urlencoded',
                         },
                         body: params.toString(),
@@ -2571,7 +2675,7 @@ app.post('/', async (c) => {
                 const publishNowResponse = await fetch(publishNowEndpoint, {
                     method: 'POST',
                     headers: {
-                        ...(facebookHeaders || {}),
+                        ...tokenRequestHeaders,
                         'Content-Type': 'application/x-www-form-urlencoded',
                     },
                     body: publishNowParams.toString(),

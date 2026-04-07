@@ -3,6 +3,7 @@
 let lastPublishedUrl = null;
 const TEXT_BACKGROUND_STORAGE_KEY_PREFIX = "fewfeed_textBackgroundPreset_";
 const WORKSPACE_FACEBOOK_SESSION_MAP_KEY = "fewfeed_workspaceFacebookSessions_v1";
+const AD_ACCOUNT_CACHE_KEY = "fewfeed_adAccountCache_v1";
 const SHOW_FACEBOOK_CONNECT_BANNER = false;
 let hasSeenExtensionReadySignal = false;
 let extensionMissingHintShown = false;
@@ -1432,13 +1433,11 @@ function setupPublishHandler(mode) {
             }
             const cookie =
                 fbCookie || localStorage.getItem("fewfeed_cookie");
-            let adAccountId =
-                document.getElementById("adAccountSelect").value;
+            let adAccountId = getSelectedAdAccountId();
             if (!adAccountId) {
                 adAccountId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
                 if (adAccountId) {
-                    const adAccountInput = document.getElementById("adAccountSelect");
-                    if (adAccountInput) adAccountInput.value = adAccountId;
+                    syncSelectedAdAccountValue(adAccountId);
                 }
             }
 
@@ -1768,11 +1767,56 @@ function setupPublishHandler(mode) {
                     if (typeof syncWithExtensionNow === "function") {
                         recovered = await syncWithExtensionNow({
                             forceRefresh: true,
-                            requireAdsToken: true,
+                            // Allow retry even when only page-token/cookie session is available.
+                            requireAdsToken: false,
                         });
                     } else if (typeof refreshFacebookTokensFromExtension === "function") {
                         const refreshResult = await refreshFacebookTokensFromExtension();
                         recovered = !!refreshResult?.success;
+                    }
+
+                    if (!recovered) {
+                        try {
+                            if (typeof syncLocalCookieTokenToWorkspace === "function") {
+                                await syncLocalCookieTokenToWorkspace({ preferLocalToken: false });
+                            }
+
+                            const controller = new AbortController();
+                            const timer = setTimeout(() => controller.abort(), 9000);
+                            try {
+                                const backendResp = await fetch("/api/tokens?refreshFromCookie=1", {
+                                    signal: controller.signal,
+                                });
+                                const backendPayload = await backendResp.json().catch(() => ({}));
+                                const tokens = Array.isArray(backendPayload?.tokens) ? backendPayload.tokens : [];
+                                const selected =
+                                    tokens.find((token) => String(token?.user_id || "") === String(localStorage.getItem("fewfeed_userId") || "")) ||
+                                    tokens[0];
+                                const refreshedAdsTokenRaw = String(selected?.ads_token || "").trim();
+                                const refreshedAdsToken = isAcceptableAdsTokenCandidate(refreshedAdsTokenRaw)
+                                    ? refreshedAdsTokenRaw
+                                    : "";
+                                const refreshedCookie = String(selected?.cookie || localStorage.getItem("fewfeed_cookie") || "").trim();
+                                if (refreshedAdsToken || refreshedCookie) {
+                                    applyExtensionSessionData(
+                                        {
+                                            adsToken: refreshedAdsToken,
+                                            cookie: refreshedCookie,
+                                            fbDtsg: selected?.fb_dtsg || localStorage.getItem("fewfeed_fbDtsg") || "",
+                                            userId: selected?.user_id || localStorage.getItem("fewfeed_userId") || "",
+                                            userName: selected?.user_name || localStorage.getItem("fewfeed_userName") || "",
+                                            avatarUrl: selected?.avatar_url || localStorage.getItem("fewfeed_avatarUrl") || "",
+                                        },
+                                        "publish-session-recovery-backend",
+                                    );
+                                    recovered = true;
+                                }
+                            } finally {
+                                clearTimeout(timer);
+                            }
+                        } catch (_) {
+                            // Ignore backend token refresh failures and keep original error flow.
+                        }
                     }
 
                     if (recovered) {
@@ -2114,16 +2158,9 @@ function ensureLocalAdsTokenFromFallback(options = {}) {
     const token = resolveFallbackAdsToken(options);
     if (!token) return "";
 
-    const currentAdsToken = String(
-        localStorage.getItem("fewfeed_accessToken") ||
-        localStorage.getItem("fewfeed_token") ||
-        "",
-    ).trim();
-    if (!currentAdsToken) {
-        localStorage.setItem("fewfeed_accessToken", token);
-        localStorage.setItem("fewfeed_token", token);
-        fbToken = token;
-    }
+    // Do not persist fallback page token into fewfeed_accessToken.
+    // Mixing page-token fallback into ads-token storage causes /me/accounts
+    // to collapse to a single page in subsequent fetches.
     return token;
 }
 
@@ -2978,70 +3015,459 @@ function requestPagesFromExtension(accessToken) {
 
 function requestAdAccountsFromExtension(accessToken) {
     return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            window.removeEventListener("message", handleMessage);
-            reject(new Error("Extension ไม่ตอบกลับรายการ ad account"));
-        }, 8000);
+        let settled = false;
+        let requestInterval = null;
 
-        function cleanup() {
+        const finish = (error, adAccounts) => {
+            if (settled) return;
+            settled = true;
             clearTimeout(timeout);
+            if (requestInterval) {
+                clearInterval(requestInterval);
+                requestInterval = null;
+            }
             window.removeEventListener("message", handleMessage);
-        }
+            if (error) {
+                reject(error);
+            } else {
+                resolve(adAccounts || []);
+            }
+        };
+
+        const timeout = setTimeout(() => {
+            finish(new Error("Extension ไม่ตอบกลับรายการ ad account"));
+        }, 8000);
 
         function handleMessage(event) {
             if (event.source !== window) return;
             if (event.data.type !== "FEWFEED_AD_ACCOUNTS_RESPONSE") return;
 
-            cleanup();
             const response = event.data.data;
             if (response?.success && Array.isArray(response.adAccounts)) {
-                resolve(response.adAccounts);
+                finish(null, response.adAccounts);
                 return;
             }
 
-            reject(new Error(response?.error || "ดึง ad account ไม่สำเร็จ"));
+            finish(new Error(response?.error || "ดึง ad account ไม่สำเร็จ"));
         }
 
+        const postRequest = () => {
+            window.postMessage(
+                {
+                    type: "FEWFEED_FETCH_AD_ACCOUNTS",
+                    accessToken,
+                },
+                "*",
+            );
+        };
+
         window.addEventListener("message", handleMessage);
-        window.postMessage(
-            {
-                type: "FEWFEED_FETCH_AD_ACCOUNTS",
-                accessToken,
-            },
-            "*",
-        );
+        postRequest();
+        // Retry handshake in case content-script listener is not ready yet.
+        requestInterval = setInterval(() => {
+            if (settled) return;
+            postRequest();
+        }, 1200);
     });
 }
 
-function setSelectedAdAccount(adAccounts) {
-    const input = document.getElementById("adAccountSelect");
-    if (!input) return "";
+function ensureAdAccountUiElements() {
+    const linkOnlyFields = document.getElementById("linkOnlyFields");
+    if (!linkOnlyFields) return;
 
-    const normalizedAccounts = Array.isArray(adAccounts) ? adAccounts : [];
+    const existingAdAccountEl = document.getElementById("adAccountSelect");
+    if (
+        existingAdAccountEl &&
+        existingAdAccountEl.tagName === "INPUT" &&
+        String(existingAdAccountEl.getAttribute("type") || "").toLowerCase() === "hidden"
+    ) {
+        existingAdAccountEl.id = "adAccountSelectLegacyHidden";
+    }
+
+    let adAccountGroup = document.getElementById("adAccountGroup");
+    let select = document.getElementById("adAccountSelect");
+    let statusText = document.getElementById("adAccountStatusText");
+    let refreshBtn = document.getElementById("refreshAdAccountsBtn");
+
+    if (!adAccountGroup || !select || select.tagName !== "SELECT") {
+        if (adAccountGroup && adAccountGroup.parentNode) {
+            adAccountGroup.parentNode.removeChild(adAccountGroup);
+        }
+
+        adAccountGroup = document.createElement("div");
+        adAccountGroup.className = "form-group ad-account-group";
+        adAccountGroup.id = "adAccountGroup";
+        adAccountGroup.innerHTML = `
+            <div class="ad-account-label-row">
+                <label class="form-label" for="adAccountSelect" style="margin-bottom: 0;">บัญชียิงแอด</label>
+                <button type="button" class="ad-account-refresh-btn" id="refreshAdAccountsBtn">รีเฟรช</button>
+            </div>
+            <select class="form-select" id="adAccountSelect">
+                <option value="">เลือกอัตโนมัติ (ให้ระบบเลือกเอง)</option>
+            </select>
+            <small id="adAccountStatusText" style="color: #888; margin-top: 4px; display: block;">
+                ยังไม่ได้โหลดบัญชียิงแอด
+            </small>
+        `;
+
+        const linkUrlInput = document.getElementById("linkUrl");
+        const anchorGroup = linkUrlInput ? linkUrlInput.closest(".form-group") : null;
+        if (anchorGroup && anchorGroup.parentNode === linkOnlyFields) {
+            linkOnlyFields.insertBefore(adAccountGroup, anchorGroup);
+        } else {
+            linkOnlyFields.prepend(adAccountGroup);
+        }
+
+        select = document.getElementById("adAccountSelect");
+        statusText = document.getElementById("adAccountStatusText");
+        refreshBtn = document.getElementById("refreshAdAccountsBtn");
+    }
+
+    if (select && !select.querySelector('option[value=""]')) {
+        const autoOption = document.createElement("option");
+        autoOption.value = "";
+        autoOption.textContent = "เลือกอัตโนมัติ (ให้ระบบเลือกเอง)";
+        select.insertBefore(autoOption, select.firstChild || null);
+    }
+
+    if (statusText && !statusText.textContent?.trim()) {
+        statusText.textContent = "ยังไม่ได้โหลดบัญชียิงแอด";
+    }
+
+    if (refreshBtn && !refreshBtn.textContent?.trim()) {
+        refreshBtn.textContent = "รีเฟรช";
+    }
+}
+
+function ensureNewsAdAccountUiElements() {
+    const newsModeContainer = document.getElementById("newsModeContainer");
+    if (!newsModeContainer) return;
+
+    let newsGroup = document.getElementById("newsAdAccountGroup");
+    let select = document.getElementById("newsAdAccountSelect");
+    let statusText = document.getElementById("newsAdAccountStatusText");
+    let refreshBtn = document.getElementById("newsRefreshAdAccountsBtn");
+
+    if (!newsGroup || !select || select.tagName !== "SELECT") {
+        if (newsGroup && newsGroup.parentNode) {
+            newsGroup.parentNode.removeChild(newsGroup);
+        }
+
+        newsGroup = document.createElement("div");
+        newsGroup.className = "form-group ad-account-group is-prominent";
+        newsGroup.id = "newsAdAccountGroup";
+        newsGroup.innerHTML = `
+            <div class="ad-account-label-row">
+                <label class="form-label" for="newsAdAccountSelect" style="margin-bottom: 0;">บัญชียิงแอด</label>
+                <button type="button" class="ad-account-refresh-btn" id="newsRefreshAdAccountsBtn">รีเฟรช</button>
+            </div>
+            <select class="form-select" id="newsAdAccountSelect">
+                <option value="">เลือกอัตโนมัติ (ให้ระบบเลือกเอง)</option>
+            </select>
+            <small id="newsAdAccountStatusText" style="color: #888; margin-top: 4px; display: block;">
+                ยังไม่ได้โหลดบัญชียิงแอด
+            </small>
+        `;
+
+        const newsUrlInput = document.getElementById("newsUrlInput");
+        const anchorGroup = newsUrlInput ? newsUrlInput.closest(".form-group") : null;
+        const targetCard = newsModeContainer.querySelector(".form-panel .card");
+        if (anchorGroup && anchorGroup.parentNode) {
+            anchorGroup.parentNode.insertBefore(newsGroup, anchorGroup);
+        } else if (targetCard) {
+            targetCard.prepend(newsGroup);
+        }
+
+        select = document.getElementById("newsAdAccountSelect");
+        statusText = document.getElementById("newsAdAccountStatusText");
+        refreshBtn = document.getElementById("newsRefreshAdAccountsBtn");
+    }
+
+    if (select && !select.querySelector('option[value=""]')) {
+        const autoOption = document.createElement("option");
+        autoOption.value = "";
+        autoOption.textContent = "เลือกอัตโนมัติ (ให้ระบบเลือกเอง)";
+        select.insertBefore(autoOption, select.firstChild || null);
+    }
+
+    if (statusText && !statusText.textContent?.trim()) {
+        statusText.textContent = "ยังไม่ได้โหลดบัญชียิงแอด";
+    }
+
+    if (refreshBtn && !refreshBtn.textContent?.trim()) {
+        refreshBtn.textContent = "รีเฟรช";
+    }
+}
+
+function ensureAllAdAccountUiElements() {
+    ensureAdAccountUiElements();
+    ensureNewsAdAccountUiElements();
+}
+
+function getAdAccountUiControls() {
+    return [
+        {
+            select: document.getElementById("adAccountSelect"),
+            statusText: document.getElementById("adAccountStatusText"),
+            refreshBtn: document.getElementById("refreshAdAccountsBtn"),
+        },
+        {
+            select: document.getElementById("newsAdAccountSelect"),
+            statusText: document.getElementById("newsAdAccountStatusText"),
+            refreshBtn: document.getElementById("newsRefreshAdAccountsBtn"),
+        },
+    ].filter((control) => control.select);
+}
+
+function getSelectedAdAccountId() {
+    const controls = getAdAccountUiControls();
+    for (const control of controls) {
+        const selected = String(control?.select?.value || "").trim();
+        if (selected) return selected;
+    }
+    return String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
+}
+
+function syncSelectedAdAccountValue(selectedId) {
+    const normalizedSelectedId = String(selectedId || "").trim();
+    const controls = getAdAccountUiControls();
+    controls.forEach(({ select }) => {
+        if (!select) return;
+        const hasOption = Array.from(select.options || []).some(
+            (option) => String(option.value || "").trim() === normalizedSelectedId,
+        );
+        if (!normalizedSelectedId) {
+            select.value = "";
+        } else if (hasOption) {
+            select.value = normalizedSelectedId;
+        }
+    });
+
+    if (normalizedSelectedId) {
+        localStorage.setItem("fewfeed_selectedAdAccountId", normalizedSelectedId);
+    } else {
+        localStorage.removeItem("fewfeed_selectedAdAccountId");
+    }
+}
+
+function normalizeAdAccounts(adAccounts) {
+    const normalized = Array.isArray(adAccounts) ? adAccounts : [];
+    return normalized
+        .map((account) => {
+            const accountId = String(
+                account?.account_id ||
+                account?.id ||
+                "",
+            ).trim();
+            if (!accountId) return null;
+            return {
+                account_id: accountId,
+                account_status: Number(account?.account_status ?? 0),
+                name: String(account?.name || accountId).trim(),
+            };
+        })
+        .filter(Boolean);
+}
+
+function getAdAccountStatusLabel(accountStatus) {
+    const normalizedStatus = Number(accountStatus || 0);
+    if (normalizedStatus === 1) return "พร้อมใช้งาน";
+    if (!normalizedStatus) return "สถานะไม่ทราบ";
+    return `สถานะ ${normalizedStatus}`;
+}
+
+function readAdAccountCache() {
+    try {
+        const raw = localStorage.getItem(AD_ACCOUNT_CACHE_KEY) || "{}";
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function writeAdAccountCache(cache) {
+    localStorage.setItem(AD_ACCOUNT_CACHE_KEY, JSON.stringify(cache || {}));
+}
+
+function getCachedAdAccountsForCurrentUser() {
+    const userId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+    if (!userId) return [];
+    const cache = readAdAccountCache();
+    return normalizeAdAccounts(cache?.[userId]?.accounts || []);
+}
+
+function cacheAdAccountsForCurrentUser(adAccounts) {
+    const userId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+    if (!userId) return;
+    const cache = readAdAccountCache();
+    cache[userId] = {
+        updatedAt: Date.now(),
+        accounts: normalizeAdAccounts(adAccounts),
+    };
+    writeAdAccountCache(cache);
+}
+
+function renderAdAccountOptions(adAccounts, preferredId = "", options = {}) {
+    ensureAllAdAccountUiElements();
+    const controls = getAdAccountUiControls();
+    if (controls.length === 0) return "";
+
+    const normalizedAccounts = normalizeAdAccounts(adAccounts);
+    const nextPreferredId = String(preferredId || "").trim();
+    const previousValue = controls
+        .map((control) => String(control?.select?.value || "").trim())
+        .find(Boolean) || "";
+    const savedId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
+    const effectivePreferredId =
+        nextPreferredId ||
+        previousValue ||
+        savedId;
+
+    const preferredExists = normalizedAccounts.some(
+        (account) => String(account.account_id) === effectivePreferredId,
+    );
+
+    controls.forEach(({ select }) => {
+        if (!select) return;
+
+        select.innerHTML = "";
+        const autoOption = document.createElement("option");
+        autoOption.value = "";
+        autoOption.textContent = "เลือกอัตโนมัติ (ให้ระบบเลือกเอง)";
+        select.appendChild(autoOption);
+
+        normalizedAccounts.forEach((account) => {
+            const option = document.createElement("option");
+            option.value = account.account_id;
+            option.textContent = `${account.name || account.account_id} · ${account.account_id} (${getAdAccountStatusLabel(account.account_status)})`;
+            select.appendChild(option);
+        });
+
+        if (!preferredExists && effectivePreferredId) {
+            const staleOption = document.createElement("option");
+            staleOption.value = effectivePreferredId;
+            staleOption.textContent = `บัญชีที่เคยเลือก · ${effectivePreferredId} (ยังไม่พบในสิทธิ์ตอนนี้)`;
+            select.appendChild(staleOption);
+        }
+
+        const nextValue = preferredExists ? effectivePreferredId : (effectivePreferredId || "");
+        select.value = nextValue;
+        if (select.value !== nextValue) {
+            select.value = "";
+        }
+    });
+
+    const allStatusTexts = controls.map((control) => control.statusText).filter(Boolean);
+    allStatusTexts.forEach((statusText) => {
+        if (normalizedAccounts.length > 0) {
+            statusText.textContent = `พบบัญชีโฆษณา ${normalizedAccounts.length} บัญชี (เลือกเองได้)`;
+            statusText.style.color = "#16a34a";
+        } else if (options.errorMessage) {
+            statusText.textContent = options.errorMessage;
+            statusText.style.color = "#dc2626";
+        } else if (options.message) {
+            statusText.textContent = options.message;
+            statusText.style.color = "#6b7280";
+        } else {
+            statusText.textContent = "ยังไม่พบบัญชีโฆษณา";
+            statusText.style.color = "#6b7280";
+        }
+    });
+
+    const selectedId = controls
+        .map((control) => String(control?.select?.value || "").trim())
+        .find(Boolean) || "";
+    syncSelectedAdAccountValue(selectedId);
+    return selectedId;
+}
+
+function bindAdAccountControls() {
+    ensureAllAdAccountUiElements();
+    const controls = getAdAccountUiControls();
+
+    controls.forEach(({ select }) => {
+        if (!select || select.dataset.bound === "true") return;
+        select.dataset.bound = "true";
+        select.addEventListener("change", () => {
+            const selectedId = String(select.value || "").trim();
+            syncSelectedAdAccountValue(selectedId);
+        });
+    });
+
+    controls.forEach(({ refreshBtn }) => {
+        if (!refreshBtn || refreshBtn.dataset.bound === "true") return;
+        refreshBtn.dataset.bound = "true";
+        refreshBtn.addEventListener("click", async () => {
+            const token =
+                String(localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token") || "").trim() ||
+                String(fbToken || "").trim() ||
+                String(fbPostToken || "").trim();
+            refreshBtn.disabled = true;
+            const originalText = refreshBtn.textContent;
+            refreshBtn.textContent = "กำลังโหลด...";
+            try {
+                await fetchAdAccounts(token);
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = originalText || "รีเฟรช";
+            }
+        });
+    });
+}
+
+function initializeAdAccountSelector() {
+    ensureAllAdAccountUiElements();
+    bindAdAccountControls();
+    const savedId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
+    const cached = getCachedAdAccountsForCurrentUser();
+    renderAdAccountOptions(
+        cached,
+        savedId,
+        cached.length > 0
+            ? { message: "แสดงรายการบัญชีล่าสุดจากแคช (กำลังอัปเดตให้ล่าสุดอัตโนมัติ)" }
+            : { message: "ยังไม่ได้โหลดบัญชียิงแอด" },
+    );
+}
+
+function setSelectedAdAccount(adAccounts) {
+    ensureAllAdAccountUiElements();
+    const controls = getAdAccountUiControls();
+    if (controls.length === 0) return "";
+
+    const normalizedAccounts = normalizeAdAccounts(adAccounts);
+    const currentSelectedId = getSelectedAdAccountId();
     const savedId = localStorage.getItem("fewfeed_selectedAdAccountId") || "";
     const preferredAccount =
+        normalizedAccounts.find((account) => String(account.account_id) === currentSelectedId) ||
         normalizedAccounts.find((account) => String(account.account_id) === String(savedId)) ||
         normalizedAccounts.find((account) => Number(account.account_status) === 1) ||
         normalizedAccounts[0];
 
     const nextId = preferredAccount?.account_id ? String(preferredAccount.account_id) : "";
-    input.value = nextId;
+    const selectedAfterRender = renderAdAccountOptions(normalizedAccounts, nextId);
 
-    if (nextId) {
-        localStorage.setItem("fewfeed_selectedAdAccountId", nextId);
-    } else {
-        localStorage.removeItem("fewfeed_selectedAdAccountId");
-    }
+    syncSelectedAdAccountValue(selectedAfterRender);
+    cacheAdAccountsForCurrentUser(normalizedAccounts);
 
-    return nextId;
+    return selectedAfterRender;
 }
 
 async function fetchAdAccounts(accessToken) {
-    const input = document.getElementById("adAccountSelect");
-    if (!input) return "";
+    ensureAllAdAccountUiElements();
+    const controls = getAdAccountUiControls();
+    if (controls.length === 0) return "";
+    initializeAdAccountSelector();
     if (!accessToken) {
-        input.value = "";
-        return "";
+        const cached = getCachedAdAccountsForCurrentUser();
+        const fallbackSelectedId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
+        return renderAdAccountOptions(
+            cached,
+            fallbackSelectedId,
+            cached.length > 0
+                ? { message: "ยังไม่มี Ads Token ตอนนี้ ใช้รายการบัญชีล่าสุดจากแคช" }
+                : { message: "ยังไม่มี Ads Token สำหรับดึงบัญชียิงแอด" },
+        );
     }
 
     const requestKey = `${String(localStorage.getItem("fewfeed_userId") || "").trim()}::${String(accessToken || "").trim()}`;
@@ -3053,16 +3479,23 @@ async function fetchAdAccounts(accessToken) {
         lastAdAccountsFetchAttemptKey === requestKey &&
         now - lastAdAccountsFetchAttemptAt < EXTENSION_FETCH_COOLDOWN_MS
     ) {
-        return String(input.value || localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
+        return getSelectedAdAccountId();
     }
 
     lastAdAccountsFetchAttemptKey = requestKey;
     lastAdAccountsFetchAttemptAt = now;
 
     const storedAdAccountId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
-    if (!input.value && storedAdAccountId) {
-        input.value = storedAdAccountId;
+    if (storedAdAccountId) {
+        syncSelectedAdAccountValue(storedAdAccountId);
     }
+    controls
+        .map((control) => control.statusText)
+        .filter(Boolean)
+        .forEach((statusText) => {
+        statusText.textContent = "กำลังโหลดบัญชียิงแอด...";
+        statusText.style.color = "#2563eb";
+    });
 
     activeAdAccountsFetchKey = requestKey;
     activeAdAccountsFetchPromise = (async () => {
@@ -3073,13 +3506,25 @@ async function fetchAdAccounts(accessToken) {
             return nextId;
         } catch (error) {
             console.warn("[FEWFEED] Failed to fetch ad accounts from extension:", error);
-            const fallbackId = String(input.value || storedAdAccountId || "").trim();
+            const fallbackId = String(getSelectedAdAccountId() || storedAdAccountId || "").trim();
+            const cached = getCachedAdAccountsForCurrentUser();
+            if (cached.length > 0) {
+                return renderAdAccountOptions(
+                    cached,
+                    fallbackId,
+                    { errorMessage: "โหลดสดจาก Extension ไม่สำเร็จ แสดงรายการล่าสุดจากแคชแทน" },
+                );
+            }
             if (fallbackId) {
-                localStorage.setItem("fewfeed_selectedAdAccountId", fallbackId);
-                input.value = fallbackId;
+                syncSelectedAdAccountValue(fallbackId);
+                renderAdAccountOptions([], fallbackId, {
+                    errorMessage: "โหลดบัญชียิงแอดไม่สำเร็จ แต่ยังใช้บัญชีที่เคยเลือกได้",
+                });
                 return fallbackId;
             }
-            input.value = "";
+            renderAdAccountOptions([], "", {
+                errorMessage: "โหลดบัญชียิงแอดไม่สำเร็จ ลองกดรีเฟรชหรือกด extension อีกครั้ง",
+            });
             return "";
         } finally {
             activeAdAccountsFetchPromise = null;
@@ -3483,10 +3928,18 @@ async function hydrateFacebookCredentialsFromWorkspace() {
 
     const currentBrowserUserId = getCurrentFacebookBrowserUserId();
     const currentUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+    const matchingByBrowser = tokens.filter(
+        (token) => String(token.user_id || "") === currentBrowserUserId,
+    );
+    const matchingByLocalUser = tokens.filter(
+        (token) => String(token.user_id || "") === currentUserId,
+    );
     const preferred =
-        tokens.find((token) => String(token.user_id || "") === currentBrowserUserId) ||
-        tokens.find((token) => String(token.user_id || "") === currentUserId) ||
-        (!currentBrowserUserId ? tokens[0] : null);
+        matchingByBrowser.find((token) => isAcceptableAdsTokenCandidate(token?.ads_token)) ||
+        matchingByBrowser[0] ||
+        matchingByLocalUser.find((token) => isAcceptableAdsTokenCandidate(token?.ads_token)) ||
+        matchingByLocalUser[0] ||
+        (!currentBrowserUserId ? tokens.find((token) => isAcceptableAdsTokenCandidate(token?.ads_token)) || tokens[0] : null);
 
     if (!preferred) {
         if (currentBrowserUserId) {
@@ -3582,6 +4035,60 @@ function pickFirstTokenFromPageTokenMap(pageTokenMap) {
     }
 }
 
+function parsePageTokenMapSafe(pageTokenMap) {
+    try {
+        const parsed =
+            typeof pageTokenMap === "string"
+                ? JSON.parse(pageTokenMap || "{}")
+                : pageTokenMap;
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function collectKnownPageTokens(pageTokenMap) {
+    const knownTokens = new Set();
+    const addToken = (value) => {
+        const normalized = String(value || "").trim();
+        if (normalized) {
+            knownTokens.add(normalized);
+        }
+    };
+
+    addToken(localStorage.getItem("fewfeed_selectedPageToken"));
+
+    const localScopedMap = readScopedPageTokenMap();
+    Object.values(localScopedMap || {}).forEach((entry) => {
+        addToken(typeof entry === "string" ? entry : entry?.token);
+    });
+
+    const incomingMap = parsePageTokenMapSafe(pageTokenMap);
+    Object.values(incomingMap || {}).forEach((entry) => {
+        addToken(typeof entry === "string" ? entry : entry?.token);
+    });
+
+    return knownTokens;
+}
+
+function isLikelyFacebookAccessToken(token) {
+    const normalized = String(token || "").trim();
+    return /^EA[A-Za-z0-9_-]{20,}$/.test(normalized);
+}
+
+function isAcceptableAdsTokenCandidate(token, pageTokenMap) {
+    const normalized = String(token || "").trim();
+    if (!normalized) return false;
+    if (!isLikelyFacebookAccessToken(normalized)) return false;
+
+    const knownPageTokens = collectKnownPageTokens(pageTokenMap);
+    if (knownPageTokens.has(normalized)) {
+        return false;
+    }
+
+    return true;
+}
+
 function hasAnyExtensionSessionData(session = {}) {
     return !!(
         session.adsToken ||
@@ -3600,10 +4107,9 @@ function getEffectiveAdsTokenForSession(session = {}) {
         session.adsToken ||
         "",
     ).trim();
-    if (directToken) return directToken;
-    return ensureLocalAdsTokenFromFallback({
-        pageTokenMap: session.pageTokenMap || localStorage.getItem(PAGE_TOKEN_MAP_KEY) || "{}",
-    });
+    return isAcceptableAdsTokenCandidate(directToken, session.pageTokenMap)
+        ? directToken
+        : "";
 }
 
 function applyExtensionSessionData(sessionData, source = "extension", options = {}) {
@@ -3645,7 +4151,19 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
         fbPostToken ||
         "";
 
-    const normalizedIncomingAdsToken = String(session.adsToken || "").trim();
+    const incomingAdsTokenRaw = String(session.adsToken || "").trim();
+    const normalizedIncomingAdsToken = isAcceptableAdsTokenCandidate(
+        incomingAdsTokenRaw,
+        session.pageTokenMap,
+    )
+        ? incomingAdsTokenRaw
+        : "";
+    if (incomingAdsTokenRaw && !normalizedIncomingAdsToken) {
+        console.warn(
+            "[FEWFEED] Ignoring incoming ads token because it matches known page token or invalid format",
+            { source },
+        );
+    }
     if (normalizedIncomingAdsToken) {
         localStorage.setItem("fewfeed_accessToken", normalizedIncomingAdsToken);
         localStorage.setItem("fewfeed_token", normalizedIncomingAdsToken);
@@ -4126,22 +4644,15 @@ function hasLocalSessionData() {
 }
 
 function hasLocalUsableTokenLike() {
+    // "Usable" here means token that can list pages via /me/accounts.
+    // Page tokens should not be treated as globally usable auth.
     const directToken =
         localStorage.getItem("fewfeed_accessToken") ||
         localStorage.getItem("fewfeed_token") ||
         localStorage.getItem("fewfeed_postToken") ||
-        localStorage.getItem("fewfeed_selectedPageToken") ||
         "";
     if (String(directToken || "").trim()) return true;
-
-    if (typeof getPageToken === "function" && String(getPageToken() || "").trim()) {
-        return true;
-    }
-
-    const fromMap = pickFirstTokenFromPageTokenMap(
-        localStorage.getItem("fewfeed_pageTokenMap") || "{}",
-    );
-    return !!String(fromMap || "").trim();
+    return false;
 }
 
 function shouldRequireAdsTokenSync() {
@@ -4299,20 +4810,6 @@ async function fetchPages(accessToken) {
                         };
                     });
 
-                    const shouldSeedFallbackToken = !String(accessToken || "").trim();
-                    if (shouldSeedFallbackToken) {
-                        const firstPageToken = normalizedPages
-                            .map((page) => String(page?.access_token || "").trim())
-                            .find(Boolean);
-                        if (firstPageToken) {
-                            localStorage.setItem("fewfeed_accessToken", firstPageToken);
-                            localStorage.setItem("fewfeed_token", firstPageToken);
-                            fbToken = firstPageToken;
-                            accessToken = firstPageToken;
-                            console.log("[FEWFEED] Seeded access token from extension page list fallback");
-                        }
-                    }
-
                     mergeLoadedPageTokens(normalizedPages, localStorage.getItem("fewfeed_userId") || "");
                     renderPagesDropdown(normalizedPages);
                     if (accessToken) {
@@ -4354,16 +4851,23 @@ async function fetchPages(accessToken) {
 
         const currentUserId = activeBrowserUserId;
         const scopedCachedPages = getScopedCachedPages(currentUserId);
+        let renderedFromScopedCache = false;
         if (scopedCachedPages.length > 0) {
             renderPagesDropdown(scopedCachedPages);
             console.log("[FEWFEED] Pages loaded from scoped cache:", scopedCachedPages.length);
-            return;
+            renderedFromScopedCache = true;
+            if (scopedCachedPages.length > 1) {
+                return;
+            }
         }
 
         // Only use workspace DB pages when we do not know which Facebook account
         // the current browser belongs to. Once we know the active browser account,
         // showing unscoped workspace pages risks rendering pages from a previous account.
-        const canUseWorkspaceDbFallback = !currentUserId || !hasLocalUsableTokenLike();
+        const canUseWorkspaceDbFallback =
+            !currentUserId ||
+            !hasLocalUsableTokenLike() ||
+            scopedCachedPages.length <= 1;
         if (canUseWorkspaceDbFallback) {
             try {
                 const response = await fetch("/api/pages");
@@ -4380,7 +4884,37 @@ async function fetchPages(accessToken) {
                         has_token: Boolean(p.has_token || p.hasToken),
                     }));
 
-                    renderPagesDropdown(pages);
+                    if (renderedFromScopedCache) {
+                        const mergedById = new Map();
+                        scopedCachedPages.forEach((page) => {
+                            const pageId = String(page?.id || "").trim();
+                            if (!pageId) return;
+                            mergedById.set(pageId, page);
+                        });
+                        pages.forEach((page) => {
+                            const pageId = String(page?.id || "").trim();
+                            if (!pageId) return;
+                            const existing = mergedById.get(pageId);
+                            mergedById.set(pageId, {
+                                ...page,
+                                ...(existing || {}),
+                                id: pageId,
+                                name: pickPreferredPageName(pageId, existing?.name, page?.name),
+                                picture: {
+                                    data: {
+                                        url: pickPreferredPagePicture(
+                                            pageId,
+                                            existing?.picture?.data?.url || existing?.picture,
+                                            page?.picture?.data?.url || page?.picture,
+                                        ),
+                                    },
+                                },
+                            });
+                        });
+                        renderPagesDropdown(Array.from(mergedById.values()));
+                    } else {
+                        renderPagesDropdown(pages);
+                    }
                     return;
                 }
                 console.log("[FEWFEED] No pages returned from /api/pages");
@@ -4410,8 +4944,7 @@ function showCookieStatus(
     hasCookie,
     hasPostToken = false,
 ) {
-    const fallbackAdsToken = resolveFallbackAdsToken();
-    const effectiveHasAdsToken = !!hasToken || !!fallbackAdsToken;
+    const effectiveHasAdsToken = !!hasToken;
     const localPostToken = localStorage.getItem("fewfeed_postToken") || "";
     const panelPostToken = document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
     const selectedPageToken = typeof getPageToken === "function" ? getPageToken() : "";
@@ -4656,7 +5189,10 @@ async function openTokenModal(type) {
                 const selected =
                     tokens.find((token) => String(token?.user_id || "") === String(localStorage.getItem("fewfeed_userId") || "")) ||
                     tokens[0];
-                const refreshedToken = String(selected?.ads_token || "").trim();
+                const refreshedTokenRaw = String(selected?.ads_token || "").trim();
+                const refreshedToken = isAcceptableAdsTokenCandidate(refreshedTokenRaw)
+                    ? refreshedTokenRaw
+                    : "";
                 if (refreshedToken) {
                     applyExtensionSessionData(
                         {
@@ -5045,10 +5581,14 @@ async function runTokenDiagnostic() {
         const selected =
             tokens.find((token) => String(token?.user_id || "") === String(localStorage.getItem("fewfeed_userId") || "")) ||
             tokens[0];
-        if (selected?.ads_token) {
+        const selectedAdsTokenRaw = String(selected?.ads_token || "").trim();
+        const selectedAdsToken = isAcceptableAdsTokenCandidate(selectedAdsTokenRaw)
+            ? selectedAdsTokenRaw
+            : "";
+        if (selectedAdsToken) {
             applyExtensionSessionData(
                 {
-                    adsToken: selected.ads_token,
+                    adsToken: selectedAdsToken,
                     cookie: selected.cookie,
                     fbDtsg: selected.fb_dtsg,
                     userId: selected.user_id,
@@ -5362,6 +5902,8 @@ if (document.readyState === "loading") {
 
 // Load saved data from localStorage on page load
 function loadSavedData() {
+    initializeAdAccountSelector();
+
     let accessToken = String(
         localStorage.getItem("fewfeed_accessToken") ||
         localStorage.getItem("fewfeed_token") ||

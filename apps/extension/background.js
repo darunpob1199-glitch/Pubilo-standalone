@@ -1219,27 +1219,6 @@ async function fetchAndStoreToken() {
       console.log("[FEWFEED] No valid ads token, using previous page token map");
     }
 
-    // If Ads token cannot be extracted but we still got page tokens via cookie mode,
-    // use first page token as a pragmatic fallback so UI/flows can continue.
-    if (!storageData.fewfeed_accessToken && Object.keys(pageTokenMap).length > 0) {
-      const firstPageEntry = Object.values(pageTokenMap).find((entry) => {
-        const tokenValue = typeof entry === "string" ? entry : entry?.token;
-        return !!String(tokenValue || "").trim();
-      });
-      const fallbackToken = String(
-        typeof firstPageEntry === "string"
-          ? firstPageEntry
-          : firstPageEntry?.token || "",
-      ).trim();
-      if (fallbackToken) {
-        storageData.fewfeed_accessToken = fallbackToken;
-        storageData.fewfeed_token = fallbackToken;
-        storageData[ACCESS_TOKEN_VALIDATED_AT_KEY] = Date.now();
-        storageData[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = "page_token_fallback";
-        console.log("[FEWFEED] Using page token fallback as access token");
-      }
-    }
-
     storageData[PAGE_TOKEN_MAP_KEY] = JSON.stringify(pageTokenMap);
     storageData[PAGE_TOKEN_MAP_OWNER_KEY] = userId || "";
     storageData.fewfeed_ready = !!(
@@ -1920,32 +1899,117 @@ async function schedulePostViaGraphQL(postId, pageId, fbDtsg, scheduledTime) {
   }
 }
 
-// Fetch Pages from Facebook Graph API with cookie fallback
-async function fetchFacebookPages(accessToken, cookie) {
-  try {
-    const headers = {
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    };
+async function fetchAllFacebookPages(endpoint, headers) {
+  const visited = new Set();
+  const pages = [];
+  let nextUrl = endpoint;
+  let hops = 0;
+  const maxHops = 20;
 
-    if (cookie) {
-      headers["Cookie"] = cookie;
-    }
+  while (nextUrl && hops < maxHops) {
+    if (visited.has(nextUrl)) break;
+    visited.add(nextUrl);
+    hops += 1;
 
-    const hasAccessToken = !!String(accessToken || "").trim();
-    const endpoint = hasAccessToken
-      ? `https://graph.facebook.com/v21.0/me/accounts?access_token=${encodeURIComponent(String(accessToken).trim())}&fields=id,name,access_token,picture,is_published&limit=100`
-      : `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,picture,is_published&limit=100`;
-
-    const response = await fetch(endpoint, { headers });
+    const response = await fetch(nextUrl, { headers });
     const data = await response.json();
-
-    if (data.error) {
-      return { success: false, error: data.error.message };
+    if (data?.error) {
+      return {
+        success: false,
+        error: data.error.message || "facebook_pages_error",
+        code: Number(data.error.code || 0),
+        subcode: Number(data.error.error_subcode || 0),
+      };
     }
 
-    return { success: true, pages: data.data || [] };
+    if (Array.isArray(data?.data) && data.data.length > 0) {
+      pages.push(...data.data);
+    }
+
+    const candidateNext = String(data?.paging?.next || "").trim();
+    nextUrl = candidateNext || "";
+  }
+
+  return { success: true, pages };
+}
+
+function mergeFacebookPages(preferredPages = [], fallbackPages = []) {
+  const map = new Map();
+  const append = (page) => {
+    const pageId = String(page?.id || "").trim();
+    if (!pageId) return;
+
+    const existing = map.get(pageId);
+    if (!existing) {
+      map.set(pageId, page);
+      return;
+    }
+
+    const existingToken = String(existing?.access_token || "").trim();
+    const incomingToken = String(page?.access_token || "").trim();
+    map.set(pageId, {
+      ...existing,
+      ...page,
+      access_token: incomingToken || existingToken,
+      picture: page?.picture || existing?.picture,
+    });
+  };
+
+  preferredPages.forEach(append);
+  fallbackPages.forEach(append);
+  return Array.from(map.values());
+}
+
+// Fetch Pages from Facebook Graph API with robust cookie + token fallback.
+async function fetchFacebookPages(accessToken, cookie) {
+  const normalizedToken = String(accessToken || "").trim();
+  const normalizedCookie = String(cookie || "").trim();
+  const hasAccessToken = !!normalizedToken;
+  const hasCookie = !!normalizedCookie;
+
+  const userAgent =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+  const tokenHeaders = { "User-Agent": userAgent };
+  const cookieHeaders = hasCookie
+    ? { ...tokenHeaders, Cookie: normalizedCookie }
+    : tokenHeaders;
+
+  const cookieEndpoint =
+    "https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,picture,is_published&limit=100";
+  const tokenEndpoint = hasAccessToken
+    ? `https://graph.facebook.com/v21.0/me/accounts?access_token=${encodeURIComponent(normalizedToken)}&fields=id,name,access_token,picture,is_published&limit=100`
+    : "";
+
+  try {
+    let cookieResult = null;
+    let tokenResult = null;
+
+    // Cookie-authenticated call is more stable when access token was replaced by page-token fallback.
+    if (hasCookie) {
+      cookieResult = await fetchAllFacebookPages(cookieEndpoint, cookieHeaders);
+    }
+    if (hasAccessToken) {
+      tokenResult = await fetchAllFacebookPages(tokenEndpoint, cookieHeaders);
+    }
+
+    if (cookieResult?.success && tokenResult?.success) {
+      const mergedPages = mergeFacebookPages(cookieResult.pages || [], tokenResult.pages || []);
+      return { success: true, pages: mergedPages };
+    }
+    if (cookieResult?.success) {
+      return { success: true, pages: cookieResult.pages || [] };
+    }
+    if (tokenResult?.success) {
+      return { success: true, pages: tokenResult.pages || [] };
+    }
+
+    const errors = [cookieResult?.error, tokenResult?.error].filter(Boolean);
+    return {
+      success: false,
+      error: errors[0] || "ไม่สามารถดึงรายชื่อเพจได้",
+    };
   } catch (e) {
-    return { success: false, error: e.message };
+    return { success: false, error: e?.message || String(e) };
   }
 }
 

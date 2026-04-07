@@ -426,6 +426,18 @@
                         <h3 class="ad-section-title">Ad Setup</h3>
                     </div>
                     <div class="card" style="display: flex; flex-direction: column;">
+                        <div class="form-group ad-account-group is-prominent" id="newsAdAccountGroup">
+                            <div class="ad-account-label-row">
+                                <label class="form-label" for="newsAdAccountSelect" style="margin-bottom: 0;">บัญชียิงแอด</label>
+                                <button type="button" class="ad-account-refresh-btn" id="newsRefreshAdAccountsBtn">รีเฟรช</button>
+                            </div>
+                            <select class="form-select" id="newsAdAccountSelect">
+                                <option value="">เลือกอัตโนมัติ (ให้ระบบเลือกเอง)</option>
+                            </select>
+                            <small id="newsAdAccountStatusText" style="color: #888; margin-top: 4px; display: block;">
+                                ยังไม่ได้โหลดบัญชียิงแอด
+                            </small>
+                        </div>
                         <div class="form-group">
                             <div style="display: flex; align-items: center; justify-content: space-between;">
                                 <label class="form-label" style="margin-bottom: 0;">Primary Text</label>
@@ -552,7 +564,6 @@
                 <div class="form-panel">
                     <!-- Hidden values from server config -->
                     <input type="hidden" id="pageSelect" value="" />
-                    <input type="hidden" id="adAccountSelect" value="" />
 
                     <!-- Ad Setup Section Header -->
                     <div class="ad-section-header">
@@ -569,6 +580,18 @@
                         </div>
                         <!-- Link-only fields (hidden in Image mode) -->
                         <div id="linkOnlyFields">
+                            <div class="form-group ad-account-group" id="adAccountGroup">
+                                <div class="ad-account-label-row">
+                                    <label class="form-label" for="adAccountSelect" style="margin-bottom: 0;">บัญชียิงแอด</label>
+                                    <button type="button" class="ad-account-refresh-btn" id="refreshAdAccountsBtn">รีเฟรช</button>
+                                </div>
+                                <select class="form-select" id="adAccountSelect">
+                                    <option value="">เลือกอัตโนมัติ (ให้ระบบเลือกเอง)</option>
+                                </select>
+                                <small id="adAccountStatusText" style="color: #888; margin-top: 4px; display: block;">
+                                    ยังไม่ได้โหลดบัญชียิงแอด
+                                </small>
+                            </div>
                             <div class="form-group">
                                 <label class="form-label">Website URL</label>
                                 <input type="text" class="form-input" id="linkUrl" placeholder="https://..." />
@@ -1176,9 +1199,100 @@
             </div>
 
             <!-- Settings Panel -->
-            <div class="pending-panel" id="settingsPanel" style="display: none">
-                <div class="pending-panel-header">
-                    <h2>Settings</h2>
+            <div class="pending-panel" id="settingsPanel" style="display: none; background: #fafbfc; padding: 40px; overflow-y: auto;">
+                <style>
+                    #settingsPanel .pending-panel-header {
+                        display: none;
+                    }
+                    #settingsPanel .settings-page-header {
+                        max-width: 800px;
+                        margin: 0 auto 32px auto;
+                    }
+                    #settingsPanel .settings-page-title {
+                        font-size: 32px;
+                        font-weight: 800;
+                        color: #111827;
+                        margin: 0 0 8px 0;
+                        letter-spacing: -0.02em;
+                    }
+                    #settingsPanel .settings-page-subtitle {
+                        font-size: 15px;
+                        color: #6b7280;
+                        margin: 0;
+                    }
+                    #settingsPanel .settings-content {
+                        max-width: 800px;
+                        margin: 0 auto;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 24px;
+                        padding-bottom: 60px;
+                    }
+                    #settingsPanel .settings-section {
+                        background: white;
+                        border-radius: 20px;
+                        padding: 32px;
+                        box-shadow: 0 10px 40px rgba(0,0,0,0.03);
+                        border: 1px solid #e2e8f0;
+                        margin-bottom: 0;
+                    }
+                    #settingsPanel .settings-section-title {
+                        font-size: 18px;
+                        font-weight: 700;
+                        color: #111827;
+                        margin: 0 0 20px 0;
+                        padding: 0;
+                        cursor: default;
+                        border-bottom: 1px solid #f3f4f6;
+                        padding-bottom: 16px;
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        background: transparent;
+                    }
+                    #settingsPanel .settings-section-content {
+                        display: block !important;
+                        padding: 0;
+                    }
+                    #settingsPanel .collapse-icon {
+                        display: none;
+                    }
+                    #settingsPanel .btn-save {
+                        background: #a855f7;
+                        color: white;
+                        border: none;
+                        padding: 16px;
+                        border-radius: 12px;
+                        font-size: 16px;
+                        font-weight: 700;
+                        cursor: pointer;
+                        transition: opacity 0.2s, transform 0.1s;
+                        width: 100%;
+                        margin-top: 16px;
+                        box-shadow: 0 4px 12px rgba(168, 85, 247, 0.2);
+                    }
+                    #settingsPanel .btn-save:hover {
+                        opacity: 0.9;
+                        transform: translateY(-1px);
+                    }
+                    #settingsPanel input[type="checkbox"] {
+                        accent-color: #a855f7;
+                        width: 18px;
+                        height: 18px;
+                        cursor: pointer;
+                    }
+                    #settingsPanel .form-input:focus,
+                    #settingsPanel .form-textarea:focus,
+                    #settingsPanel .form-select:focus,
+                    #settingsPanel select:focus {
+                        border-color: #a855f7 !important;
+                        outline: none;
+                        box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1) !important;
+                    }
+                </style>
+                <div class="settings-page-header">
+                    <h1 class="settings-page-title">Settings</h1>
+                    <p class="settings-page-subtitle">จัดการการตั้งค่าระบบและกำหนดค่าเริ่มต้น</p>
                 </div>
                 <div class="settings-content">
                     <!-- Page Token Section -->
@@ -2091,7 +2205,7 @@
     <script src="/js/parts/09-navigation.js?v=7.7"></script>
     <script src="/js/parts/10-lazada.js?v=6.5"></script>
     <script src="/js/parts/11-image-generation.js?v=9.4"></script>
-    <script src="/js/parts/12-publish.js?v=11.17"></script>
+    <script src="/js/parts/12-publish.js?v=11.19"></script>
 
     <!-- Lightbox Modal -->
     <div class="lightbox-overlay" id="lightboxOverlay">
