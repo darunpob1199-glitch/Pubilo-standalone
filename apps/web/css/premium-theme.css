@@ -1,17 +1,17 @@
-/* Premium Theme Overrides - "Shodai" Style */
+/* Premium Theme Overrides - "Shodai" Style -> Updated to NBI / Billing Theme */
 
 :root {
-    --primary: #6941c6; /* Untitled UI Purple */
-    --primary-hover: #53389e;
-    --bg-color: #fcfcfd;
+    --primary: #a855f7; /* Billing Purple */
+    --primary-hover: #9333ea; /* Darker Billing Purple */
+    --bg-color: #fafbfc;
     --card-bg: #ffffff;
     --sidebar-bg: #ffffff;
-    --text-main: #101828;
-    --text-muted: #475467;
-    --border-color: #eaecf0;
-    --border-radius: 10px;
-    --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
-    --shadow-md: 0 1px 3px rgba(16, 24, 40, 0.1), 0 1px 2px rgba(16, 24, 40, 0.06);
+    --text-main: #111827;
+    --text-muted: #6b7280;
+    --border-color: #e2e8f0;
+    --border-radius: 20px;
+    --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.02);
+    --shadow-md: 0 10px 40px rgba(0, 0, 0, 0.03);
 }
 
 /* Global Settings */
@@ -151,7 +151,7 @@ header.header {
 .form-input:focus, .form-select:focus, .form-textarea:focus {
     background: #ffffff !important;
     border-color: var(--primary) !important;
-    box-shadow: 0 0 0 3px rgba(105, 65, 198, 0.1) !important;
+    box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1) !important;
     outline: none !important;
 }
 
@@ -163,7 +163,7 @@ header.header {
     font-weight: 600 !important;
     letter-spacing: 0 !important;
     color: white !important;
-    box-shadow: 0 4px 12px rgba(105, 65, 198, 0.2) !important;
+    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.2) !important;
     transition: all 0.2s ease !important;
     border: none !important;
     width: 100% !important; /* Shodai buttons are typically full width or prominent */
@@ -171,7 +171,7 @@ header.header {
 .btn-publish:hover:not(:disabled) {
     background: var(--primary-hover) !important;
     transform: translateY(-1px) !important;
-    box-shadow: 0 6px 16px rgba(105, 65, 198, 0.3) !important;
+    box-shadow: 0 6px 16px rgba(168, 85, 247, 0.3) !important;
 }
 .btn-publish:disabled,
 .btn-publish.disabled {
@@ -189,7 +189,7 @@ header.header {
 }
 .upload-btn:hover {
     border-color: var(--primary) !important;
-    background: rgba(105, 65, 198, 0.02) !important;
+    background: rgba(168, 85, 247, 0.02) !important;
     color: var(--primary) !important;
 }
 .upload-btn svg {
@@ -247,7 +247,7 @@ header.header {
 .pending-filter-input:focus, .pending-filter-select:focus {
     background: #ffffff !important;
     border-color: var(--primary) !important;
-    box-shadow: 0 0 0 3px rgba(105, 65, 198, 0.1) !important;
+    box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1) !important;
     outline: none !important;
 }
 
@@ -270,7 +270,7 @@ header.header {
 .pending-filter-chip.is-active {
     background: var(--primary) !important;
     color: #ffffff !important;
-    box-shadow: 0 4px 12px rgba(105, 65, 198, 0.25) !important;
+    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.25) !important;
 }
 
 .pending-refresh-btn {
@@ -286,7 +286,7 @@ header.header {
 .pending-refresh-btn:hover {
     border-color: var(--primary) !important;
     color: var(--primary) !important;
-    background: rgba(105, 65, 198, 0.05) !important;
+    background: rgba(168, 85, 247, 0.05) !important;
 }
 
 .table-header {
@@ -336,7 +336,7 @@ input[type="checkbox"] {
 #newsManualScheduleClearBtn:hover, #linkManualScheduleClearBtn:hover, .schedule-clear-btn:hover {
     border-color: var(--primary) !important;
     color: var(--primary) !important;
-    background: rgba(105, 65, 198, 0.05) !important;
+    background: rgba(168, 85, 247, 0.05) !important;
 }
 
 /* Action buttons (like edit icons in the reference image) */
@@ -466,7 +466,7 @@ input[type="checkbox"] {
 
 .manual-token-input:focus {
     border-color: var(--primary) !important;
-    box-shadow: 0 0 0 4px rgba(105, 65, 198, 0.1) !important;
+    box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.1) !important;
     background: #ffffff !important;
     outline: none !important;
 }
