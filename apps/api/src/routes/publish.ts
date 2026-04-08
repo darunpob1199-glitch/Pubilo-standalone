@@ -2413,6 +2413,9 @@ app.post('/', async (c) => {
 
             let lastFeedError = '';
             let lastFeedFacebookError: any = null;
+            let sawAuthRelatedFeedError = false;
+            let sawSessionInvalidatedFeedError = false;
+            let sawNonAuthFeedError = false;
             for (const candidateToken of pageTokenCandidates) {
                 let candidateLastError = '';
                 for (let linkIndex = 0; linkIndex < feedLinkCandidates.length; linkIndex += 1) {
@@ -2472,7 +2475,25 @@ app.post('/', async (c) => {
                         });
                     } catch (feedError) {
                         candidateLastError = feedError instanceof Error ? feedError.message : String(feedError);
-                        lastFeedFacebookError = (feedError as { facebookError?: any })?.facebookError || lastFeedFacebookError;
+                        const feedFacebookError = (feedError as { facebookError?: any })?.facebookError || null;
+                        lastFeedFacebookError = feedFacebookError || lastFeedFacebookError;
+                        const normalizedFeedMessage = String(candidateLastError || '');
+                        const authRelatedFeedError = isSessionInvalidatedFacebookError(feedFacebookError)
+                            || isAuthRelatedErrorMessage(normalizedFeedMessage)
+                            || /changed.*password|security reasons/i.test(normalizedFeedMessage);
+                        if (authRelatedFeedError) {
+                            sawAuthRelatedFeedError = true;
+                        } else {
+                            sawNonAuthFeedError = true;
+                        }
+                        if (
+                            isSessionInvalidatedFacebookError(feedFacebookError)
+                            || /session has been invalidated|error validating access token|access token has expired|access token is invalid/i.test(
+                                normalizedFeedMessage.toLowerCase(),
+                            )
+                        ) {
+                            sawSessionInvalidatedFeedError = true;
+                        }
                         if (linkIndex + 1 < feedLinkCandidates.length) {
                             console.warn(
                                 `[publish] feed link attempt failed, retrying with fallback link (${linkIndex + 1}/${feedLinkCandidates.length}):`,
@@ -2525,12 +2546,14 @@ app.post('/', async (c) => {
                 }
             }
 
-            const isSessionInvalidated =
-                isSessionInvalidatedFacebookError(lastFeedFacebookError) ||
-                isAuthRelatedErrorMessage(lastFeedError) ||
-                /changed.*password|security reasons/i.test(
+            const hasOnlyAuthRelatedFailures = sawAuthRelatedFeedError && !sawNonAuthFeedError;
+            const isSessionInvalidated = hasOnlyAuthRelatedFailures && (
+                sawSessionInvalidatedFeedError
+                || isSessionInvalidatedFacebookError(lastFeedFacebookError)
+                || /changed.*password|security reasons/i.test(
                     `${adCreativeError || ''} ${lastFeedError || ''}`,
-                );
+                )
+            );
             const isExpectedCreativeStoryMiss = /did not return object_story_id|materialization disabled/i.test(
                 String(adCreativeError || '')
             );
@@ -2553,12 +2576,17 @@ app.post('/', async (c) => {
                     feedError: lastFeedError,
                     candidatesTried: pageTokenCandidates.length,
                     isSessionInvalidated,
+                    sawAuthRelatedFeedError,
+                    sawSessionInvalidatedFeedError,
+                    sawNonAuthFeedError,
+                    hasOnlyAuthRelatedFailures,
                 },
             }, 400);
         }
 
         let lastFacebookError: any = null;
         let sawSessionExpired = false;
+        let sawNonSessionError = false;
 
         for (const authToken of authCandidates) {
             let endpoint = `${FB_API}/${pageId}`;
@@ -2656,10 +2684,12 @@ app.post('/', async (c) => {
                 if (Number(data.error?.code) === 1 && data.error?.type === 'OAuthException') {
                     console.warn('[publish] Token invalid (code 1), trying next candidate...', { tokenLen: authToken.length });
                     lastFacebookError = data.error;
+                    sawNonSessionError = true;
                     continue;
                 }
 
                 lastFacebookError = data.error;
+                sawNonSessionError = true;
                 console.warn('[publish] Facebook API error for token candidate:', data.error);
                 continue;
             }
@@ -2747,15 +2777,16 @@ app.post('/', async (c) => {
             }
         }
 
+        const shouldReportSessionExpired = sawSessionExpired && !sawNonSessionError;
         const isOAuthError = lastFacebookError?.type === 'OAuthException';
         return c.json({
             success: false,
-            error: sawSessionExpired
+            error: shouldReportSessionExpired
                 ? 'Facebook session หมดอายุ กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง'
                 : isOAuthError
                 ? 'Token ทั้งหมดไม่ถูกต้อง กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง'
                 : (lastFacebookError?.message || 'Facebook API error'),
-            errorCode: lastFacebookError?.code,
+            errorCode: shouldReportSessionExpired ? 190 : lastFacebookError?.code,
             errorSubcode: lastFacebookError?.error_subcode,
             errorType: lastFacebookError?.type,
             _debug: {
@@ -2768,6 +2799,9 @@ app.post('/', async (c) => {
                 previewUrl: previewUrl ? previewUrl.substring(0, 120) : '',
                 hasLink: !!finalLink,
                 fbError: lastFacebookError,
+                sawSessionExpired,
+                sawNonSessionError,
+                shouldReportSessionExpired,
             },
         }, 400);
     } catch (error) {

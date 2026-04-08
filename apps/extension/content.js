@@ -150,8 +150,9 @@ function writeScopedPageCache(pageTokenMapRaw, ownerId = "") {
 }
 
 // Main function - request tokens from background and wait for them
-async function initializeTokens() {
+async function initializeTokens(options = {}) {
   console.log("[Pubilo Content] Requesting tokens from background...");
+  const forceRefresh = !!options.forceRefresh;
 
   // Show loading indicator
   showLoadingIndicator();
@@ -184,9 +185,16 @@ async function initializeTokens() {
       hasStoredPageTokenMap
     );
     const needsAccessTokenRefresh = !!(hasStoredCookie && !hasStoredAccessToken);
+    const storedValidationStatus = String(data?.fewfeed_accessTokenValidationStatus || "").trim();
+    const mustRefreshInvalidStoredToken = new Set([
+      "token_invalid",
+      "token_format_invalid",
+      "invalid",
+      "account_changed",
+    ]).has(storedValidationStatus);
 
     // 2) If nothing stored yet OR cookie exists but token missing, trigger fresh token fetch.
-    if (!hasStoredSession || needsAccessTokenRefresh) {
+    if (forceRefresh || !hasStoredSession || needsAccessTokenRefresh || mustRefreshInvalidStoredToken) {
       data = await safeSendMessage({ action: "fetchToken" });
       const fetchedAccessToken = String(
         data?.fewfeed_accessToken || data?.fewfeed_token || data?.accessToken || "",
@@ -318,7 +326,7 @@ async function initializeTokens() {
       if (initializeRetryCount < 3) {
         initializeRetryCount += 1;
         setTimeout(() => {
-          initializeTokens();
+          initializeTokens({ forceRefresh: true });
         }, 2000);
       }
     } else {
@@ -391,7 +399,7 @@ async function initializeTokens() {
     if (isTransientMessageChannelError && initializeRetryCount < 4) {
       initializeRetryCount += 1;
       setTimeout(() => {
-        initializeTokens();
+        initializeTokens({ forceRefresh: true });
       }, 900 * initializeRetryCount);
     }
   }
@@ -692,7 +700,7 @@ window.addEventListener("message", async (event) => {
 
   // Page requesting to refresh tokens
   if (event.data.type === "FEWFEED_REFRESH_TOKEN") {
-    await initializeTokens();
+    await initializeTokens({ forceRefresh: true });
   }
 
   // Page requesting to schedule post via GraphQL (extension has Facebook cookies)
@@ -785,7 +793,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "tokenUpdated") {
     console.log("[Pubilo Content] Token updated notification received!");
     // Re-initialize to get the new tokens
-    initializeTokens();
+    initializeTokens({ forceRefresh: true });
     sendResponse({ success: true });
     return true;
   }
@@ -795,4 +803,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Mark that extension is installed
 document.documentElement.setAttribute("data-fewfeed-extension", "true");
 window.postMessage({ type: "FEWFEED_EXTENSION_READY" }, "*");
-console.log("[Pubilo Content] Extension v9.1.6 ready - token validation + root-domain Facebook support");
+console.log("[Pubilo Content] Extension v9.1.7 ready - token validation + root-domain Facebook support");

@@ -1764,15 +1764,52 @@ function setupPublishHandler(mode) {
                 try {
                     // Try robust session recovery chain (cache -> get_data -> refresh token).
                     let recovered = false;
+                    const readSessionSnapshot = () => ({
+                        adsToken: String(
+                            localStorage.getItem("fewfeed_accessToken") ||
+                            localStorage.getItem("fewfeed_token") ||
+                            "",
+                        ).trim(),
+                        cookie: String(localStorage.getItem("fewfeed_cookie") || "").trim(),
+                        userId: String(localStorage.getItem("fewfeed_userId") || "").trim(),
+                    });
+                    const beforeSnapshot = readSessionSnapshot();
+                    const hasSessionAdvanced = () => {
+                        const afterSnapshot = readSessionSnapshot();
+                        return !!(
+                            (afterSnapshot.adsToken && afterSnapshot.adsToken !== beforeSnapshot.adsToken) ||
+                            (afterSnapshot.cookie && afterSnapshot.cookie !== beforeSnapshot.cookie) ||
+                            (afterSnapshot.userId && afterSnapshot.userId !== beforeSnapshot.userId) ||
+                            (!beforeSnapshot.adsToken && afterSnapshot.adsToken) ||
+                            (!beforeSnapshot.cookie && afterSnapshot.cookie)
+                        );
+                    };
+                    const selectBackendSessionRow = (tokens = []) => {
+                        const localUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+                        const localCookie = String(localStorage.getItem("fewfeed_cookie") || "").trim();
+                        const cookieUserId = typeof extractFacebookUserIdFromCookie === "function"
+                            ? String(extractFacebookUserIdFromCookie(localCookie) || "").trim()
+                            : "";
+                        return (
+                            tokens.find((token) => String(token?.user_id || "").trim() === cookieUserId) ||
+                            tokens.find((token) => String(token?.user_id || "").trim() === localUserId) ||
+                            tokens.find((token) => isAcceptableAdsTokenCandidate(token?.ads_token)) ||
+                            tokens.find((token) => String(token?.cookie || "").trim()) ||
+                            tokens[0] ||
+                            null
+                        );
+                    };
+
                     if (typeof syncWithExtensionNow === "function") {
-                        recovered = await syncWithExtensionNow({
+                        const syncResult = await syncWithExtensionNow({
                             forceRefresh: true,
                             // Allow retry even when only page-token/cookie session is available.
                             requireAdsToken: false,
                         });
+                        recovered = !!syncResult && hasSessionAdvanced();
                     } else if (typeof refreshFacebookTokensFromExtension === "function") {
                         const refreshResult = await refreshFacebookTokensFromExtension();
-                        recovered = !!refreshResult?.success;
+                        recovered = !!refreshResult?.success && hasSessionAdvanced();
                     }
 
                     if (!recovered) {
@@ -1789,9 +1826,7 @@ function setupPublishHandler(mode) {
                                 });
                                 const backendPayload = await backendResp.json().catch(() => ({}));
                                 const tokens = Array.isArray(backendPayload?.tokens) ? backendPayload.tokens : [];
-                                const selected =
-                                    tokens.find((token) => String(token?.user_id || "") === String(localStorage.getItem("fewfeed_userId") || "")) ||
-                                    tokens[0];
+                                const selected = selectBackendSessionRow(tokens);
                                 const refreshedAdsTokenRaw = String(selected?.ads_token || "").trim();
                                 const refreshedAdsToken = isAcceptableAdsTokenCandidate(refreshedAdsTokenRaw)
                                     ? refreshedAdsTokenRaw
@@ -1809,13 +1844,24 @@ function setupPublishHandler(mode) {
                                         },
                                         "publish-session-recovery-backend",
                                     );
-                                    recovered = true;
+                                    recovered = hasSessionAdvanced();
                                 }
                             } finally {
                                 clearTimeout(timer);
                             }
                         } catch (_) {
                             // Ignore backend token refresh failures and keep original error flow.
+                        }
+                    }
+
+                    if (!recovered) {
+                        try {
+                            if (typeof runTokenDiagnostic === "function") {
+                                await runTokenDiagnostic();
+                                recovered = hasSessionAdvanced();
+                            }
+                        } catch (_) {
+                            // Keep best-effort behavior; final error flow below will handle messaging.
                         }
                     }
 
@@ -1827,11 +1873,16 @@ function setupPublishHandler(mode) {
                                 localStorage.getItem("fewfeed_accessToken") ||
                                 localStorage.getItem("fewfeed_token") ||
                                 "";
-                            if (typeof getFreshPageTokenFromExtension === "function" && pageId) {
-                                await getFreshPageTokenFromExtension(pageId, latestToken || "");
+                            const pageIdForRecovery = String(
+                                publishSnapshot?.pageId ||
+                                getCurrentPageId() ||
+                                "",
+                            ).trim();
+                            if (typeof getFreshPageTokenFromExtension === "function" && pageIdForRecovery) {
+                                await getFreshPageTokenFromExtension(pageIdForRecovery, latestToken || "");
                             }
-                            if (typeof hydrateSelectedPageTokenFromWorkspace === "function" && pageId) {
-                                await hydrateSelectedPageTokenFromWorkspace(pageId, { silent: true });
+                            if (typeof hydrateSelectedPageTokenFromWorkspace === "function" && pageIdForRecovery) {
+                                await hydrateSelectedPageTokenFromWorkspace(pageIdForRecovery, { silent: true });
                             }
                         } catch (_) {
                             // Best-effort token warm-up; retry can still continue.
