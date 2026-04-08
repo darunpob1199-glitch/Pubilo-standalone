@@ -240,8 +240,19 @@ async function initializeTokens(options = {}) {
       finalCookie = finalCookie || existingCookie || "";
     }
     let finalUserId = data?.fewfeed_userId || data?.userId || existingUserId || "";
-    let finalUserName = data?.fewfeed_userName || data?.userName || existingUserName || "Facebook User";
-    let finalAvatarUrl = data?.fewfeed_avatarUrl || data?.avatarUrl || existingAvatarUrl || "";
+    const incomingUserName = data?.fewfeed_userName || data?.userName || "";
+    const incomingAvatarUrl = data?.fewfeed_avatarUrl || data?.avatarUrl || "";
+    const isIdentityChanged = !!(
+      finalUserId &&
+      existingUserId &&
+      String(finalUserId).trim() !== String(existingUserId).trim()
+    );
+    let finalUserName = isIdentityChanged
+      ? incomingUserName || "Facebook User"
+      : incomingUserName || existingUserName || "Facebook User";
+    let finalAvatarUrl = isIdentityChanged
+      ? incomingAvatarUrl || ""
+      : incomingAvatarUrl || existingAvatarUrl || "";
 
     // Fallback: if token fetch timed out, at least try reading cookie snapshot directly.
     if (!finalCookie && !finalToken) {
