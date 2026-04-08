@@ -4316,7 +4316,7 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
     if (shouldRefreshFromSession) {
         lastSessionDrivenFetchKey = currentFetchKey;
         const graphToken = effectiveAdsToken || effectivePostToken || "";
-        fetchPages(graphToken);
+        fetchPages(graphToken, effectiveUserId);
         if (graphToken) {
             fetchAdAccounts(graphToken);
         }
@@ -4511,7 +4511,7 @@ window.addEventListener("message", (event) => {
 
         // If we don't have pages yet, fetch them with the freshest token we have.
         if (allPages.length === 0 && (fbToken || fbPostToken)) {
-            fetchPages(fbToken || fbPostToken);
+            fetchPages(fbToken || fbPostToken, getCurrentFacebookBrowserUserId());
         }
         if (fbToken || fbPostToken) {
             fetchAdAccounts(fbToken || fbPostToken);
@@ -4756,9 +4756,9 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // Fetch pages, preferring the live list from extension and falling back to D1.
-async function fetchPages(accessToken) {
-    const activeBrowserUserId = getCurrentFacebookBrowserUserId();
-    const requestKey = `${activeBrowserUserId}::${String(accessToken || "").trim()}`;
+async function fetchPages(accessToken, knownUserId = "") {
+    const resolvedBrowserUserId = String(knownUserId || getCurrentFacebookBrowserUserId() || "").trim();
+    const requestKey = `${resolvedBrowserUserId}::${String(accessToken || "").trim()}`;
     const now = Date.now();
     if (activePagesFetchPromise && activePagesFetchKey === requestKey) {
         return activePagesFetchPromise;
@@ -4851,7 +4851,7 @@ async function fetchPages(accessToken) {
             }
         }
 
-        const currentUserId = activeBrowserUserId;
+        const currentUserId = resolvedBrowserUserId;
         const scopedCachedPages = getScopedCachedPages(currentUserId);
         let renderedFromScopedCache = false;
         if (scopedCachedPages.length > 0) {
@@ -4864,12 +4864,10 @@ async function fetchPages(accessToken) {
         }
 
         // Only use workspace DB pages when we do not know which Facebook account
-        // the current browser belongs to. Once we know the active browser account,
-        // showing unscoped workspace pages risks rendering pages from a previous account.
-        const canUseWorkspaceDbFallback =
-            !currentUserId ||
-            !hasLocalUsableTokenLike() ||
-            scopedCachedPages.length <= 1;
+        // the current browser belongs to yet. Once we know the active browser account,
+        // showing unscoped workspace pages risks rendering pages from a previous account
+        // while the new account is still bootstrapping.
+        const canUseWorkspaceDbFallback = !currentUserId;
         if (canUseWorkspaceDbFallback) {
             try {
                 const response = await fetch("/api/pages");
@@ -5984,7 +5982,7 @@ function loadSavedData() {
                 localStorage.getItem("fewfeed_token") ||
                 "";
             const nextPostToken = localStorage.getItem("fewfeed_postToken") || "";
-            fetchPages(nextAccessToken || nextPostToken);
+            fetchPages(nextAccessToken || nextPostToken, getCurrentFacebookBrowserUserId());
             fetchAdAccounts(nextAccessToken || nextPostToken);
         }
     }).catch(() => {});
@@ -5998,7 +5996,7 @@ function loadSavedData() {
     }, 2500);
     scheduleEarlyExtensionSyncRetries();
 
-    fetchPages(accessToken || postToken);
+    fetchPages(accessToken || postToken, getCurrentFacebookBrowserUserId());
     fetchAdAccounts(accessToken || postToken);
 }
 
