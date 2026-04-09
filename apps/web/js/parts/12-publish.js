@@ -3401,8 +3401,7 @@ function bindAdAccountControls() {
         refreshBtn.addEventListener("click", async () => {
             const token =
                 String(localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token") || "").trim() ||
-                String(fbToken || "").trim() ||
-                String(fbPostToken || "").trim();
+                String(fbToken || "").trim();
             refreshBtn.disabled = true;
             const originalText = refreshBtn.textContent;
             refreshBtn.textContent = "กำลังโหลด...";
@@ -4315,7 +4314,7 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
 
     if (shouldRefreshFromSession) {
         lastSessionDrivenFetchKey = currentFetchKey;
-        const graphToken = effectiveAdsToken || effectivePostToken || "";
+        const graphToken = effectiveAdsToken || "";
         fetchPages(graphToken, effectiveUserId);
         if (graphToken) {
             fetchAdAccounts(graphToken);
@@ -4510,11 +4509,11 @@ window.addEventListener("message", (event) => {
         );
 
         // If we don't have pages yet, fetch them with the freshest token we have.
-        if (allPages.length === 0 && (fbToken || fbPostToken)) {
-            fetchPages(fbToken || fbPostToken, getCurrentFacebookBrowserUserId());
+        if (allPages.length === 0 && fbToken) {
+            fetchPages(fbToken, getCurrentFacebookBrowserUserId());
         }
-        if (fbToken || fbPostToken) {
-            fetchAdAccounts(fbToken || fbPostToken);
+        if (fbToken) {
+            fetchAdAccounts(fbToken);
         }
     }
 
@@ -4651,7 +4650,6 @@ function hasLocalUsableTokenLike() {
     const directToken =
         localStorage.getItem("fewfeed_accessToken") ||
         localStorage.getItem("fewfeed_token") ||
-        localStorage.getItem("fewfeed_postToken") ||
         "";
     if (String(directToken || "").trim()) return true;
     return false;
@@ -4758,7 +4756,10 @@ document.addEventListener('visibilitychange', () => {
 // Fetch pages, preferring the live list from extension and falling back to D1.
 async function fetchPages(accessToken, knownUserId = "") {
     const resolvedBrowserUserId = String(knownUserId || getCurrentFacebookBrowserUserId() || "").trim();
-    const requestKey = `${resolvedBrowserUserId}::${String(accessToken || "").trim()}`;
+    const normalizedAccessToken = isAcceptableAdsTokenCandidate(accessToken)
+        ? String(accessToken || "").trim()
+        : "";
+    const requestKey = `${resolvedBrowserUserId}::${normalizedAccessToken}`;
     const now = Date.now();
     if (activePagesFetchPromise && activePagesFetchKey === requestKey) {
         return activePagesFetchPromise;
@@ -4782,16 +4783,15 @@ async function fetchPages(accessToken, knownUserId = "") {
         "[FEWFEED] fetchPages called with:",
         tokenType,
         "token starts with:",
-        accessToken?.substring(0, 10) + "...",
+        normalizedAccessToken.substring(0, 10) + "...",
     );
 
     activePagesFetchKey = requestKey;
     activePagesFetchPromise = (async () => {
-        const hasCookie = !!String(localStorage.getItem("fewfeed_cookie") || "").trim();
-        const canRequestPagesFromExtension = !!String(accessToken || "").trim() || hasCookie;
+        const canRequestPagesFromExtension = !!normalizedAccessToken;
         if (canRequestPagesFromExtension) {
             try {
-                const extensionPages = await requestPagesFromExtension(accessToken || "");
+                const extensionPages = await requestPagesFromExtension(normalizedAccessToken);
                 if (Array.isArray(extensionPages) && extensionPages.length > 0) {
                     const normalizedPages = extensionPages.map((page) => {
                         const pageId = String(page?.id || "").trim();
@@ -4814,8 +4814,8 @@ async function fetchPages(accessToken, knownUserId = "") {
 
                     mergeLoadedPageTokens(normalizedPages, localStorage.getItem("fewfeed_userId") || "");
                     renderPagesDropdown(normalizedPages);
-                    if (accessToken) {
-                        fetchAdAccounts(accessToken);
+                    if (normalizedAccessToken) {
+                        fetchAdAccounts(normalizedAccessToken);
                     }
                     console.log("[FEWFEED] Pages loaded from extension:", extensionPages.length);
 
@@ -5981,9 +5981,8 @@ function loadSavedData() {
                 localStorage.getItem("fewfeed_accessToken") ||
                 localStorage.getItem("fewfeed_token") ||
                 "";
-            const nextPostToken = localStorage.getItem("fewfeed_postToken") || "";
-            fetchPages(nextAccessToken || nextPostToken, getCurrentFacebookBrowserUserId());
-            fetchAdAccounts(nextAccessToken || nextPostToken);
+            fetchPages(nextAccessToken, getCurrentFacebookBrowserUserId());
+            fetchAdAccounts(nextAccessToken);
         }
     }).catch(() => {});
 
@@ -5996,8 +5995,8 @@ function loadSavedData() {
     }, 2500);
     scheduleEarlyExtensionSyncRetries();
 
-    fetchPages(accessToken || postToken, getCurrentFacebookBrowserUserId());
-    fetchAdAccounts(accessToken || postToken);
+    fetchPages(accessToken, getCurrentFacebookBrowserUserId());
+    fetchAdAccounts(accessToken);
 }
 
 // Load on startup
