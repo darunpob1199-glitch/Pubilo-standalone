@@ -1695,7 +1695,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // Token extraction can take longer when fallback opens temporary Facebook tabs.
         const fetchResult = await Promise.race([
           fetchAndStoreToken(),
-          new Promise((resolve) => setTimeout(() => resolve({ success: false, reason: "timeout" }), 30000)),
+          new Promise((resolve) => setTimeout(() => resolve({ success: false, reason: "timeout" }), 12000)),
         ]);
 
         const data = await chrome.storage.local.get([
@@ -1795,6 +1795,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch((error) => replyError(error));
     return true;
   }
+
+  sendResponse({
+    success: false,
+    reason: "unknown_action",
+    error: `Unknown action: ${String(request?.action || "")}`,
+  });
+  return false;
 
 });
 

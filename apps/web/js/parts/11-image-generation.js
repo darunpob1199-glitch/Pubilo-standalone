@@ -922,17 +922,107 @@ if (newsPublishBtn) {
                     localStorage.getItem("fewfeed_token") ||
                     "",
                 ).trim();
+            const latestCookieFromLocal = () =>
+                String(
+                    fbCookie ||
+                    localStorage.getItem("fewfeed_cookie") ||
+                    "",
+                ).trim();
+            const beforeSnapshot = {
+                token: latestTokenFromLocal(),
+                cookie: latestCookieFromLocal(),
+                userId: String(localStorage.getItem("fewfeed_userId") || "").trim(),
+            };
+            const hasSessionAdvanced = () => {
+                const afterToken = latestTokenFromLocal();
+                const afterCookie = latestCookieFromLocal();
+                const afterUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+                return !!(
+                    (afterToken && afterToken !== beforeSnapshot.token) ||
+                    (afterCookie && afterCookie !== beforeSnapshot.cookie) ||
+                    (afterUserId && afterUserId !== beforeSnapshot.userId) ||
+                    (!beforeSnapshot.token && afterToken) ||
+                    (!beforeSnapshot.cookie && afterCookie)
+                );
+            };
+            const selectBackendSessionRow = (tokens = []) => {
+                const localUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+                const localCookie = latestCookieFromLocal();
+                const cookieUserId = typeof extractFacebookUserIdFromCookie === "function"
+                    ? String(extractFacebookUserIdFromCookie(localCookie) || "").trim()
+                    : "";
+                return (
+                    tokens.find((token) => String(token?.user_id || "").trim() === cookieUserId) ||
+                    tokens.find((token) => String(token?.user_id || "").trim() === localUserId) ||
+                    tokens.find((token) => String(token?.ads_token || "").trim()) ||
+                    tokens.find((token) => String(token?.cookie || "").trim()) ||
+                    tokens[0] ||
+                    null
+                );
+            };
+            const refreshFromBackendTokens = async () => {
+                const response = await fetch("/api/tokens?refreshFromCookie=1");
+                const payload = await response.json().catch(() => ({}));
+                const tokens = Array.isArray(payload?.tokens) ? payload.tokens : [];
+                if (tokens.length === 0) return false;
+
+                const selected = selectBackendSessionRow(tokens);
+                if (!selected) return false;
+
+                const rawAdsToken = String(selected?.ads_token || "").trim();
+                const nextAdsToken =
+                    typeof isAcceptableAdsTokenCandidate === "function"
+                        ? (isAcceptableAdsTokenCandidate(rawAdsToken) ? rawAdsToken : "")
+                        : rawAdsToken;
+                const nextCookie = String(selected?.cookie || latestCookieFromLocal() || "").trim();
+                const nextSession = {
+                    adsToken: nextAdsToken,
+                    cookie: nextCookie,
+                    fbDtsg: selected?.fb_dtsg || localStorage.getItem("fewfeed_fbDtsg") || "",
+                    userId: selected?.user_id || localStorage.getItem("fewfeed_userId") || "",
+                    userName: selected?.user_name || localStorage.getItem("fewfeed_userName") || "",
+                    avatarUrl: selected?.avatar_url || localStorage.getItem("fewfeed_avatarUrl") || "",
+                };
+
+                if (typeof applyExtensionSessionData === "function") {
+                    applyExtensionSessionData(nextSession, "news-session-recovery-backend");
+                } else {
+                    if (nextSession.adsToken) {
+                        localStorage.setItem("fewfeed_accessToken", nextSession.adsToken);
+                        localStorage.setItem("fewfeed_token", nextSession.adsToken);
+                    }
+                    if (nextSession.cookie) {
+                        localStorage.setItem("fewfeed_cookie", nextSession.cookie);
+                    }
+                    if (nextSession.userId) {
+                        localStorage.setItem("fewfeed_userId", nextSession.userId);
+                    }
+                    if (nextSession.userName) {
+                        localStorage.setItem("fewfeed_userName", nextSession.userName);
+                    }
+                    if (nextSession.avatarUrl) {
+                        localStorage.setItem("fewfeed_avatarUrl", nextSession.avatarUrl);
+                    }
+                    if (nextSession.fbDtsg) {
+                        localStorage.setItem("fewfeed_fbDtsg", nextSession.fbDtsg);
+                    }
+                }
+                return !!(nextSession.adsToken || nextSession.cookie);
+            };
 
             try {
                 if (typeof syncWithExtensionNow === "function") {
                     recovered = !!(await withTimeout(
-                        syncWithExtensionNow({ forceRefresh: true }),
+                        syncWithExtensionNow({ forceRefresh: true, requireAdsToken: false }),
                         20000,
                         false,
                     ));
                 }
             } catch (_) {
                 // Ignore and continue next recovery strategy.
+            }
+            if (!recovered) {
+                recovered = hasSessionAdvanced();
             }
 
             if (!recovered) {
@@ -949,6 +1039,9 @@ if (newsPublishBtn) {
                     // Ignore and continue next recovery strategy.
                 }
             }
+            if (!recovered) {
+                recovered = hasSessionAdvanced();
+            }
 
             try {
                 if (typeof syncLocalCookieTokenToWorkspace === "function") {
@@ -962,8 +1055,20 @@ if (newsPublishBtn) {
                 // Workspace sync is best-effort only.
             }
 
-            if (!recovered && latestTokenFromLocal()) {
-                recovered = true;
+            if (!recovered) {
+                try {
+                    recovered = !!(await withTimeout(
+                        refreshFromBackendTokens(),
+                        9000,
+                        false,
+                    ));
+                } catch (_) {
+                    // Ignore backend refresh errors and keep normal flow.
+                }
+            }
+
+            if (!recovered) {
+                recovered = hasSessionAdvanced();
             }
 
             try {
@@ -993,11 +1098,23 @@ if (newsPublishBtn) {
             : "";
         const pageToken = freshPageToken || getPageToken() || document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
         const cookie = fbCookie || localStorage.getItem("fewfeed_cookie");
-        let adAccountId = document.getElementById("adAccountSelect")?.value;
+        let adAccountId =
+            (typeof getSelectedAdAccountId === "function"
+                ? getSelectedAdAccountId()
+                : "") ||
+            document.getElementById("newsAdAccountSelect")?.value ||
+            document.getElementById("adAccountSelect")?.value ||
+            "";
         if (!adAccountId) {
             adAccountId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
-            const adAccountInput = document.getElementById("adAccountSelect");
-            if (adAccountInput && adAccountId) adAccountInput.value = adAccountId;
+            if (adAccountId && typeof syncSelectedAdAccountValue === "function") {
+                syncSelectedAdAccountValue(adAccountId);
+            } else if (adAccountId) {
+                const adAccountInput = document.getElementById("adAccountSelect");
+                if (adAccountInput) adAccountInput.value = adAccountId;
+                const newsAdAccountInput = document.getElementById("newsAdAccountSelect");
+                if (newsAdAccountInput) newsAdAccountInput.value = adAccountId;
+            }
         }
         const newsUrlInputEl = document.getElementById("newsUrlInput");
         const newsPrimaryTextEl = document.getElementById("newsPrimaryText");
