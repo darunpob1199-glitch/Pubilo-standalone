@@ -814,4 +814,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Mark that extension is installed
 document.documentElement.setAttribute("data-fewfeed-extension", "true");
 window.postMessage({ type: "FEWFEED_EXTENSION_READY" }, "*");
-console.log("[Pubilo Content] Extension v9.1.7 ready - token validation + root-domain Facebook support");
+console.log("[Pubilo Content] Extension v9.1.8 ready - token validation + root-domain Facebook support");
