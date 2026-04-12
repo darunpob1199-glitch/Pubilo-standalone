@@ -345,12 +345,28 @@ function isPostToolFacebookAuthInvalidError(payload = {}) {
     if (category === "facebook_auth_invalid") return true;
 
     const errorCode = Number(payload?.errorCode || payload?.error?.code || 0);
+    const errorSubcode = Number(payload?.errorSubcode || payload?.error?.error_subcode || 0);
     const errorType = String(payload?.errorType || payload?.error?.type || "").trim().toLowerCase();
     const errorMessage = String(payload?.error || payload?.message || "").trim().toLowerCase();
     if (errorCode === 190) return true;
-    if (errorCode === 1 && errorType === "oauthexception") return true;
+    if (errorCode === 102) return true;
+    if ([460, 463, 467, 490].includes(errorSubcode)) return true;
     if (errorMessage.includes("error validating access token")) return true;
     if (errorMessage.includes("session has been invalidated")) return true;
+    if (errorMessage.includes("invalid oauth access token")) return true;
+    if (errorMessage.includes("cannot parse access token")) return true;
+    if (errorMessage.includes("access token could not be decrypted")) return true;
+    if (
+        errorCode === 1 &&
+        errorType === "oauthexception" &&
+        (
+            errorMessage.includes("access token")
+            || errorMessage.includes("session has been invalidated")
+            || errorMessage.includes("invalid oauth")
+        )
+    ) {
+        return true;
+    }
     return false;
 }
 

@@ -200,14 +200,32 @@ function mapSourceLabel(source?: string): string {
 }
 
 function isFacebookAuthInvalid(error: any): boolean {
-    const code = Number(error?.code);
+    const code = Number(error?.code || 0);
+    const subcode = Number(error?.error_subcode || 0);
     const type = String(error?.type || '').toLowerCase();
     const message = String(error?.message || '').toLowerCase();
 
-    if (code === 190) return true;
-    if (code === 1 && type === 'oauthexception') return true;
+    if (code === 190 || code === 102) return true;
+    if ([460, 463, 467, 490].includes(subcode)) return true;
+
     if (message.includes('error validating access token')) return true;
     if (message.includes('session has been invalidated')) return true;
+    if (message.includes('invalid oauth access token')) return true;
+    if (message.includes('cannot parse access token')) return true;
+    if (message.includes('access token could not be decrypted')) return true;
+
+    if (
+        code === 1 &&
+        type === 'oauthexception' &&
+        (
+            message.includes('access token')
+            || message.includes('session has been invalidated')
+            || message.includes('invalid oauth')
+        )
+    ) {
+        return true;
+    }
+
     return false;
 }
 
@@ -609,10 +627,7 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
 
             if (data?.error) {
                 lastFacebookError = data.error;
-                if (
-                    Number(data.error?.code) === 190 ||
-                    (Number(data.error?.code) === 1 && data.error?.type === 'OAuthException')
-                ) {
+                if (isFacebookAuthInvalid(data.error)) {
                     // Token invalid for this candidate; try next candidate token.
                     break;
                 }
