@@ -125,7 +125,6 @@ function mergeLoadedPageTokens(pages) {
 
 function requestPagesWithTokens(accessToken) {
     return new Promise((resolve, reject) => {
-        const requestId = `autopages_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
         const timeout = setTimeout(() => {
             window.removeEventListener("message", handleMessage);
             reject(new Error("Extension ไม่ตอบกลับ ลองกดใหม่อีกครั้ง"));
@@ -139,9 +138,6 @@ function requestPagesWithTokens(accessToken) {
         function handleMessage(event) {
             if (event.source !== window) return;
             if (event.data.type !== "FEWFEED_PAGES_RESPONSE") return;
-            const incomingRequestId = String(event.data.requestId || "").trim();
-            // Backward-compatible with older extension builds that do not echo requestId.
-            if (incomingRequestId && incomingRequestId !== requestId) return;
 
             cleanup();
             const response = event.data.data;
@@ -158,7 +154,6 @@ function requestPagesWithTokens(accessToken) {
             {
                 type: "FEWFEED_FETCH_PAGES",
                 accessToken,
-                requestId,
             },
             "*",
         );

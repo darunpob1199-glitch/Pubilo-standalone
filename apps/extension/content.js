@@ -5,19 +5,16 @@
 console.log("[Pubilo Content] Script loaded on", window.location.href);
 globalThis.__PUBILO_CONTENT_SCRIPT_ACTIVE__ = true;
 
-function isMessageChannelDisconnectedError(message = "") {
-  return /receiving end does not exist|extension context invalidated|message port closed|message channel closed before a response was received|asynchronous response by returning true/i.test(
-    String(message || ""),
-  );
-}
-
 async function safeSendMessage(msg, retries = 3) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const result = await chrome.runtime.sendMessage(msg);
       return result;
     } catch (err) {
-      const isDisconnected = isMessageChannelDisconnectedError(err?.message || "");
+      const isDisconnected =
+        /receiving end does not exist|extension context invalidated|message port closed|message channel closed before a response was received|asynchronous response by returning true/i.test(
+          err?.message || ""
+        );
       console.warn(`[Pubilo Content] sendMessage attempt ${attempt}/${retries} failed:`, err?.message);
       if (!isDisconnected || attempt === retries) throw err;
       await new Promise((r) => setTimeout(r, 800 * attempt));
@@ -67,10 +64,11 @@ function shouldPreserveExistingAdsToken(data = {}, existingToken = "", existingU
 
   const validationStatus = String(data?.fewfeed_accessTokenValidationStatus || "").trim();
   const debugReason = String(data?.debug?.reason || data?.reason || "").trim();
-  const hardFailStatuses = new Set(["token_invalid", "token_format_invalid", "invalid", "valid_user_mismatch"]);
+  const hardFailStatuses = new Set(["token_invalid", "token_format_invalid", "invalid"]);
   const hardFailReasons = new Set(["token_invalid", "token_format_invalid"]);
   const softKeepStatuses = new Set([
     "valid",
+    "valid_user_mismatch",
     "validation_non_fatal_error",
   ]);
   const softKeepReasons = new Set([
@@ -193,7 +191,6 @@ async function initializeTokens(options = {}) {
       "token_format_invalid",
       "invalid",
       "account_changed",
-      "valid_user_mismatch",
     ]).has(storedValidationStatus);
 
     // 2) If nothing stored yet OR cookie exists but token missing, trigger fresh token fetch.
@@ -365,7 +362,10 @@ async function initializeTokens(options = {}) {
     console.error("[FEWFEED Content] Error:", error);
     hideLoadingIndicator();
     const errorMessage = String(error?.message || error || "");
-    const isTransientMessageChannelError = isMessageChannelDisconnectedError(errorMessage);
+    const isTransientMessageChannelError =
+      /receiving end does not exist|extension context invalidated|message port closed|message channel closed before a response was received|asynchronous response by returning true/i.test(
+        errorMessage
+      );
 
     // Even when background is unreachable, inject whatever localStorage has
     // so the web page can proceed with cached tokens.
@@ -685,83 +685,27 @@ window.addEventListener("message", async (event) => {
 
   // Page requesting to fetch Pages from Facebook API
   if (event.data.type === "FEWFEED_FETCH_PAGES") {
-    const requestId = String(event.data.requestId || "").trim();
-    let accessToken = String(event.data.accessToken || "").trim();
-    let cookie = String(event.data.cookie || localStorage.getItem("fewfeed_cookie") || "").trim();
-
-    // When page sends empty token/cookie, hydrate once from extension storage
-    // before requesting pages to avoid falling back to a truncated local cache.
-    if (!accessToken || !cookie) {
-      try {
-        const stored = await safeSendMessage({ action: "getStoredData" });
-        if (stored?.success) {
-          accessToken = String(
-            accessToken ||
-            stored?.fewfeed_accessToken ||
-            stored?.fewfeed_token ||
-            stored?.accessToken ||
-            "",
-          ).trim();
-          cookie = String(
-            cookie ||
-            stored?.fewfeed_cookie ||
-            stored?.cookie ||
-            "",
-          ).trim();
-        }
-      } catch (_) {
-        // Continue with whatever we already have.
-      }
-    }
-
-    let response;
-    try {
-      response = await safeSendMessage({
-        action: "fetchPages",
-        accessToken,
-        cookie,
-      });
-    } catch (error) {
-      const errorMessage = String(error?.message || error || "fetch_pages_failed");
-      response = {
-        success: false,
-        reason: isMessageChannelDisconnectedError(errorMessage)
-          ? "extension_context_invalidated"
-          : "content_exception",
-        error: errorMessage,
-      };
-    }
+    const response = await safeSendMessage({
+      action: "fetchPages",
+      accessToken: event.data.accessToken,
+      cookie: localStorage.getItem("fewfeed_cookie")
+    });
     window.postMessage({
       type: "FEWFEED_PAGES_RESPONSE",
-      data: response,
-      requestId,
+      data: response
     }, "*");
   }
 
   // Page requesting to fetch Ad Accounts from Facebook API
   if (event.data.type === "FEWFEED_FETCH_AD_ACCOUNTS") {
-    const requestId = String(event.data.requestId || "").trim();
-    let response;
-    try {
-      response = await safeSendMessage({
-        action: "fetchAdAccounts",
-        accessToken: event.data.accessToken,
-        cookie: localStorage.getItem("fewfeed_cookie")
-      });
-    } catch (error) {
-      const errorMessage = String(error?.message || error || "fetch_ad_accounts_failed");
-      response = {
-        success: false,
-        reason: isMessageChannelDisconnectedError(errorMessage)
-          ? "extension_context_invalidated"
-          : "content_exception",
-        error: errorMessage,
-      };
-    }
+    const response = await safeSendMessage({
+      action: "fetchAdAccounts",
+      accessToken: event.data.accessToken,
+      cookie: localStorage.getItem("fewfeed_cookie")
+    });
     window.postMessage({
       type: "FEWFEED_AD_ACCOUNTS_RESPONSE",
-      data: response,
-      requestId,
+      data: response
     }, "*");
   }
 
@@ -784,64 +728,17 @@ window.addEventListener("message", async (event) => {
       console.error("[FEWFEED Content] WARNING: fb_dtsg is empty!");
     }
 
-    let response;
-    try {
-      response = await safeSendMessage({
-        action: "schedulePostGraphQL",
-        postId: event.data.postId,
-        pageId: event.data.pageId,
-        fbDtsg: event.data.fbDtsg,
-        scheduledTime: event.data.scheduledTime
-      });
-    } catch (error) {
-      const errorMessage = String(error?.message || error || "schedule_post_graphql_failed");
-      response = {
-        success: false,
-        reason: isMessageChannelDisconnectedError(errorMessage)
-          ? "extension_context_invalidated"
-          : "content_exception",
-        error: errorMessage,
-      };
-    }
+    const response = await safeSendMessage({
+      action: "schedulePostGraphQL",
+      postId: event.data.postId,
+      pageId: event.data.pageId,
+      fbDtsg: event.data.fbDtsg,
+      scheduledTime: event.data.scheduledTime
+    });
     console.log("[FEWFEED Content] GraphQL response:", response);
     window.postMessage({
       type: "FEWFEED_SCHEDULE_POST_GRAPHQL_RESPONSE",
       data: response
-    }, "*");
-  }
-
-  // Page requesting direct publish via extension fallback (browser-side Graph API)
-  if (event.data.type === "FEWFEED_PUBLISH_NEWS_DIRECT") {
-    const requestId = String(event.data.requestId || "").trim();
-    let response;
-    try {
-      response = await safeSendMessage({
-        action: "publishNewsDirect",
-        pageId: event.data.pageId,
-        pageToken: event.data.pageToken,
-        accessToken: event.data.accessToken,
-        cookieData: event.data.cookieData,
-        linkUrl: event.data.linkUrl,
-        imageUrl: event.data.imageUrl,
-        primaryText: event.data.primaryText,
-        description: event.data.description,
-        caption: event.data.caption,
-      });
-    } catch (error) {
-      const errorMessage = String(error?.message || error || "publish_news_direct_failed");
-      response = {
-        success: false,
-        reason: isMessageChannelDisconnectedError(errorMessage)
-          ? "extension_context_invalidated"
-          : "content_exception",
-        error: errorMessage,
-      };
-    }
-
-    window.postMessage({
-      type: "FEWFEED_PUBLISH_NEWS_DIRECT_RESPONSE",
-      data: response,
-      requestId,
     }, "*");
   }
 
@@ -893,19 +790,7 @@ window.addEventListener("message", async (event) => {
 
   // Page requesting to check Lazada login status
   if (event.data.type === "FEWFEED_CHECK_LAZADA_LOGIN") {
-    let response;
-    try {
-      response = await safeSendMessage({ action: "checkLazadaLogin" });
-    } catch (error) {
-      const errorMessage = String(error?.message || error || "check_lazada_login_failed");
-      response = {
-        success: false,
-        reason: isMessageChannelDisconnectedError(errorMessage)
-          ? "extension_context_invalidated"
-          : "content_exception",
-        error: errorMessage,
-      };
-    }
+    const response = await safeSendMessage({ action: "checkLazadaLogin" });
     window.postMessage({
       type: "FEWFEED_LAZADA_LOGIN_STATUS",
       data: response
@@ -929,4 +814,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Mark that extension is installed
 document.documentElement.setAttribute("data-fewfeed-extension", "true");
 window.postMessage({ type: "FEWFEED_EXTENSION_READY" }, "*");
-console.log("[Pubilo Content] Extension v9.2.2 ready - robust message channel recovery");
+console.log("[Pubilo Content] Extension v9.1.8 ready - token validation + root-domain Facebook support");
