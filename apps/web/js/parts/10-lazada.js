@@ -40,6 +40,9 @@ function isValidHttpUrl(url) {
 function formatLazadaErrorMessage(rawError) {
     const raw = String(rawError || "").trim();
     if (!raw) return "Conversion failed — ใช้ลิงก์เดิมได้เลย";
+    if (/extension context invalidated|receiving end does not exist|message channel closed before a response was received|asynchronous response by returning true|message port closed/i.test(raw)) {
+        return "Extension หลุดการเชื่อมต่อชั่วคราว ใช้ลิงก์เดิมได้เลย (รีเฟรชหน้า 1 ครั้ง)";
+    }
     if (raw.length > 140) return `${raw.slice(0, 137)}...`;
     return raw;
 }
