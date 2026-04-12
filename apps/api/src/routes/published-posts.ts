@@ -96,7 +96,6 @@ async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieD
         try {
             const accountsRes = await fetch(
                 `${FB_API}/me/accounts?access_token=${encodeURIComponent(accessToken)}&fields=id,access_token&limit=100`,
-                headers ? { headers } : undefined,
             );
             const accountsData = await accountsRes.json() as any;
             const matchedPage = accountsData?.data?.find((page: any) => String(page.id) === String(pageId));
@@ -111,7 +110,6 @@ async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieD
         try {
             const tokenRes = await fetch(
                 `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(accessToken)}`,
-                headers ? { headers } : undefined,
             );
             const tokenData = await tokenRes.json() as any;
 
@@ -544,7 +542,6 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
         accessToken,
         ...workspaceAccessTokenCandidates,
     ]);
-    const headers = cookieHeaderCandidates[0];
     const parsedCursor = parseFacebookCursor(after);
     const edgeHint = parsedCursor.edge;
     const afterCursor = parsedCursor.cursor;
@@ -583,7 +580,7 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
             hasMore: boolean;
             nextCursor: string;
         }) => {
-            const pinnedIds = await fetchPinnedPostIds(pageId, authToken, headers);
+            const pinnedIds = await fetchPinnedPostIds(pageId, authToken);
             const normalizedLogs = result.logs.map((row) => ({
                 ...row,
                 is_pinned: pinnedIds.has(String(row.facebook_post_id || '').trim()),
@@ -607,7 +604,6 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
         for (const endpoint of endpointsToTry) {
             const response = await fetch(
                 `${FB_API}/${pageId}/${endpoint.edge}?${params.toString()}`,
-                headers ? { headers } : undefined,
             );
             const data = await response.json() as any;
 
