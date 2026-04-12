@@ -143,7 +143,6 @@ const ACCESS_TOKEN_VALIDATED_AT_KEY = "fewfeed_accessTokenValidatedAt";
 const ACCESS_TOKEN_VALIDATION_STATUS_KEY = "fewfeed_accessTokenValidationStatus";
 const ACCESS_TOKEN_REVALIDATE_INTERVAL_MS = 2 * 60 * 1000;
 let autoRefreshInFlight = null;
-let tokenRefreshInFlight = null;
 
 function parseStoredPageTokenMap(rawValue) {
   try {
@@ -581,76 +580,13 @@ async function validateGraphAccessToken(accessToken, expectedUserId = "", cookie
 
 async function getFacebookCookieSnapshot() {
   try {
-    const getCookiesByQuery = async (query) => {
-      try {
-        const result = await chrome.cookies.getAll(query);
-        return Array.isArray(result) ? result : [];
-      } catch (_) {
-        return [];
-      }
-    };
-    const dedupeByName = (cookies = []) => {
-      const sorted = [...cookies].sort((a, b) => {
-        if (a.name !== b.name) return 0;
-        const hostScoreA = a.hostOnly ? 2 : (String(a.domain || "").startsWith(".") ? 1 : 0);
-        const hostScoreB = b.hostOnly ? 2 : (String(b.domain || "").startsWith(".") ? 1 : 0);
-        if (hostScoreA !== hostScoreB) return hostScoreB - hostScoreA;
-        const pathLenA = String(a.path || "").length;
-        const pathLenB = String(b.path || "").length;
-        if (pathLenA !== pathLenB) return pathLenB - pathLenA;
-        return 0;
-      });
-
-      const unique = new Map();
-      for (const cookie of sorted) {
-        const key = String(cookie?.name || "").trim();
-        if (!key || unique.has(key)) continue;
-        unique.set(key, cookie);
-      }
-      return Array.from(unique.values());
-    };
-    const toCookieString = (cookies = []) =>
-      dedupeByName(cookies)
-        .map((c) => `${c.name}=${c.value}`)
-        .join("; ");
-    const scoreCookieSet = (cookies = [], label = "") => {
-      const names = new Set(cookies.map((cookie) => String(cookie?.name || "").trim()).filter(Boolean));
-      let score = cookies.length;
-      if (names.has("c_user")) score += 1000;
-      if (names.has("xs")) score += 850;
-      if (names.has("fr")) score += 120;
-      if (names.has("datr")) score += 80;
-      if (names.has("sb")) score += 50;
-      if (names.has("wd")) score += 30;
-      if (String(label || "").includes("www.facebook.com")) score += 15;
-      if (String(label || "").includes("adsmanager.facebook.com")) score += 10;
-      return score;
-    };
-
-    const candidates = [
-      { label: "www.facebook.com", cookies: await getCookiesByQuery({ url: "https://www.facebook.com/" }) },
-      { label: "facebook.com", cookies: await getCookiesByQuery({ url: "https://facebook.com/" }) },
-      { label: "business.facebook.com", cookies: await getCookiesByQuery({ url: "https://business.facebook.com/" }) },
-      { label: "adsmanager.facebook.com", cookies: await getCookiesByQuery({ url: "https://adsmanager.facebook.com/" }) },
-      { label: ".facebook.com", cookies: await getCookiesByQuery({ domain: ".facebook.com" }) },
-    ]
-      .map((entry) => ({ ...entry, cookies: dedupeByName(entry.cookies || []) }))
-      .filter((entry) => entry.cookies.length > 0);
-
-    if (candidates.length === 0) {
-      return {
-        success: false,
-        cookieString: "",
-        userId: "",
-        cookieCount: 0,
-        reason: "no_cookies",
-      };
+    let cookies = await chrome.cookies.getAll({ domain: ".facebook.com" });
+    if (!Array.isArray(cookies) || cookies.length === 0) {
+      const fallbackCookies = await chrome.cookies.getAll({ url: "https://www.facebook.com/" });
+      cookies = Array.isArray(fallbackCookies) ? fallbackCookies : [];
     }
 
-    candidates.sort((a, b) => scoreCookieSet(b.cookies, b.label) - scoreCookieSet(a.cookies, a.label));
-    const best = candidates[0];
-    const cookies = best.cookies;
-    const cookieString = toCookieString(cookies);
+    const cookieString = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
     const cUser = cookies.find((c) => c.name === "c_user");
 
     return {
@@ -658,7 +594,6 @@ async function getFacebookCookieSnapshot() {
       cookieString,
       userId: cUser?.value || "",
       cookieCount: cookies.length,
-      source: best?.label || "",
       reason: cookieString ? null : "no_cookies",
     };
   } catch (error) {
@@ -1476,14 +1411,6 @@ function extractTokenFromHTML(html) {
       return match[1];
     }
   }
-
-  // Last fallback: grab any EA* candidate and let validator decide.
-  const looseMatches = String(html || "").match(/EA[A-Za-z0-9_-]{20,}/g) || [];
-  const ranked = rankAccessTokenCandidates(looseMatches);
-  if (ranked.length > 0) {
-    console.log("[FEWFEED] Token found with loose fallback scan");
-    return ranked[0];
-  }
   return null;
 }
 
@@ -1766,35 +1693,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         // Token extraction can take longer when fallback opens temporary Facebook tabs.
-        // Reuse in-flight refresh to avoid parallel overlapping fetches that race each other.
-        if (!tokenRefreshInFlight) {
-          tokenRefreshInFlight = fetchAndStoreToken()
-            .catch((error) => ({ success: false, reason: "exception", error: error?.message || String(error) }))
-            .finally(() => {
-              tokenRefreshInFlight = null;
-            });
-        }
-
         const fetchResult = await Promise.race([
-          tokenRefreshInFlight,
-          new Promise((resolve) => setTimeout(() => resolve({ success: false, reason: "timeout" }), 28000)),
+          fetchAndStoreToken(),
+          new Promise((resolve) => setTimeout(() => resolve({ success: false, reason: "timeout" }), 12000)),
         ]);
-
-        // If request timed out while refresh is still running, poll storage briefly once more
-        // so caller gets fresh token in the same response when it lands a moment later.
-        if (fetchResult?.reason === "timeout" && tokenRefreshInFlight) {
-          for (let i = 0; i < 4; i += 1) {
-            await new Promise((resolve) => setTimeout(resolve, 1200));
-            const quickData = await chrome.storage.local.get([
-              "fewfeed_accessToken",
-              "fewfeed_token",
-              "fewfeed_cookie",
-            ]);
-            if (quickData?.fewfeed_accessToken || quickData?.fewfeed_token || quickData?.fewfeed_cookie) {
-              break;
-            }
-          }
-        }
 
         const data = await chrome.storage.local.get([
           "fewfeed_accessToken",
@@ -2603,4 +2505,4 @@ async function getLazadaCookies() {
 // END LAZADA SECTION
 // ============================================
 
-console.log("[Pubilo] Background v9.1.8 loaded - supports facebook.com root domain + resilient extraction");
+console.log("[Pubilo] Background v9.1.6 loaded - supports facebook.com root domain + resilient extraction");

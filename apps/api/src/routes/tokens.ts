@@ -37,15 +37,10 @@ function extractAccessTokenFromHtml(html: string): string {
         new RegExp(`__accessToken\\s*=\\s*"(EA${tokenChars})"`),
         new RegExp(`"__accessToken"\\s*:\\s*"(EA${tokenChars})"`),
         new RegExp(`__window\\.__accessToken="(EA${tokenChars})"`),
-        new RegExp(`"accessToken":\\s*"(EAABsbCS${tokenChars})"`),
-        new RegExp(`"access_token":\\s*"(EAABsbCS${tokenChars})"`),
         new RegExp(`"accessToken":\\s*"(EA${tokenChars})"`),
         new RegExp(`"access_token":\\s*"(EA${tokenChars})"`),
         new RegExp(`accessToken['"]\\s*:\\s*['"](EA${tokenChars})['"]`),
         new RegExp(`access_token=(EA${tokenChars})`),
-        new RegExp(`\\\\"__accessToken\\\\"\\s*:\\s*\\\\"(EA${tokenChars})\\\\"`),
-        new RegExp(`\\\\"accessToken\\\\"\\s*:\\s*\\\\"(EA${tokenChars})\\\\"`),
-        new RegExp(`\\\\"access_token\\\\"\\s*:\\s*\\\\"(EA${tokenChars})\\\\"`),
     ];
 
     for (const pattern of patterns) {
@@ -53,23 +48,6 @@ function extractAccessTokenFromHtml(html: string): string {
         if (match?.[1]) {
             return String(match[1]).trim();
         }
-    }
-
-    const loose = source.match(/EA[A-Za-z0-9_-]{20,}/g) || [];
-    const ranked = Array.from(new Set(loose))
-        .map((token) => String(token || '').trim())
-        .filter(Boolean)
-        .sort((a, b) => {
-            const score = (value: string) => {
-                if (value.startsWith('EAABsbCS')) return 500 + value.length;
-                if (value.startsWith('EAAG')) return 450 + value.length;
-                if (value.startsWith('EAAChZC')) return 400 + value.length;
-                return 300 + value.length;
-            };
-            return score(b) - score(a);
-        });
-    if (ranked.length > 0) {
-        return ranked[0];
     }
 
     return '';
