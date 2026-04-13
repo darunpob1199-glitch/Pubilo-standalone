@@ -223,11 +223,48 @@ function getPostToolPageToken(pageId = "") {
     const loadedPageToken = typeof getLoadedPageToken === "function"
         ? String(getLoadedPageToken(normalizedPageId) || "").trim()
         : "";
+    if (normalizedPageId && loadedPageToken) {
+        return loadedPageToken;
+    }
+
+    const mappedToken = (() => {
+        if (!normalizedPageId) return "";
+        try {
+            const tokenMapRaw = localStorage.getItem("fewfeed_pageTokenMap") || "{}";
+            const tokenMap = JSON.parse(tokenMapRaw);
+            const tokenValue = tokenMap?.[normalizedPageId];
+            return typeof tokenValue === "string"
+                ? tokenValue.trim()
+                : String(tokenValue?.token || "").trim();
+        } catch (_) {
+            return "";
+        }
+    })();
+    if (mappedToken) {
+        return mappedToken;
+    }
+
     const selectedToken = typeof getPageToken === "function"
         ? String(getPageToken() || "").trim()
         : "";
+    if (!selectedToken) {
+        return "";
+    }
 
-    return loadedPageToken || selectedToken;
+    if (!normalizedPageId) {
+        return selectedToken;
+    }
+
+    const selectedPageId = String(
+        (typeof getCurrentPageId === "function" ? getCurrentPageId() : "")
+        || localStorage.getItem("fewfeed_selectedPageId")
+        || "",
+    ).trim();
+    if (selectedPageId && selectedPageId === normalizedPageId) {
+        return selectedToken;
+    }
+
+    return "";
 }
 
 function getPostToolAuth(pageId = getCurrentPageId()) {
@@ -342,12 +379,15 @@ function normalizeDeleteBatchSize(value, fallback = DELETE_BATCH_DEFAULT) {
 
 function isPostToolFacebookAuthInvalidError(payload = {}) {
     const category = String(payload?.errorCategory || "").trim().toLowerCase();
+    const errorMessage = String(payload?.error || payload?.message || "").trim().toLowerCase();
+
     if (category === "facebook_auth_invalid") return true;
+    if (category === "facebook_app_error" && errorMessage.includes("error loading application")) return true;
+    if (errorMessage.includes("error loading application")) return true;
 
     const errorCode = Number(payload?.errorCode || payload?.error?.code || 0);
     const errorSubcode = Number(payload?.errorSubcode || payload?.error?.error_subcode || 0);
     const errorType = String(payload?.errorType || payload?.error?.type || "").trim().toLowerCase();
-    const errorMessage = String(payload?.error || payload?.message || "").trim().toLowerCase();
     if (errorCode === 190) return true;
     if (errorCode === 102) return true;
     if ([460, 463, 467, 490].includes(errorSubcode)) return true;
@@ -387,6 +427,10 @@ async function tryRecoverPostToolFacebookSession(toolKey, { manual = false } = {
         // Clear stale token first so extension refresh can replace it instead of reusing it.
         localStorage.setItem("fewfeed_accessToken", "");
         localStorage.setItem("fewfeed_token", "");
+        localStorage.setItem("fewfeed_selectedPageToken", "");
+        localStorage.removeItem("fewfeed_pageTokenMap");
+        localStorage.removeItem("fewfeed_pageSummaryMap");
+        localStorage.removeItem("fewfeed_pageCacheUserId");
         if (typeof fbToken !== "undefined") {
             fbToken = "";
         }
@@ -1833,10 +1877,12 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false, skip
 
         const auth = getPostToolAuth(pageId);
         let fetchSource = "merged";
+        let strictLive = false;
         if (toolKey === "delete") {
-            // Delete tool must use live Facebook list only to avoid showing stale
-            // history rows that were already removed from the page.
+            // Delete list must stay strict live-only to avoid showing already-deleted
+            // rows from local history fallback.
             fetchSource = pageId ? "facebook" : "history";
+            strictLive = !!pageId;
         }
         const response = await fetch("/api/published-posts", {
             method: "POST",
@@ -1848,8 +1894,10 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false, skip
                 limit: 100,
                 after: append ? state.pagination.nextCursor : "",
                 pageToken: auth.postToken,
+                hideToken: auth.hideToken,
                 accessToken: auth.accessToken,
                 cookieData: auth.cookieData,
+                strictLive,
             }),
         });
         const data = await response.json();
@@ -1880,7 +1928,7 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false, skip
             const sourceLabel = String(data.meta?.source || "").trim();
             if (toolKey === "delete" && !pageId) {
                 dom.loadMoreMeta.textContent = "ยังไม่ได้เลือกเพจหลัก แสดงรายการจากประวัติระบบเท่าที่มีอยู่";
-            } else if (sourceLabel === "history") {
+            } else if (sourceLabel === "history" || sourceLabel === "history-fallback") {
                 dom.loadMoreMeta.textContent = "ไม่พบโพสต์จาก Facebook ตอนนี้ แสดงเฉพาะโพสต์ที่มีในประวัติระบบ";
             }
         }

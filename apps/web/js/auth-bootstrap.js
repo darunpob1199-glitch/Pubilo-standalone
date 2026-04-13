@@ -3,7 +3,7 @@
     const SHOW_BILLING_BANNER = false;
     const SKIP_SIGNUP_AND_BILLING_GATE = false;
     const AUTH_GATE_CLASS = 'pubilo-auth-gated';
-    const AUTH_REQUEST_TIMEOUT_MS = 12000;
+    const AUTH_REQUEST_TIMEOUT_MS = 6000;
     let authReadyResolved = false;
     let resolveAuthReadyPromise = null;
     const state = {
@@ -65,6 +65,18 @@
                 window.clearTimeout(timeoutId);
             }
         });
+    }
+
+    function describeAuthFetchError(error) {
+        const message = String(error?.message || error || '').trim();
+        if (!message) return 'ระบบเชื่อมต่อไม่สำเร็จ';
+        if (message.includes('ETIMEDOUT') || message.includes('timeout')) {
+            return 'การเชื่อมต่อระบบใช้เวลานานเกินไป';
+        }
+        if (message.includes('Failed to fetch')) {
+            return 'ไม่สามารถเชื่อมต่อ API ได้';
+        }
+        return message;
     }
 
     function readAuthFlowState() {
@@ -922,17 +934,34 @@
         }
     }
 
-    async function fetchAuthState() {
-        const response = await nativeFetch('/api/auth/me', { timeoutMs: AUTH_REQUEST_TIMEOUT_MS });
-        if (!response.ok) {
-            throw new Error(`auth state request failed (${response.status})`);
-        }
+    async function fetchAuthState(options = {}) {
+        const { allowFallback = true } = options;
 
-        const payload = await response.json();
-        if (!payload || typeof payload !== 'object') {
-            throw new Error('auth state response is invalid');
+        try {
+            const response = await nativeFetch('/api/auth/me', { timeoutMs: AUTH_REQUEST_TIMEOUT_MS });
+            if (!response.ok) {
+                throw new Error(`auth state request failed (${response.status})`);
+            }
+
+            const payload = await response.json();
+            if (!payload || typeof payload !== 'object') {
+                throw new Error('auth state response is invalid');
+            }
+            return payload;
+        } catch (error) {
+            if (!allowFallback) throw error;
+            const message = describeAuthFetchError(error);
+            console.warn('[PubiloAuth] fetchAuthState fallback:', message);
+            return {
+                authenticated: false,
+                user: null,
+                workspace: null,
+                memberships: [],
+                latestPaymentOrder: null,
+                onboardingRequired: false,
+                __fetchError: message,
+            };
         }
-        return payload;
     }
 
     function applyAuthState(payload) {
@@ -950,7 +979,7 @@
             return hydrateAndResolve();
         }
 
-        const payload = await fetchAuthState();
+        const payload = await fetchAuthState({ allowFallback: false });
         applyAuthState(payload);
         ensureHeaderControls();
         ensureBillingBanner();
@@ -974,11 +1003,12 @@
             return mockPayload;
         }
 
-        const payload = await fetchAuthState();
+        const payload = await fetchAuthState({ allowFallback: true });
         applyAuthState(payload);
 
         if (!payload.authenticated) {
-            renderLoginView(authErrorMessage());
+            const fetchErrorMessage = typeof payload.__fetchError === 'string' ? payload.__fetchError : '';
+            renderLoginView(fetchErrorMessage ? `${fetchErrorMessage} กรุณาลองใหม่อีกครั้ง` : authErrorMessage());
             return new Promise(() => {});
         }
 
@@ -1029,11 +1059,12 @@
                 const authState = readAuthFlowState();
                 if (!authState) return;
 
-                const payload = await fetchAuthState();
+                const payload = await fetchAuthState({ allowFallback: true });
                 applyAuthState(payload);
 
                 if (!payload.authenticated) {
-                    renderLoginView(authErrorMessage());
+                    const fetchErrorMessage = typeof payload.__fetchError === 'string' ? payload.__fetchError : '';
+                    renderLoginView(fetchErrorMessage ? `${fetchErrorMessage} กรุณาลองใหม่อีกครั้ง` : authErrorMessage());
                     return;
                 }
 

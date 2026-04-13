@@ -143,6 +143,7 @@ const ACCESS_TOKEN_VALIDATED_AT_KEY = "fewfeed_accessTokenValidatedAt";
 const ACCESS_TOKEN_VALIDATION_STATUS_KEY = "fewfeed_accessTokenValidationStatus";
 const ACCESS_TOKEN_REVALIDATE_INTERVAL_MS = 2 * 60 * 1000;
 let autoRefreshInFlight = null;
+let tokenRefreshInFlight = null;
 
 function parseStoredPageTokenMap(rawValue) {
   try {
@@ -580,13 +581,76 @@ async function validateGraphAccessToken(accessToken, expectedUserId = "", cookie
 
 async function getFacebookCookieSnapshot() {
   try {
-    let cookies = await chrome.cookies.getAll({ domain: ".facebook.com" });
-    if (!Array.isArray(cookies) || cookies.length === 0) {
-      const fallbackCookies = await chrome.cookies.getAll({ url: "https://www.facebook.com/" });
-      cookies = Array.isArray(fallbackCookies) ? fallbackCookies : [];
+    const getCookiesByQuery = async (query) => {
+      try {
+        const result = await chrome.cookies.getAll(query);
+        return Array.isArray(result) ? result : [];
+      } catch (_) {
+        return [];
+      }
+    };
+    const dedupeByName = (cookies = []) => {
+      const sorted = [...cookies].sort((a, b) => {
+        if (a.name !== b.name) return 0;
+        const hostScoreA = a.hostOnly ? 2 : (String(a.domain || "").startsWith(".") ? 1 : 0);
+        const hostScoreB = b.hostOnly ? 2 : (String(b.domain || "").startsWith(".") ? 1 : 0);
+        if (hostScoreA !== hostScoreB) return hostScoreB - hostScoreA;
+        const pathLenA = String(a.path || "").length;
+        const pathLenB = String(b.path || "").length;
+        if (pathLenA !== pathLenB) return pathLenB - pathLenA;
+        return 0;
+      });
+
+      const unique = new Map();
+      for (const cookie of sorted) {
+        const key = String(cookie?.name || "").trim();
+        if (!key || unique.has(key)) continue;
+        unique.set(key, cookie);
+      }
+      return Array.from(unique.values());
+    };
+    const toCookieString = (cookies = []) =>
+      dedupeByName(cookies)
+        .map((c) => `${c.name}=${c.value}`)
+        .join("; ");
+    const scoreCookieSet = (cookies = [], label = "") => {
+      const names = new Set(cookies.map((cookie) => String(cookie?.name || "").trim()).filter(Boolean));
+      let score = cookies.length;
+      if (names.has("c_user")) score += 1000;
+      if (names.has("xs")) score += 850;
+      if (names.has("fr")) score += 120;
+      if (names.has("datr")) score += 80;
+      if (names.has("sb")) score += 50;
+      if (names.has("wd")) score += 30;
+      if (String(label || "").includes("www.facebook.com")) score += 15;
+      if (String(label || "").includes("adsmanager.facebook.com")) score += 10;
+      return score;
+    };
+
+    const candidates = [
+      { label: "www.facebook.com", cookies: await getCookiesByQuery({ url: "https://www.facebook.com/" }) },
+      { label: "facebook.com", cookies: await getCookiesByQuery({ url: "https://facebook.com/" }) },
+      { label: "business.facebook.com", cookies: await getCookiesByQuery({ url: "https://business.facebook.com/" }) },
+      { label: "adsmanager.facebook.com", cookies: await getCookiesByQuery({ url: "https://adsmanager.facebook.com/" }) },
+      { label: ".facebook.com", cookies: await getCookiesByQuery({ domain: ".facebook.com" }) },
+    ]
+      .map((entry) => ({ ...entry, cookies: dedupeByName(entry.cookies || []) }))
+      .filter((entry) => entry.cookies.length > 0);
+
+    if (candidates.length === 0) {
+      return {
+        success: false,
+        cookieString: "",
+        userId: "",
+        cookieCount: 0,
+        reason: "no_cookies",
+      };
     }
 
-    const cookieString = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    candidates.sort((a, b) => scoreCookieSet(b.cookies, b.label) - scoreCookieSet(a.cookies, a.label));
+    const best = candidates[0];
+    const cookies = best.cookies;
+    const cookieString = toCookieString(cookies);
     const cUser = cookies.find((c) => c.name === "c_user");
 
     return {
@@ -594,6 +658,7 @@ async function getFacebookCookieSnapshot() {
       cookieString,
       userId: cUser?.value || "",
       cookieCount: cookies.length,
+      source: best?.label || "",
       reason: cookieString ? null : "no_cookies",
     };
   } catch (error) {
@@ -965,6 +1030,8 @@ async function fetchAndStoreToken() {
     let accessToken = null;
     let fbDtsg = null;
     let userName = "Facebook User";
+    let accessTokenValidationStatus = "missing";
+    let accessTokenValidatedAt = 0;
 
     // NEW Method 0: Try extracting from existing Facebook tabs first (most reliable)
     const tabResult = await extractTokenFromExistingTabs();
@@ -1069,21 +1136,31 @@ async function fetchAndStoreToken() {
           ? selectedValidation
           : (await validateGraphAccessToken(accessToken, userId, cookieString));
       if (!validation.ok) {
+        accessTokenValidatedAt = Date.now();
+        accessTokenValidationStatus = validation.reason || "invalid";
         if (validation.reason === "network_error") {
           console.warn("[FEWFEED] Access token validation network error, keeping token candidate:", validation.error);
+          accessTokenValidationStatus = "validation_non_fatal_error";
         } else {
           console.warn("[FEWFEED] Discarding invalid access token:", validation.reason, validation.error || "");
           accessToken = null;
           fbDtsg = null;
         }
       } else if (validation.userMismatch) {
+        accessTokenValidatedAt = Date.now();
+        accessTokenValidationStatus = "valid_user_mismatch";
         console.warn(
-          "[FEWFEED] Access token validated but Graph user id differs from c_user. Keeping token.",
+          "[FEWFEED] Access token validated but Graph user id differs from c_user. Clearing mismatched token.",
           "expected:",
           validation.expectedUserId || "(none)",
           "graph:",
           validation.graphId || "(none)",
         );
+        accessToken = null;
+        fbDtsg = null;
+      } else {
+        accessTokenValidatedAt = Date.now();
+        accessTokenValidationStatus = "valid";
       }
     }
 
@@ -1104,16 +1181,29 @@ async function fetchAndStoreToken() {
       if (canReusePreviousAccessToken) {
         const previousValidation = await validateGraphAccessToken(previousAccessToken, userId, cookieString);
         if (previousValidation.ok || previousValidation.reason === "network_error") {
-          accessToken = previousAccessToken;
-          console.log(
-            "[FEWFEED] Reused previous access token for same account:",
-            previousValidation.ok ? "validated" : "network-validation-fallback",
-          );
-          if (!fbDtsg && previousData.fewfeed_fbDtsg) {
-            fbDtsg = previousData.fewfeed_fbDtsg;
+          if (previousValidation.userMismatch) {
+            accessTokenValidatedAt = Date.now();
+            accessTokenValidationStatus = "valid_user_mismatch";
+            console.warn("[FEWFEED] Previous access token mismatched current c_user, skipping reuse");
+          } else {
+            accessToken = previousAccessToken;
+            accessTokenValidatedAt = Date.now();
+            accessTokenValidationStatus =
+              previousValidation.reason === "network_error"
+                ? "validation_non_fatal_error"
+                : "valid";
+            console.log(
+              "[FEWFEED] Reused previous access token for same account:",
+              previousValidation.ok ? "validated" : "network-validation-fallback",
+            );
+            if (!fbDtsg && previousData.fewfeed_fbDtsg) {
+              fbDtsg = previousData.fewfeed_fbDtsg;
+            }
           }
         } else {
           console.warn("[FEWFEED] Previous access token rejected:", previousValidation.reason);
+          accessTokenValidatedAt = Date.now();
+          accessTokenValidationStatus = previousValidation.reason || "invalid";
         }
       }
     }
@@ -1160,8 +1250,12 @@ async function fetchAndStoreToken() {
       fewfeed_accessToken: hasFreshAccessToken ? accessToken : "",
       fewfeed_token: hasFreshAccessToken ? accessToken : "",
       fewfeed_fbDtsg: hasFreshDtsg ? fbDtsg : "",
-      [ACCESS_TOKEN_VALIDATED_AT_KEY]: hasFreshAccessToken ? Date.now() : 0,
-      [ACCESS_TOKEN_VALIDATION_STATUS_KEY]: hasFreshAccessToken ? "valid" : "missing",
+      [ACCESS_TOKEN_VALIDATED_AT_KEY]:
+        accessTokenValidatedAt || (hasFreshAccessToken ? Date.now() : 0),
+      [ACCESS_TOKEN_VALIDATION_STATUS_KEY]:
+        hasFreshAccessToken
+          ? (accessTokenValidationStatus || "valid")
+          : (accessTokenValidationStatus !== "missing" ? accessTokenValidationStatus : "missing"),
       fewfeed_userId: userId || graphUserIdFromToken || previousData.fewfeed_userId || "",
       fewfeed_userName:
         (userName && userName !== "Facebook User")
@@ -1411,6 +1505,14 @@ function extractTokenFromHTML(html) {
       return match[1];
     }
   }
+
+  // Last fallback: grab any EA* candidate and let validator decide.
+  const looseMatches = String(html || "").match(/EA[A-Za-z0-9_-]{20,}/g) || [];
+  const ranked = rankAccessTokenCandidates(looseMatches);
+  if (ranked.length > 0) {
+    console.log("[FEWFEED] Token found with loose fallback scan");
+    return ranked[0];
+  }
   return null;
 }
 
@@ -1481,15 +1583,30 @@ async function handleTokenExtractedMessage(request = {}) {
       cookieString,
     );
 
-    if (tokenValidation.ok) {
+    if (tokenValidation.ok && !tokenValidation.userMismatch) {
       acceptedToken = extractedToken;
       updates.fewfeed_accessToken = extractedToken;
       updates.fewfeed_token = extractedToken;
       updates[ACCESS_TOKEN_VALIDATED_AT_KEY] = Date.now();
-      updates[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = tokenValidation.userMismatch ? "valid_user_mismatch" : "valid";
+      updates[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = "valid";
       if (tokenValidation.graphId && !expectedUserId) {
         updates.fewfeed_userId = tokenValidation.graphId;
       }
+    } else if (tokenValidation.ok && tokenValidation.userMismatch) {
+      updates.fewfeed_accessToken = "";
+      updates.fewfeed_token = "";
+      updates.fewfeed_fbDtsg = "";
+      updates[ACCESS_TOKEN_VALIDATED_AT_KEY] = Date.now();
+      updates[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = "valid_user_mismatch";
+      console.warn(
+        "[FEWFEED] Ignored extracted token due user mismatch:",
+        "expected",
+        tokenValidation.expectedUserId || "(none)",
+        "graph",
+        tokenValidation.graphId || "(none)",
+        "| source:",
+        source,
+      );
     } else {
       updates[ACCESS_TOKEN_VALIDATED_AT_KEY] = Date.now();
       updates[ACCESS_TOKEN_VALIDATION_STATUS_KEY] = tokenValidation.reason || "invalid";
@@ -1503,7 +1620,11 @@ async function handleTokenExtractedMessage(request = {}) {
     }
   }
 
-  if (extractedDtsg && (acceptedToken || existingData.fewfeed_accessToken || existingData.fewfeed_token)) {
+  if (
+    extractedDtsg &&
+    !tokenValidation?.userMismatch &&
+    (acceptedToken || existingData.fewfeed_accessToken || existingData.fewfeed_token)
+  ) {
     updates.fewfeed_fbDtsg = extractedDtsg;
   }
 
@@ -1693,10 +1814,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         // Token extraction can take longer when fallback opens temporary Facebook tabs.
+        // Reuse in-flight refresh to avoid parallel overlapping fetches that race each other.
+        if (!tokenRefreshInFlight) {
+          tokenRefreshInFlight = fetchAndStoreToken()
+            .catch((error) => ({ success: false, reason: "exception", error: error?.message || String(error) }))
+            .finally(() => {
+              tokenRefreshInFlight = null;
+            });
+        }
+
         const fetchResult = await Promise.race([
-          fetchAndStoreToken(),
-          new Promise((resolve) => setTimeout(() => resolve({ success: false, reason: "timeout" }), 12000)),
+          tokenRefreshInFlight,
+          new Promise((resolve) => setTimeout(() => resolve({ success: false, reason: "timeout" }), 28000)),
         ]);
+
+        // If request timed out while refresh is still running, poll storage briefly once more
+        // so caller gets fresh token in the same response when it lands a moment later.
+        if (fetchResult?.reason === "timeout" && tokenRefreshInFlight) {
+          for (let i = 0; i < 4; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+            const quickData = await chrome.storage.local.get([
+              "fewfeed_accessToken",
+              "fewfeed_token",
+              "fewfeed_cookie",
+            ]);
+            if (quickData?.fewfeed_accessToken || quickData?.fewfeed_token || quickData?.fewfeed_cookie) {
+              break;
+            }
+          }
+        }
 
         const data = await chrome.storage.local.get([
           "fewfeed_accessToken",
@@ -1753,15 +1899,49 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // Fetch Pages from Facebook API
   if (request.action === "fetchPages") {
-    fetchFacebookPages(request.accessToken, request.cookie)
-      .then(sendResponse)
-      .catch((error) => replyError(error));
+    (async () => {
+      try {
+        let accessToken = String(request.accessToken || "").trim();
+        let cookie = String(request.cookie || "").trim();
+
+        if (!accessToken || !cookie) {
+          const stored = await chrome.storage.local.get([
+            "fewfeed_accessToken",
+            "fewfeed_token",
+            "fewfeed_cookie",
+          ]);
+          if (!accessToken) {
+            accessToken = String(
+              stored?.fewfeed_accessToken ||
+              stored?.fewfeed_token ||
+              "",
+            ).trim();
+          }
+          if (!cookie) {
+            cookie = String(stored?.fewfeed_cookie || "").trim();
+          }
+        }
+
+        const result = await fetchFacebookPages(accessToken, cookie);
+        sendResponse(result);
+      } catch (error) {
+        replyError(error);
+      }
+    })();
     return true;
   }
 
   // Fetch Ad Accounts from Facebook API
   if (request.action === "fetchAdAccounts") {
     fetchFacebookAdAccounts(request.accessToken, request.cookie)
+      .then(sendResponse)
+      .catch((error) => replyError(error));
+    return true;
+  }
+
+  // Publish news post directly from extension (browser-side fallback)
+  if (request.action === "publishNewsDirect") {
+    publishNewsDirect(request)
       .then(sendResponse)
       .catch((error) => replyError(error));
     return true;
@@ -1998,27 +2178,43 @@ async function fetchFacebookPages(accessToken, cookie) {
   try {
     let cookieResult = null;
     let tokenResult = null;
+    let tokenWithCookieResult = null;
 
     // Cookie-authenticated call is more stable when access token was replaced by page-token fallback.
     if (hasCookie) {
       cookieResult = await fetchAllFacebookPages(cookieEndpoint, cookieHeaders);
     }
     if (hasAccessToken) {
-      tokenResult = await fetchAllFacebookPages(tokenEndpoint, cookieHeaders);
+      // Important: do a pure token call without cookie first. Mixing cookie
+      // here can scope /me/accounts to the wrong browser session and return
+      // only a subset of pages.
+      tokenResult = await fetchAllFacebookPages(tokenEndpoint, tokenHeaders);
+      if (hasCookie) {
+        tokenWithCookieResult = await fetchAllFacebookPages(tokenEndpoint, cookieHeaders);
+      }
     }
 
-    if (cookieResult?.success && tokenResult?.success) {
-      const mergedPages = mergeFacebookPages(cookieResult.pages || [], tokenResult.pages || []);
+    const successResults = [tokenResult, tokenWithCookieResult, cookieResult].filter(
+      (result) => result?.success,
+    );
+    if (successResults.length > 1) {
+      const mergedPages = successResults.reduce(
+        (acc, result) => mergeFacebookPages(acc, result?.pages || []),
+        [],
+      );
       return { success: true, pages: mergedPages };
-    }
-    if (cookieResult?.success) {
-      return { success: true, pages: cookieResult.pages || [] };
     }
     if (tokenResult?.success) {
       return { success: true, pages: tokenResult.pages || [] };
     }
+    if (tokenWithCookieResult?.success) {
+      return { success: true, pages: tokenWithCookieResult.pages || [] };
+    }
+    if (cookieResult?.success) {
+      return { success: true, pages: cookieResult.pages || [] };
+    }
 
-    const errors = [cookieResult?.error, tokenResult?.error].filter(Boolean);
+    const errors = [tokenResult?.error, tokenWithCookieResult?.error, cookieResult?.error].filter(Boolean);
     return {
       success: false,
       error: errors[0] || "ไม่สามารถดึงรายชื่อเพจได้",
@@ -2053,6 +2249,286 @@ async function fetchFacebookAdAccounts(accessToken, cookie) {
   } catch (e) {
     return { success: false, error: e.message };
   }
+}
+
+function buildGraphRequestHeaders(cookie) {
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  };
+  const normalizedCookie = String(cookie || "").trim();
+  if (normalizedCookie) {
+    headers["Cookie"] = normalizedCookie;
+  }
+  return headers;
+}
+
+function dataUrlToBlobForExtension(dataUrl) {
+  const source = String(dataUrl || "");
+  const parts = source.split(",", 2);
+  const header = parts[0] || "";
+  const payload = parts[1] || "";
+  const mimeMatch = header.match(/^data:(.*?);base64$/i);
+  const mimeType = mimeMatch?.[1] || "image/jpeg";
+  const binary = atob(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+function buildUniqueTokenCandidates(tokens = []) {
+  const seen = new Set();
+  const result = [];
+  tokens.forEach((token) => {
+    const normalized = String(token || "").trim();
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    result.push(normalized);
+  });
+  return result;
+}
+
+async function graphFetchJsonWithTimeout(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), Math.max(3000, Number(timeoutMs || 8000)));
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({ error: { message: `non_json_response_${response.status}` } }));
+    return data;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function publishNewsDirect(request = {}) {
+  const pageId = String(request.pageId || "").trim();
+  const linkUrl = String(request.linkUrl || "").trim();
+  const imageUrl = String(request.imageUrl || "").trim();
+  const primaryText = String(request.primaryText || "").trim();
+  const description = String(request.description || "").trim();
+  const caption = String(request.caption || "").trim();
+  const cookieFromRequest = String(request.cookieData || request.cookie || "").trim();
+
+  if (!pageId) {
+    return { success: false, error: "Missing pageId", errorType: "MissingPageId" };
+  }
+  if (!linkUrl) {
+    return { success: false, error: "Missing linkUrl", errorType: "MissingLinkUrl" };
+  }
+
+  const stored = await chrome.storage.local.get([
+    "fewfeed_accessToken",
+    "fewfeed_token",
+    "fewfeed_cookie",
+    "fewfeed_selectedPageToken",
+    PAGE_TOKEN_MAP_KEY,
+  ]);
+
+  const cookie = cookieFromRequest || String(stored?.fewfeed_cookie || "").trim();
+  const pageTokenMap = parseStoredPageTokenMap(stored?.[PAGE_TOKEN_MAP_KEY]);
+  const mappedTokenEntry = pageTokenMap?.[pageId];
+  const mappedPageToken =
+    typeof mappedTokenEntry === "string"
+      ? mappedTokenEntry
+      : String(mappedTokenEntry?.token || "").trim();
+  const storedAccessToken = String(
+    request.accessToken ||
+    stored?.fewfeed_accessToken ||
+    stored?.fewfeed_token ||
+    "",
+  ).trim();
+
+  let livePageToken = "";
+  try {
+    if (storedAccessToken || cookie) {
+      const livePages = await fetchFacebookPages(storedAccessToken, cookie);
+      if (livePages?.success && Array.isArray(livePages.pages)) {
+        const matchedPage = livePages.pages.find((page) => String(page?.id) === pageId);
+        livePageToken = String(matchedPage?.access_token || "").trim();
+
+        // Refresh cached token map with latest value from Facebook when available.
+        if (livePageToken) {
+          pageTokenMap[pageId] = {
+            token: livePageToken,
+            name: String(matchedPage?.name || "").trim(),
+            picture: String(matchedPage?.picture?.data?.url || "").trim(),
+          };
+          await chrome.storage.local.set({
+            [PAGE_TOKEN_MAP_KEY]: JSON.stringify(pageTokenMap),
+            fewfeed_selectedPageToken: livePageToken,
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("[FEWFEED] publishNewsDirect live page-token refresh failed:", error?.message || error);
+  }
+
+  const tokenCandidates = buildUniqueTokenCandidates([
+    livePageToken,
+    request.pageToken,
+    mappedPageToken,
+    stored?.fewfeed_selectedPageToken,
+    storedAccessToken,
+  ]).slice(0, 4);
+
+  const messageCandidates = buildUniqueTokenCandidates([
+    primaryText && description ? `${primaryText}\n\nพิกัด : ${description}` : "",
+    primaryText,
+    description ? `พิกัด : ${description}` : "",
+    "",
+  ]).slice(0, 3);
+
+  const headersWithCookie = buildGraphRequestHeaders(cookie);
+  const headersNoCookie = buildGraphRequestHeaders("");
+
+  let lastError = "";
+  let lastFacebookError = null;
+  const startedAt = Date.now();
+  const hardDeadlineMs = 45000;
+
+  const tryFeed = async (token, messageValue, withCookieHeader) => {
+    const body = new URLSearchParams({
+      access_token: token,
+      link: linkUrl,
+    });
+    if (messageValue) body.set("message", messageValue);
+
+    const data = await graphFetchJsonWithTimeout(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
+      method: "POST",
+      headers: {
+        ...(withCookieHeader ? headersWithCookie : headersNoCookie),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    }, 7000);
+    if (data?.error) {
+      throw data.error;
+    }
+    const postId = String(data?.id || data?.post_id || "").trim();
+    if (!postId) {
+      throw { message: "Facebook did not return post id for direct feed post" };
+    }
+    return {
+      success: true,
+      postId,
+      url: `https://www.facebook.com/${postId}`,
+      warning: "โพสต์ผ่าน Extension direct mode",
+    };
+  };
+
+  const tryPhoto = async (token, messageValue, withCookieHeader) => {
+    if (!imageUrl) {
+      throw { message: "image_missing" };
+    }
+
+    let body;
+    let headers;
+    if (imageUrl.startsWith("data:")) {
+      const form = new FormData();
+      form.append("access_token", token);
+      form.append("source", dataUrlToBlobForExtension(imageUrl), "pubilo-news-direct.jpg");
+      if (messageValue) form.append("caption", messageValue);
+      body = form;
+      headers = withCookieHeader ? headersWithCookie : headersNoCookie;
+    } else {
+      const params = new URLSearchParams({
+        access_token: token,
+        url: imageUrl,
+      });
+      if (messageValue) params.set("caption", messageValue);
+      body = params.toString();
+      headers = {
+        ...(withCookieHeader ? headersWithCookie : headersNoCookie),
+        "Content-Type": "application/x-www-form-urlencoded",
+      };
+    }
+
+    const data = await graphFetchJsonWithTimeout(`https://graph.facebook.com/v21.0/${pageId}/photos`, {
+      method: "POST",
+      headers,
+      body,
+    }, 7000);
+    if (data?.error) {
+      throw data.error;
+    }
+    const postId = String(data?.post_id || data?.id || "").trim();
+    if (!postId) {
+      throw { message: "Facebook did not return post id for direct photo post" };
+    }
+    return {
+      success: true,
+      postId,
+      url: `https://www.facebook.com/${postId}`,
+      warning: "โพสต์ผ่าน Extension direct photo fallback",
+    };
+  };
+
+  for (const token of tokenCandidates) {
+    for (const messageValue of messageCandidates) {
+      for (const withCookieHeader of [false, true]) {
+        if (Date.now() - startedAt > hardDeadlineMs) {
+          return {
+            success: false,
+            error: "direct_publish_deadline_exceeded",
+            errorType: "PublishNewsDirectTimeout",
+            debug: {
+              phase: "feed",
+              elapsedMs: Date.now() - startedAt,
+            },
+          };
+        }
+        try {
+          return await tryFeed(token, messageValue, withCookieHeader);
+        } catch (error) {
+          lastError = String(error?.message || error || "direct_feed_failed");
+          lastFacebookError = error || lastFacebookError;
+        }
+      }
+    }
+  }
+
+  for (const token of tokenCandidates) {
+    for (const messageValue of messageCandidates) {
+      for (const withCookieHeader of [false, true]) {
+        if (Date.now() - startedAt > hardDeadlineMs) {
+          return {
+            success: false,
+            error: "direct_publish_deadline_exceeded",
+            errorType: "PublishNewsDirectTimeout",
+            debug: {
+              phase: "photo",
+              elapsedMs: Date.now() - startedAt,
+            },
+          };
+        }
+        try {
+          return await tryPhoto(token, messageValue, withCookieHeader);
+        } catch (error) {
+          lastError = String(error?.message || error || "direct_photo_failed");
+          lastFacebookError = error || lastFacebookError;
+        }
+      }
+    }
+  }
+
+  return {
+    success: false,
+    error: lastError || "publish_news_direct_failed",
+    errorType: "PublishNewsDirectFailed",
+    errorCode: Number(lastFacebookError?.code || 0) || undefined,
+    errorSubcode: Number(lastFacebookError?.error_subcode || 0) || undefined,
+    debug: {
+      pageId,
+      tokenCandidateCount: tokenCandidates.length,
+      hasCookie: !!cookie,
+      hasLivePageToken: !!livePageToken,
+    },
+  };
 }
 
 // ============================================
@@ -2505,4 +2981,4 @@ async function getLazadaCookies() {
 // END LAZADA SECTION
 // ============================================
 
-console.log("[Pubilo] Background v9.1.6 loaded - supports facebook.com root domain + resilient extraction");
+console.log("[Pubilo] Background v9.2.2 loaded - request-scoped page fetch + resilient extraction");

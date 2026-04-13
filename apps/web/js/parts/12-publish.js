@@ -955,6 +955,12 @@ function isPublishTimeoutError(error) {
     return error?.name === "PublishRequestTimeoutError" || error?.code === "PUBLISH_TIMEOUT";
 }
 
+function isExtensionContextInvalidatedMessage(message = "") {
+    return /extension context invalidated|receiving end does not exist|message channel closed before a response was received|asynchronous response by returning true|message port closed/i.test(
+        String(message || "").toLowerCase(),
+    );
+}
+
 async function postPublishWithNetworkRecovery(payload, options = {}) {
     const timeoutMs = Number(options.timeoutMs || DEFAULT_PUBLISH_TIMEOUT_MS);
 
@@ -1759,7 +1765,8 @@ function setupPublishHandler(mode) {
             const isPublishTimeout = isPublishTimeoutError(err);
             const isSessionExpiredError =
                 /session has been invalidated|error validating access token|facebook session หมดอายุ|errorcode["']?\s*:\s*190/i.test(errMessage);
-            if (isSessionExpiredError && !publishSessionRefreshRetryByMode[mode]) {
+            const isExtensionContextError = isExtensionContextInvalidatedMessage(errMessage);
+            if ((isSessionExpiredError || isExtensionContextError) && !publishSessionRefreshRetryByMode[mode]) {
                 publishSessionRefreshRetryByMode[mode] = true;
                 try {
                     // Try robust session recovery chain (cache -> get_data -> refresh token).
@@ -1772,6 +1779,8 @@ function setupPublishHandler(mode) {
                         ).trim(),
                         cookie: String(localStorage.getItem("fewfeed_cookie") || "").trim(),
                         userId: String(localStorage.getItem("fewfeed_userId") || "").trim(),
+                        selectedPageToken: String(localStorage.getItem("fewfeed_selectedPageToken") || "").trim(),
+                        pageTokenMapRaw: String(localStorage.getItem(PAGE_TOKEN_MAP_KEY) || "{}"),
                     });
                     const beforeSnapshot = readSessionSnapshot();
                     const hasSessionAdvanced = () => {
@@ -1781,7 +1790,9 @@ function setupPublishHandler(mode) {
                             (afterSnapshot.cookie && afterSnapshot.cookie !== beforeSnapshot.cookie) ||
                             (afterSnapshot.userId && afterSnapshot.userId !== beforeSnapshot.userId) ||
                             (!beforeSnapshot.adsToken && afterSnapshot.adsToken) ||
-                            (!beforeSnapshot.cookie && afterSnapshot.cookie)
+                            (!beforeSnapshot.cookie && afterSnapshot.cookie) ||
+                            (afterSnapshot.selectedPageToken && afterSnapshot.selectedPageToken !== beforeSnapshot.selectedPageToken) ||
+                            (afterSnapshot.pageTokenMapRaw !== beforeSnapshot.pageTokenMapRaw)
                         );
                     };
                     const selectBackendSessionRow = (tokens = []) => {
@@ -1913,6 +1924,8 @@ function setupPublishHandler(mode) {
                 alert(errMessage);
             } else if (isNetworkFetchError) {
                 alert("เชื่อมต่อ API ไม่สำเร็จ (network) กรุณาลองใหม่อีกครั้ง");
+            } else if (isExtensionContextError) {
+                alert("Extension หลุดการเชื่อมต่อกับหน้านี้\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง");
             } else if (isSessionExpiredError) {
                 alert("Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง");
             } else {
@@ -3006,10 +3019,11 @@ function renderPagesDropdown(pages) {
     emitPagesUpdated("dropdown-rendered");
 }
 
-function requestPagesFromExtension(accessToken) {
+function requestPagesFromExtension(accessToken, cookie = "") {
     return new Promise((resolve, reject) => {
         let requestInterval = null;
         let settled = false;
+        const requestId = `pages_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
         const finish = (error, pages) => {
             if (settled) return;
@@ -3034,6 +3048,9 @@ function requestPagesFromExtension(accessToken) {
         function handleMessage(event) {
             if (event.source !== window) return;
             if (event.data.type !== "FEWFEED_PAGES_RESPONSE") return;
+            const incomingRequestId = String(event.data.requestId || "").trim();
+            // Backward-compatible with older extension builds that do not echo requestId.
+            if (incomingRequestId && incomingRequestId !== requestId) return;
 
             const response = event.data.data;
             if (response?.success && Array.isArray(response.pages)) {
@@ -3041,7 +3058,20 @@ function requestPagesFromExtension(accessToken) {
                 return;
             }
 
-            finish(new Error(response?.error || "ดึงรายชื่อเพจไม่สำเร็จ"));
+            const responseError = String(response?.error || "");
+            if (
+                response?.reason === "extension_context_invalidated" ||
+                isExtensionContextInvalidatedMessage(responseError)
+            ) {
+                setTimeout(() => {
+                    syncWithExtensionNow({
+                        forceRefresh: true,
+                        requireAdsToken: false,
+                    }).catch(() => {});
+                }, 0);
+            }
+
+            finish(new Error(responseError || "ดึงรายชื่อเพจไม่สำเร็จ"));
         }
 
         const postRequest = () => {
@@ -3049,6 +3079,8 @@ function requestPagesFromExtension(accessToken) {
                 {
                     type: "FEWFEED_FETCH_PAGES",
                     accessToken: accessToken || "",
+                    cookie: cookie || "",
+                    requestId,
                 },
                 "*",
             );
@@ -3068,6 +3100,7 @@ function requestAdAccountsFromExtension(accessToken) {
     return new Promise((resolve, reject) => {
         let settled = false;
         let requestInterval = null;
+        const requestId = `adaccounts_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
         const finish = (error, adAccounts) => {
             if (settled) return;
@@ -3092,6 +3125,9 @@ function requestAdAccountsFromExtension(accessToken) {
         function handleMessage(event) {
             if (event.source !== window) return;
             if (event.data.type !== "FEWFEED_AD_ACCOUNTS_RESPONSE") return;
+            const incomingRequestId = String(event.data.requestId || "").trim();
+            // Backward-compatible with older extension builds that do not echo requestId.
+            if (incomingRequestId && incomingRequestId !== requestId) return;
 
             const response = event.data.data;
             if (response?.success && Array.isArray(response.adAccounts)) {
@@ -3099,7 +3135,20 @@ function requestAdAccountsFromExtension(accessToken) {
                 return;
             }
 
-            finish(new Error(response?.error || "ดึง ad account ไม่สำเร็จ"));
+            const responseError = String(response?.error || "");
+            if (
+                response?.reason === "extension_context_invalidated" ||
+                isExtensionContextInvalidatedMessage(responseError)
+            ) {
+                setTimeout(() => {
+                    syncWithExtensionNow({
+                        forceRefresh: true,
+                        requireAdsToken: false,
+                    }).catch(() => {});
+                }, 0);
+            }
+
+            finish(new Error(responseError || "ดึง ad account ไม่สำเร็จ"));
         }
 
         const postRequest = () => {
@@ -3107,6 +3156,7 @@ function requestAdAccountsFromExtension(accessToken) {
                 {
                     type: "FEWFEED_FETCH_AD_ACCOUNTS",
                     accessToken,
+                    requestId,
                 },
                 "*",
             );
@@ -3661,8 +3711,30 @@ async function getFreshPageTokenFromExtension(pageId, accessToken) {
 }
 
 function isInvalidFacebookSessionError(data) {
-    return Number(data?.errorCode) === 190 ||
-        (Number(data?.errorCode) === 1 && data?.errorType === 'OAuthException');
+    const errorCode = Number(data?.errorCode || data?.error?.code || 0);
+    const errorSubcode = Number(data?.errorSubcode || data?.error?.error_subcode || 0);
+    const errorType = String(data?.errorType || data?.error?.type || "").toLowerCase();
+    const errorMessage = String(data?.error || data?.message || data?.error?.message || "").toLowerCase();
+
+    if (errorCode === 190 || errorCode === 102) return true;
+    if ([460, 463, 467, 490].includes(errorSubcode)) return true;
+    if (errorMessage.includes("error validating access token")) return true;
+    if (errorMessage.includes("session has been invalidated")) return true;
+    if (errorMessage.includes("invalid oauth access token")) return true;
+    if (errorMessage.includes("cannot parse access token")) return true;
+    if (errorMessage.includes("access token could not be decrypted")) return true;
+    if (
+        errorCode === 1 &&
+        errorType === "oauthexception" &&
+        (
+            errorMessage.includes("access token")
+            || errorMessage.includes("session has been invalidated")
+            || errorMessage.includes("invalid oauth")
+        )
+    ) {
+        return true;
+    }
+    return false;
 }
 
 function getActiveWorkspace() {
@@ -4426,6 +4498,17 @@ async function requestStoredTokensFromExtension() {
 
         const handleMessage = (event) => {
             if (event.source !== window) return;
+            if (event.data.type === "FEWFEED_EXTENSION_DIAGNOSTIC") {
+                const detail = String(event.data.detail || event.data.error || "");
+                if (isExtensionContextInvalidatedMessage(detail)) {
+                    finish({
+                        success: false,
+                        reason: "extension_context_invalidated",
+                        error: detail || "Extension context invalidated",
+                    });
+                    return;
+                }
+            }
             if (event.data.type !== "FEWFEED_DATA_RESPONSE") return;
             const payload = event.data.data || {};
             const normalized = normalizeExtensionSessionData(payload);
@@ -4470,6 +4553,17 @@ async function refreshFacebookTokensFromExtension() {
 
         const handleMessage = (event) => {
             if (event.source !== window) return;
+            if (event.data.type === "FEWFEED_EXTENSION_DIAGNOSTIC") {
+                const detail = String(event.data.detail || event.data.error || "");
+                if (isExtensionContextInvalidatedMessage(detail)) {
+                    finish({
+                        success: false,
+                        reason: "extension_context_invalidated",
+                        error: detail || "Extension context invalidated",
+                    });
+                    return;
+                }
+            }
             if (event.data.type !== "FEWFEED_COOKIE_INJECTED") return;
             const normalized = normalizeExtensionSessionData(event.data || {});
             finish({
@@ -4521,25 +4615,11 @@ window.addEventListener("message", (event) => {
         }
     }
 
-    // Pages response from extension
-    if (event.data.type === "FEWFEED_PAGES_RESPONSE") {
-        const response = event.data.data;
-        if (
-            response.success &&
-            response.pages &&
-            response.pages.length > 0
-        ) {
-            renderPagesDropdown(response.pages);
-            console.log(
-                "[FEWFEED] Pages loaded:",
-                response.pages.length,
-            );
-            // Re-trigger navigation in case we landed on #pending before pages were loaded
-            if (window.location.hash === "#pending") {
-                handleNavigation();
-            }
-        }
-    }
+    // NOTE:
+    // Page/ad-account responses are handled by request-scoped listeners
+    // inside requestPagesFromExtension/requestAdAccountsFromExtension.
+    // Do not process FEWFEED_PAGES_RESPONSE globally to avoid cross-request
+    // races that can overwrite dropdown with stale/partial page lists.
 
     // Post token arrived from Postcron OAuth
     if (event.data.type === "FEWFEED_POST_TOKEN_READY") {
@@ -4839,10 +4919,23 @@ async function fetchPages(accessToken, knownUserId = "") {
 
     activePagesFetchKey = requestKey;
     activePagesFetchPromise = (async () => {
-        const canRequestPagesFromExtension = !!normalizedAccessToken;
+        const normalizedCookie = String(
+            localStorage.getItem("fewfeed_cookie") ||
+                (typeof fbCookie !== "undefined" ? fbCookie : "") ||
+                "",
+        ).trim();
+        // Extension can list pages via cookie-only auth; do not require ads token.
+        const canRequestPagesFromExtension = !!(
+            normalizedAccessToken ||
+            normalizedCookie ||
+            typeof window.pubiloExtension !== "undefined"
+        );
         if (canRequestPagesFromExtension) {
             try {
-                const extensionPages = await requestPagesFromExtension(normalizedAccessToken);
+                const extensionPages = await requestPagesFromExtension(
+                    normalizedAccessToken,
+                    normalizedCookie,
+                );
                 if (Array.isArray(extensionPages) && extensionPages.length > 0) {
                     const normalizedPages = extensionPages.map((page) => {
                         const pageId = String(page?.id || "").trim();
