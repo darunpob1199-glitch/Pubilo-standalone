@@ -168,23 +168,19 @@
                     <!-- Left Side Content -->
                     <div class="pubilo-auth-brand" style="flex:1; display:flex; flex-direction:column; justify-content:center; padding:0 60px;">
                         <!-- Pubilo Logo -->
-                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:48px;">
-                            <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <div style="display:flex; align-items:center; gap:16px; margin-bottom:48px;">
+                            <svg width="72" height="72" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M50 20 L80 35 L50 50 L20 35 Z" fill="#7c3aed"/>
                                 <path d="M50 35 L80 50 L50 65 L20 50 Z" stroke="#94a3b8" stroke-width="6" stroke-linejoin="round"/>
                                 <path d="M50 50 L80 65 L50 80 L20 65 Z" stroke="#c4b5fd" stroke-width="6" stroke-linejoin="round"/>
                             </svg>
-                            <span style="font-size:28px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; letter-spacing:-0.5px;">Pubilo</span>
+                            <span style="font-size:42px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; letter-spacing:-1px;">Pubilo</span>
                         </div>
 
                         <h1 style="font-size:72px; font-weight:800; margin-bottom:24px; line-height:1.1; letter-spacing:-2.5px; font-family:'Montserrat', sans-serif;">
-                            <span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Simple</span><br>
-                            <span style="color:#1e293b;">Secure &</span><br>
-                            <span style="color:#1e293b;">Reliable</span>
+                            <span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">FACEBOOK</span><br>
+                            <span style="color:#1e293b;">One Card link</span>
                         </h1>
-                        <p id="pubiloLeftSubtitle" style="font-size:22px; color:#475569; margin-bottom:40px; line-height:1.6; max-width: 440px; font-weight: 500; font-family:'Montserrat', sans-serif;">
-                            Keep Connected with People through seamless workspace management and easy tools.
-                        </p>
                         
 
                     </div>
@@ -258,39 +254,22 @@
         
         card.innerHTML = `
             <div style="width:100%; border:none; box-shadow:none; background:transparent;">
-                <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:32px;">
-                    <!-- Pubilo Logo -->
-                    <div style="display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:8px;">
-                        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M50 20 L80 35 L50 50 L20 35 Z" fill="#7c3aed"/>
-                            <path d="M50 35 L80 50 L50 65 L20 50 Z" stroke="#94a3b8" stroke-width="6" stroke-linejoin="round"/>
-                            <path d="M50 50 L80 65 L50 80 L20 65 Z" stroke="#c4b5fd" stroke-width="6" stroke-linejoin="round"/>
-                        </svg>
-                        <span style="font-size:28px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; letter-spacing:-0.5px;">Pubilo</span>
-                    </div>
-                </div>
-
                 <div style="text-align:center; margin-bottom:32px;">
-                    <h2 style="font-size:24px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; margin-bottom:8px;">Welcome Back</h2>
-                    <p style="font-size:14px; color:#64748b; font-family:'Inter', sans-serif;">Log in to your workspace securely.</p>
+                    <h2 style="font-size:28px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; margin-bottom:8px;">ยินดีต้อนรับ</h2>
+                    <p style="font-size:14px; color:#64748b; font-family:'Inter', sans-serif; margin:0;">เชื่อมต่อ Facebook ในคลิกเดียว</p>
                 </div>
 
                 ${message ? `<p class="pubilo-auth-error" style="background:#fff1f1; color:#da1e28; padding:16px; border-radius:12px; margin-bottom:24px; font-size:14px; font-weight:500;">${message}</p>` : ''}
                 
-                <a class="pubilo-auth-provider-btn" href="${loginUrl}" style="background:#06C755; color:white; display:flex; justify-content:center; align-items:center; width:100%; border-radius:12px; height:56px; font-size:16px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; box-shadow:0 10px 25px rgba(6,199,85,0.3); transition:all 0.2s; gap:12px;" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
+                <a class="pubilo-auth-provider-btn" href="${loginUrl}" style="background:linear-gradient(135deg, #06C755 0%, #05a847 100%); color:white; display:flex; justify-content:center; align-items:center; width:100%; border-radius:12px; height:56px; font-size:16px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; box-shadow:0 10px 25px rgba(6,199,85,0.3); transition:all 0.25s ease; gap:12px;" onmouseover="this.style.transform='translateY(-2px)';this.style.background='linear-gradient(135deg, #07dc5e 0%, #06C755 100%)';this.style.boxShadow='0 14px 32px rgba(6,199,85,0.42)';" onmouseout="this.style.transform='none';this.style.background='linear-gradient(135deg, #06C755 0%, #05a847 100%)';this.style.boxShadow='0 10px 25px rgba(6,199,85,0.3)';">
                     <svg width="28" height="28" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
                         <path d="M22.5 10.3c0-4.4-4.8-8-10.5-8S1.5 5.9 1.5 10.3c0 3.9 3.6 7.2 8.4 7.9l-1.4 3.3c-.1.3-.1.6 0 .8.1.2.4.3.6.3.1 0 .3 0 .4-.1l4.9-3.2c.8.2 1.6.3 2.5.3 5.7 0 10.5-3.6 10.5-8z"/>
                     </svg>
-                    Log in with LINE
+                    เข้าสู่ระบบด้วย LINE
                 </a>
 
-                <div style="display:flex; justify-content:center; margin-top:40px; gap:8px;">
-                    <span style="color:#64748b; font-size:14px; font-weight:500; font-family:'Inter', sans-serif;">New User?</span>
-                    <a href="${loginUrl}" style="color:#0f172a; font-size:14px; font-weight:700; font-family:'Inter', sans-serif; text-decoration:none; border-bottom:2px solid #0f172a; padding-bottom:2px;">Create an Account</a>
-                </div>
-
-                <div style="text-align:center; margin-top:24px;">
-                    <a href="#" style="color:#94a3b8; font-size:13px; font-weight:600; font-family:'Inter', sans-serif; text-decoration:none; transition:color 0.2s;" onmouseover="this.style.color='#0f172a';" onmouseout="this.style.color='#94a3b8';">Frequently Asked Questions (FAQ)</a>
+                <div style="text-align:center; margin-top:40px;">
+                    <a href="#" style="color:#94a3b8; font-size:13px; font-weight:600; font-family:'Inter', sans-serif; text-decoration:none; transition:color 0.2s;" onmouseover="this.style.color='#0f172a';" onmouseout="this.style.color='#94a3b8';">คำถามที่พบบ่อย (FAQ)</a>
                 </div>
             </div>
         `;
