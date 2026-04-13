@@ -171,7 +171,7 @@
                             <span style="color:#1e293b;">Reliable</span>
                         </h1>
                         <p id="pubiloLeftSubtitle" style="font-size:22px; color:#475569; margin-bottom:40px; line-height:1.6; max-width: 440px; font-weight: 500; font-family:'Montserrat', sans-serif;">
-                            Keep Connected with People through seamless workspace management and easy tools.
+                            One Card link
                         </p>
                         
 
@@ -272,13 +272,8 @@
                     Log in with LINE
                 </a>
 
-                <div style="display:flex; justify-content:center; margin-top:40px; gap:8px;">
-                    <span style="color:#64748b; font-size:14px; font-weight:500; font-family:'Inter', sans-serif;">New User?</span>
-                    <a href="${loginUrl}" style="color:#0f172a; font-size:14px; font-weight:700; font-family:'Inter', sans-serif; text-decoration:none; border-bottom:2px solid #0f172a; padding-bottom:2px;">Create an Account</a>
-                </div>
-
-                <div style="text-align:center; margin-top:24px;">
-                    <a href="#" style="color:#94a3b8; font-size:13px; font-weight:600; font-family:'Inter', sans-serif; text-decoration:none; transition:color 0.2s;" onmouseover="this.style.color='#0f172a';" onmouseout="this.style.color='#94a3b8';">Frequently Asked Questions (FAQ)</a>
+                <div style="text-align:center; margin-top:40px;">
+                    <a href="#" style="color:#94a3b8; font-size:13px; font-weight:600; font-family:'Inter', sans-serif; text-decoration:none; transition:color 0.2s;" onmouseover="this.style.color='#0f172a';" onmouseout="this.style.color='#94a3b8';">คำถามที่พบบ่อย (FAQ)</a>
                 </div>
             </div>
         `;
