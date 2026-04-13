@@ -253,6 +253,10 @@
         const loginUrl = `${window.API_BASE}/api/auth/login/line?returnTo=${encodeURIComponent(getSafeReturnToUrl())}`;
         
         card.innerHTML = `
+            <style>
+                @keyframes pubiloBtnSpin { to { transform: rotate(360deg); } }
+                .pubilo-line-btn.is-loading { pointer-events: none; opacity: 0.9; cursor: wait; }
+            </style>
             <div style="width:100%; border:none; box-shadow:none; background:transparent;">
                 <div style="text-align:center; margin-bottom:32px;">
                     <h2 style="font-size:28px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; margin-bottom:8px;">ยินดีต้อนรับ</h2>
@@ -260,12 +264,12 @@
                 </div>
 
                 ${message ? `<p class="pubilo-auth-error" style="background:#fff1f1; color:#da1e28; padding:16px; border-radius:12px; margin-bottom:24px; font-size:14px; font-weight:500;">${message}</p>` : ''}
-                
-                <a class="pubilo-auth-provider-btn" href="${loginUrl}" style="background:linear-gradient(135deg, #06C755 0%, #05a847 100%); color:white; display:flex; justify-content:center; align-items:center; width:100%; border-radius:12px; height:56px; font-size:16px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; box-shadow:0 10px 25px rgba(6,199,85,0.3); transition:all 0.25s ease; gap:12px;" onmouseover="this.style.transform='translateY(-2px)';this.style.background='linear-gradient(135deg, #07dc5e 0%, #06C755 100%)';this.style.boxShadow='0 14px 32px rgba(6,199,85,0.42)';" onmouseout="this.style.transform='none';this.style.background='linear-gradient(135deg, #06C755 0%, #05a847 100%)';this.style.boxShadow='0 10px 25px rgba(6,199,85,0.3)';">
+
+                <a id="pubiloLineLoginBtn" class="pubilo-auth-provider-btn pubilo-line-btn" href="${loginUrl}" style="background:linear-gradient(135deg, #06C755 0%, #05a847 100%); color:white; display:flex; justify-content:center; align-items:center; width:100%; border-radius:12px; height:56px; font-size:16px; font-weight:700; text-decoration:none; font-family:'Inter', sans-serif; border:none; box-shadow:0 10px 25px rgba(6,199,85,0.3); transition:all 0.25s ease; gap:12px;">
                     <svg width="28" height="28" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
                         <path d="M22.5 10.3c0-4.4-4.8-8-10.5-8S1.5 5.9 1.5 10.3c0 3.9 3.6 7.2 8.4 7.9l-1.4 3.3c-.1.3-.1.6 0 .8.1.2.4.3.6.3.1 0 .3 0 .4-.1l4.9-3.2c.8.2 1.6.3 2.5.3 5.7 0 10.5-3.6 10.5-8z"/>
                     </svg>
-                    เข้าสู่ระบบด้วย LINE
+                    <span class="pubilo-line-btn-label">เข้าสู่ระบบด้วย LINE</span>
                 </a>
 
                 <div style="text-align:center; margin-top:40px;">
@@ -273,6 +277,36 @@
                 </div>
             </div>
         `;
+
+        const lineBtn = card.querySelector('#pubiloLineLoginBtn');
+        if (lineBtn) {
+            const restStyle = 'linear-gradient(135deg, #06C755 0%, #05a847 100%)';
+            const hoverStyle = 'linear-gradient(135deg, #07dc5e 0%, #06C755 100%)';
+            lineBtn.addEventListener('mouseenter', () => {
+                if (lineBtn.classList.contains('is-loading')) return;
+                lineBtn.style.transform = 'translateY(-2px)';
+                lineBtn.style.background = hoverStyle;
+                lineBtn.style.boxShadow = '0 14px 32px rgba(6,199,85,0.42)';
+            });
+            lineBtn.addEventListener('mouseleave', () => {
+                if (lineBtn.classList.contains('is-loading')) return;
+                lineBtn.style.transform = 'none';
+                lineBtn.style.background = restStyle;
+                lineBtn.style.boxShadow = '0 10px 25px rgba(6,199,85,0.3)';
+            });
+            lineBtn.addEventListener('click', (event) => {
+                if (lineBtn.classList.contains('is-loading')) {
+                    event.preventDefault();
+                    return;
+                }
+                lineBtn.classList.add('is-loading');
+                lineBtn.style.transform = 'none';
+                lineBtn.innerHTML = `
+                    <div style="width:22px; height:22px; border:3px solid rgba(255,255,255,0.35); border-top-color:#fff; border-radius:50%; animation:pubiloBtnSpin 0.75s linear infinite;"></div>
+                    <span>กำลังเข้าสู่ระบบ...</span>
+                `;
+            });
+        }
     }
 
     function getPublicBillingPlans() {
