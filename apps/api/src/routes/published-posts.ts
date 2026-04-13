@@ -573,6 +573,177 @@ function isFacebookContentUnavailableHtml(html: string): boolean {
     );
 }
 
+function pickCanonicalFacebookPostId(rawPostId: string, ownerCandidates: Array<string>, fallbackOwnerId = ''): string {
+    const canonicalCandidates = buildCanonicalFacebookPostIdCandidates(rawPostId, ownerCandidates, fallbackOwnerId);
+    if (!canonicalCandidates.length) return '';
+    const withOwner = canonicalCandidates.find((candidate) => candidate.includes('_'));
+    return withOwner || canonicalCandidates[0] || '';
+}
+
+function extractFacebookPostIdsFromHtml(html: string, pageId: string): string[] {
+    const source = String(html || '');
+    if (!source) return [];
+
+    const ids = new Set<string>();
+    const pushCanonical = (rawPostId?: string, ownerId = '') => {
+        const canonicalId = pickCanonicalFacebookPostId(
+            String(rawPostId || '').trim(),
+            buildPageIdCandidates(pageId, ownerId),
+            ownerId || pageId,
+        );
+        if (canonicalId) ids.add(canonicalId);
+    };
+
+    let match: RegExpExecArray | null;
+    const ownerPostPattern = /\/(\d{8,})\/posts\/(\d{8,})/g;
+    while ((match = ownerPostPattern.exec(source)) !== null) {
+        const ownerId = String(match[1] || '').trim();
+        const postObjectId = String(match[2] || '').trim();
+        if (!ownerId || !postObjectId) continue;
+        pushCanonical(`${ownerId}_${postObjectId}`, ownerId);
+    }
+
+    const storyPattern = /[?&]story_fbid=(\d{8,})&id=(\d{8,})/g;
+    while ((match = storyPattern.exec(source)) !== null) {
+        const postObjectId = String(match[1] || '').trim();
+        const ownerId = String(match[2] || '').trim();
+        if (!ownerId || !postObjectId) continue;
+        pushCanonical(`${ownerId}_${postObjectId}`, ownerId);
+    }
+
+    const permalinkPattern = /\/permalink\/(\d{8,})/g;
+    while ((match = permalinkPattern.exec(source)) !== null) {
+        const postObjectId = String(match[1] || '').trim();
+        if (!postObjectId) continue;
+        pushCanonical(postObjectId, pageId);
+    }
+
+    const fbidPattern = /[?&]fbid=(\d{8,})/g;
+    while ((match = fbidPattern.exec(source)) !== null) {
+        const postObjectId = String(match[1] || '').trim();
+        if (!postObjectId) continue;
+        pushCanonical(postObjectId, pageId);
+    }
+
+    const postIdJsonPattern = /"post_id":"(\d{8,})"/g;
+    while ((match = postIdJsonPattern.exec(source)) !== null) {
+        const postObjectId = String(match[1] || '').trim();
+        if (!postObjectId) continue;
+        pushCanonical(postObjectId, pageId);
+    }
+
+    return Array.from(ids);
+}
+
+function mapHtmlPostIdsToRows(params: {
+    pageId: string;
+    postIds: Array<string>;
+}): Array<Record<string, any>> {
+    const pageId = String(params.pageId || '').trim();
+    const rows: Array<Record<string, any>> = [];
+
+    params.postIds.forEach((postId) => {
+        const normalizedPostId = String(postId || '').trim();
+        if (!normalizedPostId) return;
+        rows.push({
+            id: `fbhtml:${normalizedPostId}`,
+            page_id: pageId,
+            source: 'facebook',
+            source_ref: normalizedPostId,
+            batch_id: null,
+            queue_job_id: null,
+            post_type: 'link',
+            message_text: null,
+            media_kind: 'link',
+            media_url: null,
+            media_thumb_url: null,
+            facebook_post_id: normalizedPostId,
+            facebook_url: buildFacebookPostUrl({
+                pageId,
+                postId: normalizedPostId,
+                postType: 'link',
+            }),
+            scheduled_time: null,
+            published_at: null,
+            warning_message: null,
+            created_at: null,
+            is_hidden: false,
+            timeline_visibility: null,
+            hidden_at: null,
+            sourceLabel: mapSourceLabel('facebook'),
+            deleteAllowed: false,
+        });
+    });
+
+    return rows;
+}
+
+async function fetchFacebookPublishedPostsFromHtml(params: {
+    pageIdCandidates: Array<string>;
+    limit: number;
+    cookieHeaderCandidates: Array<Record<string, string>>;
+}): Promise<{ success: boolean; logs?: Array<Record<string, any>>; meta?: Record<string, any>; error?: string }> {
+    const pageIdCandidates = buildPageIdCandidates('', ...(params.pageIdCandidates || []));
+    const limit = Math.max(1, Math.min(Number(params.limit || 100), 200));
+    if (!pageIdCandidates.length) {
+        return { success: false, error: 'Missing pageId candidates' };
+    }
+
+    const headerCandidates: Array<Record<string, string> | undefined> = [undefined];
+    (params.cookieHeaderCandidates || []).forEach((headers) => {
+        if (!headers) return;
+        headerCandidates.push(headers);
+    });
+
+    for (const candidatePageId of pageIdCandidates) {
+        const candidateUrls = [
+            `https://mbasic.facebook.com/profile.php?id=${encodeURIComponent(candidatePageId)}&v=timeline`,
+            `https://mbasic.facebook.com/${encodeURIComponent(candidatePageId)}?v=timeline`,
+            `https://m.facebook.com/profile.php?id=${encodeURIComponent(candidatePageId)}&v=timeline`,
+            `https://m.facebook.com/${encodeURIComponent(candidatePageId)}`,
+            `https://www.facebook.com/profile.php?id=${encodeURIComponent(candidatePageId)}`,
+            `https://www.facebook.com/${encodeURIComponent(candidatePageId)}`,
+        ];
+
+        for (const headers of headerCandidates) {
+            for (const url of candidateUrls) {
+                try {
+                    const response = await fetch(url, headers ? { headers, redirect: 'follow' } : { redirect: 'follow' });
+                    if (!response.ok) continue;
+
+                    const html = await response.text();
+                    if (!html || isFacebookContentUnavailableHtml(html)) continue;
+
+                    const extractedIds = extractFacebookPostIdsFromHtml(html, candidatePageId);
+                    if (!extractedIds.length) continue;
+
+                    const logs = mapHtmlPostIdsToRows({
+                        pageId: candidatePageId,
+                        postIds: extractedIds.slice(0, limit),
+                    });
+                    if (!logs.length) continue;
+
+                    return {
+                        success: true,
+                        logs,
+                        meta: {
+                            source: 'facebook-html',
+                            hasMore: extractedIds.length > limit,
+                            nextCursor: null,
+                            pageIdUsed: candidatePageId,
+                            pageIdCandidates,
+                        },
+                    };
+                } catch (_) {
+                    // Ignore HTML fallback probe failures.
+                }
+            }
+        }
+    }
+
+    return { success: false, error: 'Facebook HTML fallback returned no posts' };
+}
+
 async function verifyFacebookPermalinkAlive(
     url: string,
     cookieHeaders?: Record<string, string>,
@@ -1150,28 +1321,30 @@ async function fetchFacebookPublishedPostsCookieOnly(params: {
     }
 
     if (endpointResults.length > 0 && !afterCursor && !edgeHint) {
-        const nonEmpty = endpointResults.filter((row) => row.logs.length > 0);
-        const preferred = (nonEmpty.length > 0 ? nonEmpty : endpointResults)
+        const nonEmpty = endpointResults
+            .filter((row) => row.logs.length > 0)
             .sort((a, b) => {
                 if (b.logs.length !== a.logs.length) {
                     return b.logs.length - a.logs.length;
                 }
                 return Number(b.hasMore) - Number(a.hasMore);
-            })[0];
-
-        const encodedNextCursor = preferred.hasMore
-            ? encodeFacebookCursor(preferred.edge, preferred.nextCursor)
-            : '';
-        return {
-            success: true,
-            logs: preferred.logs,
-            meta: {
-                source: preferred.metaSource,
-                hasMore: preferred.hasMore,
-                edge: preferred.edge,
-                nextCursor: encodedNextCursor || null,
-            },
-        };
+            });
+        if (nonEmpty.length > 0) {
+            const preferred = nonEmpty[0];
+            const encodedNextCursor = preferred.hasMore
+                ? encodeFacebookCursor(preferred.edge, preferred.nextCursor)
+                : '';
+            return {
+                success: true,
+                logs: preferred.logs,
+                meta: {
+                    source: preferred.metaSource,
+                    hasMore: preferred.hasMore,
+                    edge: preferred.edge,
+                    nextCursor: encodedNextCursor || null,
+                },
+            };
+        }
     }
 
     return { success: false, error: lastError || 'Facebook API error (cookie-only)' };
@@ -1403,16 +1576,17 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
         }
 
         if (endpointResults.length > 0 && !afterCursor && !edgeHint) {
-            const nonEmpty = endpointResults.filter((row) => row.logs.length > 0);
-            const preferred = (nonEmpty.length > 0 ? nonEmpty : endpointResults)
+            const nonEmpty = endpointResults
+                .filter((row) => row.logs.length > 0)
                 .sort((a, b) => {
                     if (b.logs.length !== a.logs.length) {
                         return b.logs.length - a.logs.length;
                     }
                     return Number(b.hasMore) - Number(a.hasMore);
-                })[0];
-
-            return finalizeResult(preferred);
+                });
+            if (nonEmpty.length > 0) {
+                return finalizeResult(nonEmpty[0]);
+            }
         }
 
         // Move to next token candidate.
@@ -1447,6 +1621,15 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
                 };
             }
         }
+    }
+
+    const htmlFallbackResult = await fetchFacebookPublishedPostsFromHtml({
+        pageIdCandidates,
+        limit,
+        cookieHeaderCandidates,
+    });
+    if (htmlFallbackResult.success) {
+        return htmlFallbackResult;
     }
 
     return {
@@ -1649,15 +1832,16 @@ async function handleListRequest(env: Env, input: PublishedQueryInput) {
                         maxItems: Math.max(input.limit * 3, 200),
                     });
 
+                    const historyLogs = Array.isArray(historyResult.logs) ? historyResult.logs : [];
                     const verifiedLogs = liveIdSetResult.success
                         ? filterHistoryLogsByLiveIdSet({
-                            logs: Array.isArray(historyResult.logs) ? historyResult.logs : [],
+                            logs: historyLogs,
                             pageId: input.pageId,
                             pageIdCandidates: livePageIdCandidates,
                             liveIds: liveIdSetResult.ids,
                             limit: input.limit,
                         })
-                        : [];
+                        : historyLogs;
 
                     return {
                         success: true,
@@ -1684,6 +1868,21 @@ async function handleListRequest(env: Env, input: PublishedQueryInput) {
                         fallbackCategory: errorCategory || 'facebook_app_error',
                         liveSetVerified: false,
                         liveSetCount: 0,
+                    },
+                };
+            }
+            // Non-app-error strictLive failure: also fall back to history
+            // so the delete page still shows posts from local history.
+            const historyFallback = await fetchHistoryPublishedPosts(env, input);
+            if (historyFallback.success && Array.isArray(historyFallback.logs) && historyFallback.logs.length > 0) {
+                return {
+                    success: true,
+                    logs: historyFallback.logs,
+                    meta: {
+                        ...(historyFallback.meta || {}),
+                        source: 'history-fallback',
+                        fallbackReason: (facebookResult as any).error || 'facebook_api_error',
+                        fallbackCategory: (facebookResult as any).errorCategory || 'facebook_api_error',
                     },
                 };
             }

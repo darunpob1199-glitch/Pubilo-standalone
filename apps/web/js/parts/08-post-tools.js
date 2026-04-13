@@ -1924,11 +1924,15 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false, skip
         prunePostToolSelection(toolKey);
         syncPostToolInputs(toolKey);
         renderPostToolTable(toolKey);
-        if (!incomingPosts.length && !append && dom.loadMoreMeta) {
+        if (!append && dom.loadMoreMeta) {
             const sourceLabel = String(data.meta?.source || "").trim();
-            if (toolKey === "delete" && !pageId) {
+            if (!incomingPosts.length && toolKey === "delete" && !pageId) {
                 dom.loadMoreMeta.textContent = "ยังไม่ได้เลือกเพจหลัก แสดงรายการจากประวัติระบบเท่าที่มีอยู่";
-            } else if (sourceLabel === "history" || sourceLabel === "history-fallback") {
+            } else if (sourceLabel === "history-fallback" || sourceLabel === "history-live-unverified") {
+                dom.loadMoreMeta.textContent = incomingPosts.length
+                    ? "ไม่สามารถดึงโพสต์จาก Facebook ได้ตอนนี้ แสดงโพสต์จากประวัติระบบแทน"
+                    : "ไม่พบโพสต์จาก Facebook ตอนนี้ แสดงเฉพาะโพสต์ที่มีในประวัติระบบ";
+            } else if (!incomingPosts.length && (sourceLabel === "history")) {
                 dom.loadMoreMeta.textContent = "ไม่พบโพสต์จาก Facebook ตอนนี้ แสดงเฉพาะโพสต์ที่มีในประวัติระบบ";
             }
         }
