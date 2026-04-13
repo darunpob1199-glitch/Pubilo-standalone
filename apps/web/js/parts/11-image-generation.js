@@ -866,6 +866,40 @@ if (newsDescriptionInput && newsPreviewDesc) {
     });
 }
 
+function publishNewsViaExtensionDirect(payload = {}, timeoutMs = 70000) {
+    const requestId = `news-direct-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    return new Promise((resolve, reject) => {
+        let finished = false;
+        const cleanup = () => {
+            if (finished) return;
+            finished = true;
+            window.removeEventListener("message", handleMessage);
+            clearTimeout(timeoutId);
+        };
+
+        const handleMessage = (event) => {
+            if (event.source !== window) return;
+            if (event.data?.type !== "FEWFEED_PUBLISH_NEWS_DIRECT_RESPONSE") return;
+            if (String(event.data?.requestId || "") !== requestId) return;
+            cleanup();
+            resolve(event.data?.data || { success: false, error: "no_response_payload" });
+        };
+
+        const timeoutId = setTimeout(() => {
+            cleanup();
+            reject(new Error("Extension direct publish timeout"));
+        }, Math.max(5000, Number(timeoutMs || 25000)));
+
+        window.addEventListener("message", handleMessage);
+        window.postMessage({
+            type: "FEWFEED_PUBLISH_NEWS_DIRECT",
+            requestId,
+            ...payload,
+        }, "*");
+    });
+}
+
 // News publish handler
 const newsPublishBtn = document.getElementById("newsPublishBtn");
 if (newsPublishBtn) {
@@ -1212,6 +1246,9 @@ if (newsPublishBtn) {
                     adAccountId,
                     callToAction: ctaConfig.type,
                     callToActionLabel: ctaConfig.label,
+                    // Restore legacy-rich link-card behavior for News mode:
+                    // let backend try ad-creative path first, then fallback layers.
+                    allowAdCreativePublish: true,
                     scheduleInSystem: scheduleSource === "manual",
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
@@ -1220,30 +1257,64 @@ if (newsPublishBtn) {
             };
 
             const sendPublishRequest = async () => {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), publishTimeoutMs);
-                try {
-                    const response = await fetch("/api/publish", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify(await buildPublishRequest()),
-                        signal: controller.signal,
-                    });
-                    const data = await response.json().catch(() => ({
-                        success: false,
-                        error: `Publish API returned non-JSON response (status ${response.status})`,
-                    }));
-                    return { response, data };
-                } catch (error) {
-                    if (error?.name === "AbortError") {
-                        throw createPublishTimeoutError(publishTimeoutMs);
+                const payload = await buildPublishRequest();
+                const normalizedApiBase = String(window.API_BASE || "https://api.pubilo.com").replace(/\/+$/, "");
+
+                const runAttempt = async (url, useNativeDirect = false) => {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), publishTimeoutMs);
+                    try {
+                        const fetchImpl =
+                            useNativeDirect && typeof window.__PUBILO_NATIVE_FETCH__ === "function"
+                                ? window.__PUBILO_NATIVE_FETCH__
+                                : fetch;
+                        const response = await fetchImpl(url, {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            credentials: "include",
+                            body: JSON.stringify(payload),
+                            signal: controller.signal,
+                        });
+                        const data = await response.json().catch(() => ({
+                            success: false,
+                            error: `Publish API returned non-JSON response (status ${response.status})`,
+                        }));
+                        return { response, data };
+                    } catch (error) {
+                        if (error?.name === "AbortError") {
+                            throw createPublishTimeoutError(publishTimeoutMs);
+                        }
+                        throw error;
+                    } finally {
+                        clearTimeout(timeout);
                     }
-                    throw error;
-                } finally {
-                    clearTimeout(timeout);
+                };
+
+                const shouldRetryViaApiBase = (attemptResult) => {
+                    const status = Number(attemptResult?.response?.status || 0);
+                    const errorText = String(attemptResult?.data?.error || "").toLowerCase();
+                    if ([404, 405, 502, 503, 504].includes(status)) return true;
+                    if (status >= 500) return true;
+                    if (errorText.includes("publish api returned non-json response")) return true;
+                    if (errorText.includes("invalid request") || errorText.includes("invalid parameter")) return true;
+                    return false;
+                };
+
+                const primaryResult = await runAttempt("/api/publish");
+                const fallbackUrl = `${normalizedApiBase}/api/publish`;
+                const shouldUseFallback =
+                    !!normalizedApiBase &&
+                    fallbackUrl !== "/api/publish" &&
+                    shouldRetryViaApiBase(primaryResult);
+
+                if (!shouldUseFallback) {
+                    return primaryResult;
                 }
+
+                console.warn("[News] Primary /api/publish failed, retrying via API_BASE endpoint:", fallbackUrl, primaryResult?.data?.error || "");
+                return await runAttempt(fallbackUrl, true);
             };
 
             let { response, data } = await sendPublishRequest();
@@ -1264,6 +1335,61 @@ if (newsPublishBtn) {
                 }
             }
 
+            const shouldTryExtensionDirectFallback = (() => {
+                const errorMessage = String(data?.error || "").toLowerCase();
+                const errorCode = Number(data?.errorCode || 0);
+                const endpointTag = String(data?._debug?.flow || "").toLowerCase();
+                return (
+                    (!response?.ok || !data?.success) &&
+                    (
+                        errorCode === 1 ||
+                        endpointTag.includes("link-card-failed-all-fallbacks") ||
+                        errorMessage.includes("invalid request")
+                    )
+                );
+            })();
+
+            if (shouldTryExtensionDirectFallback) {
+                window.showPublishToast?.(
+                    "เซิร์ฟเวอร์โดน Facebook ปฏิเสธคำขอ กำลังลองโพสต์ผ่าน Extension ตรงจากเครื่องนี้...",
+                    "warning",
+                );
+
+                try {
+                    const directPayload = await buildPublishRequest();
+                    const directResult = await publishNewsViaExtensionDirect(directPayload, 70000);
+                    if (directResult?.success && (directResult?.postId || directResult?.id)) {
+                        response = { ok: true, status: 200 };
+                        data = {
+                            success: true,
+                            postId: directResult.postId || directResult.id,
+                            url: directResult.url || "",
+                            warning: directResult.warning || "โพสต์ผ่าน Extension direct fallback สำเร็จ",
+                            _debug: {
+                                flow: "extension-direct-fallback",
+                            },
+                        };
+                    } else if (directResult?.error) {
+                        data = {
+                            ...(data || {}),
+                            _debug: {
+                                ...(data?._debug || {}),
+                                extensionDirectError: directResult.error,
+                                extensionDirectCode: directResult.errorCode || 0,
+                            },
+                        };
+                    }
+                } catch (directError) {
+                    data = {
+                        ...(data || {}),
+                        _debug: {
+                            ...(data?._debug || {}),
+                            extensionDirectError: directError?.message || String(directError || ""),
+                        },
+                    };
+                }
+            }
+
             console.log("[News] Publish response:", data);
 
             if (!response.ok || !data.success) {
@@ -1280,6 +1406,15 @@ if (newsPublishBtn) {
                         : (data._debug.postMode || data._debug.flow || "");
                     if (endpointTag) {
                         meta.push(`endpoint:${endpointTag}`);
+                    }
+                    if (data._debug.extensionDirectError) {
+                        const normalizedExtError = String(data._debug.extensionDirectError || "")
+                            .replace(/\s+/g, " ")
+                            .trim()
+                            .slice(0, 80);
+                        if (normalizedExtError) {
+                            meta.push(`ext:${normalizedExtError}`);
+                        }
                     }
                     if (data._debug.hostedImageUrl) meta.push('hasHostedImg');
                     if (data._debug.fbError?.fbtrace_id) meta.push(`trace:${data._debug.fbError.fbtrace_id}`);

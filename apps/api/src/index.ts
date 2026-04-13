@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env } from './types';
 import { pageSettingsRouter } from './routes/page-settings';
@@ -197,8 +197,24 @@ app.use('*', cors({
     credentials: true,
 }));
 
+let schemaWarmupPromise: Promise<void> | null = null;
+
+function ensureSchemaInBackground(c: Context<{ Bindings: Env }>) {
+    if (!schemaWarmupPromise) {
+        schemaWarmupPromise = ensureAppSchema(c.env).catch((error) => {
+            console.error('[schema] background warmup failed:', error);
+            schemaWarmupPromise = null;
+            throw error;
+        });
+    }
+
+    c.executionCtx.waitUntil(schemaWarmupPromise.catch(() => undefined));
+}
+
 app.use('*', async (c, next) => {
-    await ensureAppSchema(c.env);
+    // Do not block requests on schema bootstrap; run in background to prevent
+    // auth/login endpoints from hanging when migrations are slow.
+    ensureSchemaInBackground(c);
     await next();
 });
 

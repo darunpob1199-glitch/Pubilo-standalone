@@ -697,19 +697,30 @@ async function loadPublishedPosts(options = {}) {
     }
 
     try {
-        const response = await fetch("/api/published-posts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                pageId,
-                limit: 200,
-                source: sourceApi,
-                accessToken: adsToken,
-                pageToken,
-                cookieData: cookie,
-            }),
-        });
-        const data = await response.json();
+        const requestPublishedPosts = async (source) => {
+            const response = await fetch("/api/published-posts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    pageId,
+                    limit: 200,
+                    source,
+                    accessToken: adsToken,
+                    pageToken,
+                    cookieData: cookie,
+                }),
+            });
+            return response.json();
+        };
+
+        let data = await requestPublishedPosts(sourceApi);
+
+        if (!data.success && sourceApi !== "history") {
+            const historyFallback = await requestPublishedPosts("history");
+            if (historyFallback?.success) {
+                data = historyFallback;
+            }
+        }
 
         if (!data.success) {
             publishedTableContainer.innerHTML = `<div class="pending-empty">Error: ${data.error}</div>`;
