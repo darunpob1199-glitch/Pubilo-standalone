@@ -18,6 +18,7 @@ type PublishedQueryInput = {
     source: PublishedSource;
     after?: string;
     pageToken?: string;
+    hideToken?: string;
     accessToken?: string;
     cookieData?: string;
     strictLive?: boolean;
@@ -1020,13 +1021,17 @@ async function getStoredPageToken(env: Env, workspaceId: string, pageId: string)
     if (!pageId) return '';
 
     const result = await env.DB.prepare(`
-        SELECT post_token_encrypted
+        SELECT post_token_encrypted, hide_token_encrypted
         FROM page_settings
         WHERE organization_id = ? AND page_id = ?
         LIMIT 1
-    `).bind(workspaceId, pageId).first<{ post_token_encrypted?: string }>();
+    `).bind(workspaceId, pageId).first<{ post_token_encrypted?: string; hide_token_encrypted?: string }>();
 
-    return String(await decryptSecret(env, result?.post_token_encrypted) || '').trim();
+    const postToken = String(await decryptSecret(env, result?.post_token_encrypted) || '').trim();
+    if (postToken) return postToken;
+
+    const hideToken = String(await decryptSecret(env, result?.hide_token_encrypted) || '').trim();
+    return hideToken;
 }
 
 async function getWorkspaceCredentialCandidates(env: Env, workspaceId: string): Promise<WorkspaceCredentialCandidate[]> {
@@ -1173,7 +1178,7 @@ async function fetchFacebookPublishedPostsCookieOnly(params: {
 }
 
 async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput) {
-    const { workspaceId, pageId, limit, after, pageToken, accessToken, cookieData } = input;
+    const { workspaceId, pageId, limit, after, pageToken, hideToken, accessToken, cookieData } = input;
 
     if (!pageId) {
         return { success: false, error: 'Missing pageId' };
@@ -1252,7 +1257,9 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
 
     const authCandidates = buildAuthCandidates([
         freshPageToken,
+        hideToken,
         ...storedPageTokenCandidates,
+        pageToken,
         accessToken,
         ...workspaceAccessTokenCandidates,
     ]);
@@ -1724,6 +1731,7 @@ app.get('/', async (c) => {
         source: normalizeSource(c.req.query('source')),
         after: String(c.req.query('after') || c.req.query('cursor') || '').trim(),
         pageToken: String(c.req.query('pageToken') || '').trim(),
+        hideToken: String(c.req.query('hideToken') || '').trim(),
         accessToken: String(c.req.query('accessToken') || '').trim(),
         cookieData: String(c.req.query('cookieData') || '').trim(),
         strictLive: String(c.req.query('strictLive') || '').trim() === 'true',
@@ -1746,6 +1754,7 @@ app.post('/', async (c) => {
         source: normalizeSource(body.source),
         after: String((body as Record<string, any>).after || (body as Record<string, any>).cursor || '').trim(),
         pageToken: String(body.pageToken || '').trim(),
+        hideToken: String((body as Record<string, any>).hideToken || '').trim(),
         accessToken: String(body.accessToken || '').trim(),
         cookieData: String(body.cookieData || '').trim(),
         strictLive: Boolean((body as Record<string, any>).strictLive),

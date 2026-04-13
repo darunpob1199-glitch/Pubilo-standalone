@@ -1894,6 +1894,7 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false, skip
                 limit: 100,
                 after: append ? state.pagination.nextCursor : "",
                 pageToken: auth.postToken,
+                hideToken: auth.hideToken,
                 accessToken: auth.accessToken,
                 cookieData: auth.cookieData,
                 strictLive,
