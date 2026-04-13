@@ -184,6 +184,26 @@ function buildFacebookGraphHeaders(): Record<string, string> {
     };
 }
 
+function buildFacebookGraphHeaderCandidates(
+    cookieHeaderCandidates: Array<Record<string, string>> = [],
+): Array<Record<string, string>> {
+    const seen = new Set<string>();
+    const candidates: Array<Record<string, string>> = [];
+
+    const pushHeaders = (headers?: Record<string, string>) => {
+        if (!headers) return;
+        const cookieKey = String(headers.Cookie || '').trim() || '__no_cookie__';
+        if (seen.has(cookieKey)) return;
+        seen.add(cookieKey);
+        candidates.push(headers);
+    };
+
+    cookieHeaderCandidates.forEach((headers) => pushHeaders(headers));
+    pushHeaders(buildFacebookGraphHeaders());
+
+    return candidates.length ? candidates : [buildFacebookGraphHeaders()];
+}
+
 function extractAccessTokenFromHtml(html: string): string {
     const source = String(html || '');
     if (!source) return '';
@@ -257,37 +277,41 @@ async function fetchCookieDerivedAccessToken(headers: Record<string, string>): P
 
 async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieData?: string): Promise<string> {
     const cookieHeaders = buildFacebookHeaders(cookieData);
-    const graphHeaders = buildFacebookGraphHeaders();
+    const graphHeaderCandidates = buildFacebookGraphHeaderCandidates(cookieHeaders ? [cookieHeaders] : []);
     const normalizedAccessToken = String(accessToken || '').trim();
 
     if (normalizedAccessToken) {
-        try {
-            const accountsRes = await fetch(
-                `${FB_API}/me/accounts?access_token=${encodeURIComponent(normalizedAccessToken)}&fields=id,access_token&limit=100`,
-                { headers: graphHeaders },
-            );
-            const accountsData = await accountsRes.json() as any;
-            const matchedPage = accountsData?.data?.find((page: any) => String(page.id) === String(pageId));
+        for (const headers of graphHeaderCandidates) {
+            try {
+                const accountsRes = await fetch(
+                    `${FB_API}/me/accounts?access_token=${encodeURIComponent(normalizedAccessToken)}&fields=id,access_token&limit=100`,
+                    { headers },
+                );
+                const accountsData = await accountsRes.json() as any;
+                const matchedPage = accountsData?.data?.find((page: any) => String(page.id) === String(pageId));
 
-            if (matchedPage?.access_token) {
-                return matchedPage.access_token;
+                if (matchedPage?.access_token) {
+                    return matchedPage.access_token;
+                }
+            } catch (error) {
+                console.warn('[published-posts] /me/accounts page token fetch failed:', error);
             }
-        } catch (error) {
-            console.warn('[published-posts] /me/accounts page token fetch failed:', error);
         }
 
-        try {
-            const tokenRes = await fetch(
-                `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(normalizedAccessToken)}`,
-                { headers: graphHeaders },
-            );
-            const tokenData = await tokenRes.json() as any;
+        for (const headers of graphHeaderCandidates) {
+            try {
+                const tokenRes = await fetch(
+                    `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(normalizedAccessToken)}`,
+                    { headers },
+                );
+                const tokenData = await tokenRes.json() as any;
 
-            if (tokenData?.access_token) {
-                return tokenData.access_token;
+                if (tokenData?.access_token) {
+                    return tokenData.access_token;
+                }
+            } catch (error) {
+                console.warn('[published-posts] direct page token fetch failed:', error);
             }
-        } catch (error) {
-            console.warn('[published-posts] direct page token fetch failed:', error);
         }
     }
 
@@ -313,25 +337,27 @@ async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieD
         try {
             const derivedAccessToken = await fetchCookieDerivedAccessToken(cookieHeaders);
             if (derivedAccessToken) {
-                const accountsRes = await fetch(
-                    `${FB_API}/me/accounts?access_token=${encodeURIComponent(derivedAccessToken)}&fields=id,access_token&limit=100`,
-                    { headers: graphHeaders },
-                );
-                const accountsData = await accountsRes.json() as any;
-                const matchedPage = accountsData?.data?.find((page: any) => String(page.id) === String(pageId));
-                if (matchedPage?.access_token) {
-                    console.log('[published-posts] Recovered page token via derived access token');
-                    return matchedPage.access_token;
-                }
+                for (const headers of graphHeaderCandidates) {
+                    const accountsRes = await fetch(
+                        `${FB_API}/me/accounts?access_token=${encodeURIComponent(derivedAccessToken)}&fields=id,access_token&limit=100`,
+                        { headers },
+                    );
+                    const accountsData = await accountsRes.json() as any;
+                    const matchedPage = accountsData?.data?.find((page: any) => String(page.id) === String(pageId));
+                    if (matchedPage?.access_token) {
+                        console.log('[published-posts] Recovered page token via derived access token');
+                        return matchedPage.access_token;
+                    }
 
-                const directRes = await fetch(
-                    `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(derivedAccessToken)}`,
-                    { headers: graphHeaders },
-                );
-                const directData = await directRes.json() as any;
-                if (directData?.access_token) {
-                    console.log('[published-posts] Recovered page token via derived access token (direct)');
-                    return directData.access_token;
+                    const directRes = await fetch(
+                        `${FB_API}/${pageId}?fields=access_token&access_token=${encodeURIComponent(derivedAccessToken)}`,
+                        { headers },
+                    );
+                    const directData = await directRes.json() as any;
+                    if (directData?.access_token) {
+                        console.log('[published-posts] Recovered page token via derived access token (direct)');
+                        return directData.access_token;
+                    }
                 }
             }
         } catch (error) {
@@ -449,22 +475,24 @@ async function resolveFacebookPageIdCandidates(params: {
     };
 
     const tokenCandidates = buildAuthCandidates(params.accessTokenCandidates || []).slice(0, 4);
-    const graphHeaders = buildFacebookGraphHeaders();
+    const graphHeaderCandidates = buildFacebookGraphHeaderCandidates(params.cookieHeaderCandidates || []);
     for (const token of tokenCandidates) {
-        try {
-            const query = new URLSearchParams({
-                fields: 'id,link,permalink_url',
-                access_token: token,
-            });
-            const response = await fetch(`${FB_API}/${pageId}?${query.toString()}`, {
-                headers: graphHeaders,
-            });
-            const payload = await response.json() as any;
-            if (!payload?.error) {
-                pushFromPayload(payload);
+        for (const headers of graphHeaderCandidates) {
+            try {
+                const query = new URLSearchParams({
+                    fields: 'id,link,permalink_url',
+                    access_token: token,
+                });
+                const response = await fetch(`${FB_API}/${pageId}?${query.toString()}`, {
+                    headers,
+                });
+                const payload = await response.json() as any;
+                if (!payload?.error) {
+                    pushFromPayload(payload);
+                }
+            } catch (_) {
+                // Ignore resolver probe failures and continue fallback candidates.
             }
-        } catch (_) {
-            // Ignore resolver probe failures and continue fallback candidates.
         }
     }
 
@@ -1381,11 +1409,35 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
     workspaceCookieCandidates.forEach((cookie) => addCookieCandidate(cookie));
 
     const requestedStoredPageToken = pageToken?.trim() || await getStoredPageToken(env, workspaceId, pageId);
+
+    // Recover the current page token before resolving alternate page/profile ids.
+    // Some Facebook pages only reveal the canonical profile/timeline id after we
+    // query page metadata with a fresh page-scoped token plus the active cookie.
+    let bootstrapFreshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
+    if (!bootstrapFreshPageToken) {
+        for (const candidate of workspaceCredentialCandidates) {
+            if (!candidate.accessToken) continue;
+            const recoveredToken = await fetchFreshPageToken(
+                pageId,
+                candidate.accessToken,
+                candidate.cookieData || cookieData,
+            );
+            if (recoveredToken) {
+                bootstrapFreshPageToken = recoveredToken;
+                console.log('[published-posts] Recovered bootstrap page token from workspace facebook_credentials');
+                break;
+            }
+        }
+    }
+
     const resolvedPageIds = await resolveFacebookPageIdCandidates({
         pageId,
         accessTokenCandidates: buildAuthCandidates([
-            accessToken,
+            bootstrapFreshPageToken,
+            hideToken,
             requestedStoredPageToken,
+            pageToken,
+            accessToken,
             ...workspaceAccessTokenCandidates,
         ]),
         cookieHeaderCandidates,
@@ -1403,12 +1455,14 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
         )),
     ]);
 
-    let freshPageToken = '';
-    for (const candidatePageId of pageIdCandidates) {
-        const recoveredToken = await fetchFreshPageToken(candidatePageId, accessToken, cookieData);
-        if (recoveredToken) {
-            freshPageToken = recoveredToken;
-            break;
+    let freshPageToken = bootstrapFreshPageToken;
+    if (!freshPageToken) {
+        for (const candidatePageId of pageIdCandidates) {
+            const recoveredToken = await fetchFreshPageToken(candidatePageId, accessToken, cookieData);
+            if (recoveredToken) {
+                freshPageToken = recoveredToken;
+                break;
+            }
         }
     }
     if (!freshPageToken) {
@@ -1438,7 +1492,7 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
         accessToken,
         ...workspaceAccessTokenCandidates,
     ]);
-    const graphHeaders = buildFacebookGraphHeaders();
+    const graphHeaderCandidates = buildFacebookGraphHeaderCandidates(cookieHeaderCandidates);
     const parsedCursor = parseFacebookCursor(after);
     const edgeHint = parsedCursor.edge;
     const afterCursor = parsedCursor.cursor;
@@ -1462,6 +1516,7 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
             logs: Array<Record<string, any>>;
             hasMore: boolean;
             nextCursor: string;
+            headers: Record<string, string>;
         }> = [];
         let tokenAuthInvalid = false;
 
@@ -1472,8 +1527,9 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
             logs: Array<Record<string, any>>;
             hasMore: boolean;
             nextCursor: string;
+            headers: Record<string, string>;
         }) => {
-            const pinnedIds = await fetchPinnedPostIds(result.pageId, authToken, graphHeaders);
+            const pinnedIds = await fetchPinnedPostIds(result.pageId, authToken, result.headers);
             const pinnedCanonicalIds = new Set<string>();
             pinnedIds.forEach((pinnedPostId) => {
                 buildCanonicalFacebookPostIdCandidates(
@@ -1519,53 +1575,61 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
             }
 
             for (const endpoint of endpointsToTry) {
-                const response = await fetch(
-                    `${FB_API}/${candidatePageId}/${endpoint.edge}?${params.toString()}`,
-                    { headers: graphHeaders },
-                );
-                const data = await response.json() as any;
+                for (const headers of graphHeaderCandidates) {
+                    const response = await fetch(
+                        `${FB_API}/${candidatePageId}/${endpoint.edge}?${params.toString()}`,
+                        { headers },
+                    );
+                    const data = await response.json() as any;
 
-                if (data?.error) {
-                    lastFacebookError = data.error;
-                    if (isFacebookAppLoadError(data.error)) {
-                        sawAppLoadError = true;
+                    if (data?.error) {
+                        lastFacebookError = data.error;
+                        if (isFacebookAppLoadError(data.error)) {
+                            sawAppLoadError = true;
+                        }
+                        if (isFacebookAuthInvalid(data.error)) {
+                            sawAuthInvalid = true;
+                            tokenAuthInvalid = true;
+                            break;
+                        }
+                        continue;
                     }
-                    if (isFacebookAuthInvalid(data.error)) {
-                        sawAuthInvalid = true;
-                        tokenAuthInvalid = true;
-                        break;
+
+                    const logs: Array<Record<string, any>> = mapFacebookPosts(data).map((row) => ({
+                        ...row,
+                        page_id: pageId,
+                    }));
+                    const nextCursor = String(data?.paging?.cursors?.after || '').trim();
+                    const hasMore = Boolean(data?.paging?.next && nextCursor);
+
+                    endpointResults.push({
+                        pageId: candidatePageId,
+                        edge: endpoint.edge,
+                        metaSource: endpoint.metaSource,
+                        logs,
+                        hasMore,
+                        nextCursor,
+                        headers,
+                    });
+
+                    if (!afterCursor && !edgeHint && logs.length === 0) {
+                        continue;
                     }
-                    continue;
+
+                    return finalizeResult({
+                        pageId: candidatePageId,
+                        edge: endpoint.edge,
+                        metaSource: endpoint.metaSource,
+                        logs,
+                        hasMore,
+                        nextCursor,
+                        headers,
+                    });
                 }
 
-                const logs: Array<Record<string, any>> = mapFacebookPosts(data).map((row) => ({
-                    ...row,
-                    page_id: pageId,
-                }));
-                const nextCursor = String(data?.paging?.cursors?.after || '').trim();
-                const hasMore = Boolean(data?.paging?.next && nextCursor);
-
-                endpointResults.push({
-                    pageId: candidatePageId,
-                    edge: endpoint.edge,
-                    metaSource: endpoint.metaSource,
-                    logs,
-                    hasMore,
-                    nextCursor,
-                });
-
-                if (!afterCursor && !edgeHint && logs.length === 0) {
-                    continue;
+                if (tokenAuthInvalid) {
+                    break;
                 }
-
-                return finalizeResult({
-                    pageId: candidatePageId,
-                    edge: endpoint.edge,
-                    metaSource: endpoint.metaSource,
-                    logs,
-                    hasMore,
-                    nextCursor,
-                });
             }
 
             if (tokenAuthInvalid) {
@@ -1845,33 +1909,22 @@ async function handleListRequest(env: Env, input: PublishedQueryInput) {
                         })
                         : historyLogs;
 
-                    return {
-                        success: true,
-                        logs: verifiedLogs,
-                        meta: {
-                            ...(historyResult.meta || {}),
-                            source: liveIdSetResult.success ? 'history-live-verified' : 'history-live-unverified',
-                            fallbackReason: (facebookResult as any).error || 'facebook_app_error',
-                            fallbackCategory: errorCategory || 'facebook_app_error',
-                            liveSetVerified: liveIdSetResult.success,
-                            liveSetCount: liveIdSetResult.ids.size,
-                        },
-                    };
+                    if (verifiedLogs.length > 0) {
+                        return {
+                            success: true,
+                            logs: verifiedLogs,
+                            meta: {
+                                ...(historyResult.meta || {}),
+                                source: liveIdSetResult.success ? 'history-live-verified' : 'history-live-unverified',
+                                fallbackReason: (facebookResult as any).error || 'facebook_app_error',
+                                fallbackCategory: errorCategory || 'facebook_app_error',
+                                liveSetVerified: liveIdSetResult.success,
+                                liveSetCount: liveIdSetResult.ids.size,
+                            },
+                        };
+                    }
                 }
-
-                // Keep strict-live UI usable even when Facebook app edge is intermittently down.
-                // Return an empty, safe result instead of surfacing a hard error to the client.
-                return {
-                    success: true,
-                    logs: [],
-                    meta: {
-                        source: 'history-live-unverified',
-                        fallbackReason: (facebookResult as any).error || 'facebook_app_error',
-                        fallbackCategory: errorCategory || 'facebook_app_error',
-                        liveSetVerified: false,
-                        liveSetCount: 0,
-                    },
-                };
+                return facebookResult;
             }
             // Non-app-error strictLive failure: also fall back to history
             // so the delete page still shows posts from local history.
