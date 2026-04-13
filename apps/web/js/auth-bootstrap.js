@@ -162,8 +162,11 @@
         overlay.className = 'pubilo-auth-overlay is-hidden';
         overlay.innerHTML = `
             <div class="pubilo-auth-shell">
+                <div class="pubilo-auth-blob blob-1" aria-hidden="true"></div>
+                <div class="pubilo-auth-blob blob-2" aria-hidden="true"></div>
+                <div class="pubilo-auth-blob blob-3" aria-hidden="true"></div>
+                <div class="pubilo-auth-blob blob-4" aria-hidden="true"></div>
 
-                
                 <div style="display:flex; flex:1; width:100%; max-width:1200px; margin:0 auto; position:relative; z-index:2;">
                     <!-- Left Side Content -->
                     <div class="pubilo-auth-brand" style="flex:1; display:flex; flex-direction:column; justify-content:center; padding:0 60px;">
