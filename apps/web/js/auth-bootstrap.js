@@ -259,8 +259,7 @@
                 </div>
 
                 <div style="text-align:center; margin-bottom:32px;">
-                    <h2 style="font-size:24px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif; margin-bottom:8px;">Welcome Back</h2>
-                    <p style="font-size:14px; color:#64748b; font-family:'Inter', sans-serif;">Log in to your workspace securely.</p>
+                    <h2 style="font-size:24px; font-weight:800; color:#0f172a; font-family:'Montserrat', sans-serif;">ยินดีต้อนรับ</h2>
                 </div>
 
                 ${message ? `<p class="pubilo-auth-error" style="background:#fff1f1; color:#da1e28; padding:16px; border-radius:12px; margin-bottom:24px; font-size:14px; font-weight:500;">${message}</p>` : ''}
@@ -269,7 +268,7 @@
                     <svg width="28" height="28" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
                         <path d="M22.5 10.3c0-4.4-4.8-8-10.5-8S1.5 5.9 1.5 10.3c0 3.9 3.6 7.2 8.4 7.9l-1.4 3.3c-.1.3-.1.6 0 .8.1.2.4.3.6.3.1 0 .3 0 .4-.1l4.9-3.2c.8.2 1.6.3 2.5.3 5.7 0 10.5-3.6 10.5-8z"/>
                     </svg>
-                    Log in with LINE
+                    เข้าสู่ระบบด้วย LINE
                 </a>
 
                 <div style="text-align:center; margin-top:40px;">
