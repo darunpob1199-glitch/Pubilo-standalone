@@ -8,6 +8,8 @@ const app = new Hono<{ Bindings: Env }>();
 const FB_API = 'https://graph.facebook.com/v21.0';
 const FACEBOOK_USER_AGENT =
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+const FACEBOOK_POST_FIELDS =
+    'id,message,story,created_time,full_picture,permalink_url,status_type,from,attachments{type,media_type,url,target}';
 
 type PublishedSource = 'merged' | 'facebook' | 'history';
 
@@ -1265,7 +1267,7 @@ async function fetchFacebookPublishedPostsCookieOnly(params: {
 
     for (const endpoint of endpointsToTry) {
         const query = new URLSearchParams({
-            fields: 'id,message,story,created_time,full_picture,permalink_url,status_type,from,is_hidden,timeline_visibility,attachments{media_type,type,url,target,media,subattachments}',
+            fields: FACEBOOK_POST_FIELDS,
             limit: String(Math.min(limit, 100)),
         });
         if (afterCursor) {
@@ -1508,7 +1510,7 @@ async function fetchFacebookPublishedPosts(env: Env, input: PublishedQueryInput)
 
         for (const candidatePageId of pageIdCandidates) {
             const params = new URLSearchParams({
-                fields: 'id,message,story,created_time,full_picture,permalink_url,status_type,from,is_hidden,timeline_visibility,attachments{media_type,type,url,target,media,subattachments}',
+                fields: FACEBOOK_POST_FIELDS,
                 limit: String(Math.min(limit, 100)),
                 access_token: authToken,
             });
