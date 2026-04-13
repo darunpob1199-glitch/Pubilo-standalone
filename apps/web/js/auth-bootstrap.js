@@ -166,13 +166,9 @@
                         </div>
 
                         <h1 style="font-size:72px; font-weight:800; margin-bottom:24px; line-height:1.1; letter-spacing:-2.5px; font-family:'Montserrat', sans-serif;">
-                            <span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Simple</span><br>
-                            <span style="color:#1e293b;">Secure &</span><br>
-                            <span style="color:#1e293b;">Reliable</span>
+                            <span style="background: linear-gradient(90deg, #8b5cf6, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">FACEBOOK</span><br>
+                            <span style="color:#1e293b;">One Card link</span>
                         </h1>
-                        <p id="pubiloLeftSubtitle" style="font-size:22px; color:#475569; margin-bottom:40px; line-height:1.6; max-width: 440px; font-weight: 500; font-family:'Montserrat', sans-serif;">
-                            One Card link
-                        </p>
                         
 
                     </div>
