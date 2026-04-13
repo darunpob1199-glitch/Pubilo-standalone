@@ -567,15 +567,68 @@ body.pubilo-auth-gated:not(.pubilo-authenticated) > .app-layout {
     width: 100vw;
     height: 100vh;
     background-color: #fafaff;
-    background-image:
-        radial-gradient(ellipse 700px 500px at 15% 20%, rgba(139,92,246,0.28) 0%, transparent 60%),
-        radial-gradient(ellipse 600px 500px at 85% 85%, rgba(236,72,153,0.22) 0%, transparent 60%),
-        radial-gradient(ellipse 500px 400px at 90% 15%, rgba(124,58,237,0.20) 0%, transparent 55%),
-        radial-gradient(ellipse 600px 500px at 10% 90%, rgba(167,139,250,0.22) 0%, transparent 55%);
     display: flex;
     flex-direction: column;
     position: relative;
     overflow: hidden;
+}
+
+@keyframes pubiloBlobFloat1 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33%      { transform: translate(6vw, 4vh) scale(1.08); }
+    66%      { transform: translate(-3vw, 6vh) scale(0.95); }
+}
+@keyframes pubiloBlobFloat2 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50%      { transform: translate(-5vw, -4vh) scale(1.12); }
+}
+@keyframes pubiloBlobFloat3 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    40%      { transform: translate(4vw, -5vh) scale(1.06); }
+    80%      { transform: translate(-4vw, 3vh) scale(0.94); }
+}
+@keyframes pubiloBlobFloat4 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50%      { transform: translate(5vw, 5vh) scale(1.1); }
+}
+
+.pubilo-auth-shell > .pubilo-auth-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    pointer-events: none;
+    z-index: 0;
+    will-change: transform;
+}
+.pubilo-auth-shell > .pubilo-auth-blob.blob-1 {
+    top: -8%; left: -8%;
+    width: 640px; height: 480px;
+    background: rgba(139,92,246,0.45);
+    animation: pubiloBlobFloat1 22s ease-in-out infinite;
+}
+.pubilo-auth-shell > .pubilo-auth-blob.blob-2 {
+    bottom: -10%; right: -8%;
+    width: 620px; height: 520px;
+    background: rgba(236,72,153,0.38);
+    animation: pubiloBlobFloat2 26s ease-in-out infinite;
+}
+.pubilo-auth-shell > .pubilo-auth-blob.blob-3 {
+    top: -10%; right: -6%;
+    width: 500px; height: 420px;
+    background: rgba(124,58,237,0.35);
+    animation: pubiloBlobFloat3 30s ease-in-out infinite;
+}
+.pubilo-auth-shell > .pubilo-auth-blob.blob-4 {
+    bottom: -6%; left: -6%;
+    width: 560px; height: 480px;
+    background: rgba(167,139,250,0.38);
+    animation: pubiloBlobFloat4 24s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pubilo-auth-shell > .pubilo-auth-blob {
+        animation: none !important;
+    }
 }
 
 .pubilo-auth-shell::before {
@@ -671,15 +724,16 @@ body.pubilo-auth-gated:not(.pubilo-authenticated) > .app-layout {
     flex: none;
     width: 100%;
     max-width: 500px;
-    height: 100%;
+    max-height: calc(100vh - 48px);
     background: #ffffff;
     border-radius: 32px;
     box-shadow: 0 24px 60px rgba(0,0,0,0.15);
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     z-index: 10;
-    padding: 20px;
+    padding: 48px 40px;
     transition: max-width 0.3s;
     overflow-y: auto;
 }
