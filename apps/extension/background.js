@@ -123,6 +123,7 @@ const APP_URLS = [
 ];
 const PRODUCTION_URL = "https://pubilo.com/";
 const FB_TAB_URLS = [
+  "https://facebook.com/*",
   "https://www.facebook.com/*",
   "https://business.facebook.com/*",
   "https://adsmanager.facebook.com/*"
@@ -331,6 +332,7 @@ async function extractTokenFromExistingTabs() {
   const tabUrls = [
     "https://adsmanager.facebook.com/*",
     "https://business.facebook.com/*",
+    "https://facebook.com/*",
     "https://www.facebook.com/*"
   ];
 
@@ -1118,6 +1120,7 @@ async function schedulePostViaGraphQL(postId, pageId, fbDtsg, scheduledTime) {
     const tabs = await chrome.tabs.query({});
     let fbTab = tabs.find(tab =>
       tab.url && (
+        tab.url.includes("facebook.com/") ||
         tab.url.includes("www.facebook.com") ||
         tab.url.includes("business.facebook.com")
       )

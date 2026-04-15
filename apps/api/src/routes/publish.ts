@@ -2013,6 +2013,9 @@ app.post('/', async (c) => {
                 storedPageToken,
                 accessToken,
             ]);
+            const canFallbackToFeed =
+                pageTokenCandidates.length > 0 ||
+                cookieHeaderCandidates.length > 0;
             const pageTokenForPublish = pageTokenCandidates[0] || '';
             let adCreativeError: string | null = null;
             let adCreativeDebug: Record<string, unknown> = {
@@ -2027,13 +2030,14 @@ app.post('/', async (c) => {
                 pageTokenCandidateCount: pageTokenCandidates.length,
             });
 
-            if (isGhostOnlyNewsPost && !canUseAdCreativeFlow) {
+            if (isGhostOnlyNewsPost && !canUseAdCreativeFlow && !canFallbackToFeed) {
                 return c.json({
                     success: false,
-                    error: 'Ghost Ads ไม่พร้อมใช้งานสำหรับ account นี้: ไม่พบ Ads Token หรือ Ad Account ที่ใช้สร้าง ad creative ได้',
+                    error: 'Ghost Ads ไม่พร้อมใช้งานสำหรับ account นี้ และไม่พบ token/cookie สำหรับ fallback feed',
                     errorType: 'GhostAdsUnavailable',
                     _debug: {
                         flow: 'ghost-required',
+                        canFallbackToFeed,
                         ...adCreativeDebug,
                     },
                 }, 422);
@@ -2095,19 +2099,6 @@ app.post('/', async (c) => {
                         ...adCreativeDebug,
                         ...((((error as Error & { debug?: Record<string, unknown> }).debug) || {})),
                     };
-
-                    if (isGhostOnlyNewsPost) {
-                        return c.json({
-                            success: false,
-                            error: `Ghost Ads ไม่สำเร็จ: ${adCreativeError}`,
-                            errorType: 'GhostAdsFailed',
-                            _debug: {
-                                flow: 'ghost-required',
-                                adCreativeError,
-                                ...adCreativeDebug,
-                            },
-                        }, 422);
-                    }
 
                     console.warn('[publish] adcreative failed, falling back to feed:', adCreativeError);
                 }
@@ -2208,13 +2199,16 @@ app.post('/', async (c) => {
                 }
             }
 
-            const isSessionInvalidated = /session has been invalidated|error validating access token|changed.*password|security reasons|forbidden/i.test(
+            const isSessionInvalidated = /session has been invalidated|error validating access token|changed.*password|security reasons/i.test(
                 `${adCreativeError || ''} ${lastFeedError || ''}`
             );
+            const hasFeedError = !!String(lastFeedError || '').trim();
             const userMessage = isSessionInvalidated
                 ? 'Facebook session หมดอายุ กรุณา logout แล้ว login Facebook ใหม่ จากนั้นกดปุ่ม extension แล้วรีเฟรชหน้า'
-                : adCreativeError
-                    ? `โพสต์ไม่สำเร็จ กรุณา login Facebook ใหม่แล้วกด extension`
+                : hasFeedError
+                    ? `โพสต์ไม่สำเร็จ: ${lastFeedError}`
+                    : adCreativeError
+                        ? `Ghost Ads ไม่สำเร็จ: ${adCreativeError}`
                     : `โพสต์ไม่สำเร็จ: ${lastFeedError}`;
 
             return c.json({

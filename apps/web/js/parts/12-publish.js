@@ -3058,10 +3058,11 @@ async function hydrateFacebookCredentialsFromWorkspace() {
         return false;
     }
 
-    const currentUserId = localStorage.getItem("fewfeed_userId") || "";
-    const preferred =
-        tokens.find((token) => String(token.user_id || "") === currentUserId) ||
-        tokens[0];
+    const currentUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+    const matchedToken = currentUserId
+        ? tokens.find((token) => String(token.user_id || "").trim() === currentUserId)
+        : null;
+    const preferred = matchedToken || (!currentUserId ? tokens[0] : null);
 
     if (!preferred) {
         updateFacebookConnectBanner({ connected: false });

@@ -212,7 +212,7 @@ openBtn.addEventListener("click", async () => {
 
 // Open Facebook login
 loginBtn.addEventListener("click", () => {
-  chrome.tabs.create({ url: "https://www.facebook.com/" });
+  chrome.tabs.create({ url: "https://facebook.com/" });
   window.close();
 });
 
