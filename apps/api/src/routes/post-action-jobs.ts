@@ -3,6 +3,7 @@ import type { Env } from '../index';
 import {
     cancelPostActionJob,
     createPostActionJob,
+    fetchFreshPageToken,
     getPostActionJobDetail,
     listPostActionJobs,
     processPendingPostActionJobs,
@@ -41,8 +42,9 @@ app.post('/', async (c) => {
         const pageId = String(body.pageId || '').trim();
         const action = normalizeAction(body.action);
         const posts = Array.isArray(body.posts) ? body.posts : [];
-        const postToken = String(body.postToken || '').trim();
+        let postToken = String(body.postToken || '').trim();
         const hideToken = String(body.hideToken || '').trim();
+        const accessToken = String(body.accessToken || '').trim();
         const pageName = String(body.pageName || '').trim();
         const requestedFilters = body.requestedFilters && typeof body.requestedFilters === 'object'
             ? JSON.stringify(body.requestedFilters)
@@ -54,6 +56,19 @@ app.post('/', async (c) => {
 
         if (!posts.length) {
             return c.json({ success: false, error: 'Please select at least one post' }, 400);
+        }
+
+        // If we have an accessToken, try to fetch a fresh page token from Facebook.
+        // This handles the case where the cached postToken is expired.
+        if (accessToken && pageId) {
+            try {
+                const freshPageToken = await fetchFreshPageToken(pageId, accessToken);
+                if (freshPageToken) {
+                    postToken = freshPageToken;
+                }
+            } catch (_) {
+                // Continue with existing postToken if refresh fails.
+            }
         }
 
         if (postToken || hideToken || pageName) {

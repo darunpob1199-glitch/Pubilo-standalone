@@ -2366,6 +2366,7 @@ async function runPostToolAction(toolKey) {
                 action: postToolConfigs[toolKey].action,
                 postToken: auth.postToken,
                 hideToken: auth.hideToken,
+                accessToken: auth.accessToken,
                 requestedFilters: {
                     ...state.filters,
                     safeguards: state.safeguards,

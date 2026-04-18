@@ -5523,6 +5523,7 @@ window.addEventListener("message", (event) => {
             userName,
             !!fbToken,
             !!fbCookie,
+            !!fbPostToken,
         );
 
         // Fetch pages - prefer Post Token (works better for me/accounts), fallback to Ads Token
@@ -5576,6 +5577,7 @@ setInterval(async () => {
                         cachedData.userName,
                         !!cachedData.adsToken,
                         !!cachedData.cookie,
+                        !!cachedData.postToken,
                     );
 
                     console.log('[auto-sync] Updated from Extension cache');
@@ -5606,6 +5608,7 @@ async function syncWithExtensionNow() {
                     cachedData.userName,
                     !!cachedData.adsToken,
                     !!cachedData.cookie,
+                    !!cachedData.postToken,
                 );
 
                 console.log('[manual-sync] Updated from Extension cache');
@@ -5678,6 +5681,7 @@ function showCookieStatus(
     userName,
     hasToken,
     hasCookie,
+    hasPostToken = false,
 ) {
     const tokenIndicator =
         document.getElementById("tokenIndicator");
@@ -6059,11 +6063,12 @@ function loadSavedData() {
             userName,
             !!accessToken,
             !!cookie,
+            !!postToken,
         );
 
-        // Fetch pages using Ads Token
-        if (accessToken) {
-            fetchPages(accessToken);
+        // Fetch pages - prefer Post Token (works better for me/accounts), fallback to Ads Token
+        if (postToken || accessToken) {
+            fetchPages(postToken || accessToken);
         }
     }
 }

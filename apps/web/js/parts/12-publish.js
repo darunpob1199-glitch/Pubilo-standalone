@@ -2006,6 +2006,15 @@ const multiPageSelectedMeta = document.getElementById("multiPageSelectedMeta");
 const multiPageSearchInput = document.getElementById("multiPageSearchInput");
 const multiPageSelectedStrip = document.getElementById("multiPageSelectedStrip");
 const multiPageList = document.getElementById("multiPageList");
+const pageHealthPanel = document.getElementById("pageHealthPanel");
+const pageHealthTitle = document.getElementById("pageHealthTitle");
+const pageHealthBody = document.getElementById("pageHealthBody");
+const pageHealthList = document.getElementById("pageHealthList");
+const pageHealthPrimaryAction = document.getElementById("pageHealthPrimaryAction");
+const pageHealthSecondaryAction = document.getElementById("pageHealthSecondaryAction");
+let pageBootstrapHealPromise = null;
+let pageBootstrapLastHealAt = 0;
+const PAGE_BOOTSTRAP_HEAL_COOLDOWN_MS = 4000;
 
 function getPageCacheOwnerId() {
     return String(localStorage.getItem(PAGE_CACHE_USER_ID_KEY) || "").trim();
@@ -2095,6 +2104,260 @@ function pickPreferredPagePicture(pageId = "", ...candidates) {
 
 function getPageDisplayName(page = {}) {
     return normalizePageName(page?.name || "", page?.id || "");
+}
+
+function buildPageBootstrapHealthSnapshot() {
+    const extensionReadyAttr = document.body.getAttribute("data-extension-ready") === "true";
+    const extensionAvailable =
+        extensionReadyAttr ||
+        hasSeenExtensionReadySignal ||
+        typeof window.pubiloExtension !== "undefined";
+    const browserUserId = String(getCurrentFacebookBrowserUserId() || "").trim();
+    const localUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+    const cacheOwnerId = String(getPageCacheOwnerId() || "").trim();
+    const adsToken = String(
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        "",
+    ).trim();
+    const cookie = String(localStorage.getItem("fewfeed_cookie") || "").trim();
+    const postToken = String(localStorage.getItem("fewfeed_postToken") || "").trim();
+    const selectedPageId = String(
+        (typeof getCurrentSelectedPageId === "function" ? getCurrentSelectedPageId() : "") ||
+        localStorage.getItem("fewfeed_selectedPageId") ||
+        "",
+    ).trim();
+    const scopedCachedPages = getScopedCachedPages(browserUserId || cacheOwnerId);
+    const hasPages = Array.isArray(allPages) && allPages.length > 0;
+    const selectedPageExists = !!(
+        selectedPageId &&
+        allPages.some((page) => String(page?.id || "").trim() === selectedPageId)
+    );
+    const hasAnySession = !!(browserUserId || localUserId || adsToken || cookie || postToken);
+    const workspaceId =
+        typeof getActiveWorkspaceId === "function" ? String(getActiveWorkspaceId() || "").trim() : "";
+    const issues = [];
+
+    if (!extensionAvailable) {
+        issues.push(
+            "Extension ยังไม่พร้อมบนแท็บนี้ หรือ service worker ยังไม่ตอบ",
+        );
+    }
+
+    if (browserUserId && cacheOwnerId && browserUserId !== cacheOwnerId) {
+        issues.push(
+            "แคชเพจใน browser นี้มาจาก Facebook อีกบัญชี ระบบจะพยายามดึงรายการใหม่ก่อนใช้แคชเก่า",
+        );
+    }
+
+    if (!hasAnySession) {
+        issues.push("ยังไม่พบ Cookie หรือ Token จาก browser นี้");
+    } else if (!hasPages) {
+        if (scopedCachedPages.length > 0) {
+            issues.push(
+                `มีเพจใน workspace/cache ${scopedCachedPages.length} เพจ แต่ extension ยังไม่คืนรายชื่อเพจสด`,
+            );
+        } else {
+            issues.push(
+                "มี session แล้ว แต่ยังไม่มีรายชื่อเพจจาก extension หรือ workspace",
+            );
+        }
+    } else if (!selectedPageId) {
+        issues.push("มีรายชื่อเพจแล้ว แต่ยังไม่ได้เลือกเพจหลัก");
+    } else if (!selectedPageExists) {
+        issues.push("เพจหลักที่เคยเลือกไว้ไม่อยู่ในรายชื่อเพจปัจจุบัน");
+    }
+
+    let tone = "info";
+    let title = "พร้อมเลือกเพจ";
+    let body = "Browser นี้มี session และรายชื่อเพจพร้อมใช้งานแล้ว";
+    let primaryAction = "noop";
+    let primaryLabel = "ดึงใหม่";
+    let secondaryAction = "hidden";
+    let secondaryLabel = "เปิด Token";
+
+    if (!hasAnySession) {
+        tone = extensionAvailable ? "warning" : "danger";
+        title = extensionAvailable
+            ? "ยังไม่พบ session Facebook"
+            : "ยังไม่พบ extension บน browser นี้";
+        body = extensionAvailable
+            ? "ให้กด Token หรือ Cookie เพื่อดึง credential ของ browser นี้เข้าระบบ"
+            : "ให้ reload extension และเปิด site access ให้ pubilo.com ก่อน ระบบจะดึงเพจต่อได้";
+        primaryAction = "open-token";
+        primaryLabel = "เปิด Token";
+        secondaryAction = extensionAvailable ? "noop" : "heal-pages";
+        secondaryLabel = extensionAvailable ? "ปิด" : "ดึงใหม่";
+    } else if (!hasPages) {
+        tone = "warning";
+        title = "ยังไม่มีรายชื่อเพจ";
+        body = "ระบบกำลังรอ page list จาก extension หรือ workspace ของ browser นี้";
+        primaryAction = "heal-pages";
+        primaryLabel = "ดึงเพจใหม่";
+        secondaryAction = "open-token";
+        secondaryLabel = "เปิด Token";
+    } else if (!selectedPageId || !selectedPageExists) {
+        tone = "info";
+        title = "ยังไม่ได้เลือกเพจหลัก";
+        body = "เลือกเพจหลักให้ตรงกับ browser/profile นี้ก่อน แล้วค่อยโพสต์หรือลบโพสต์";
+        if (allPages.length === 1) {
+            primaryAction = "select-only-page";
+            primaryLabel = "เลือกเพจนี้";
+        } else {
+            primaryAction = "open-selector";
+            primaryLabel = "เลือกเพจ";
+        }
+        secondaryAction = "heal-pages";
+        secondaryLabel = "ดึงใหม่";
+    }
+
+    return {
+        visible: issues.length > 0,
+        tone,
+        title,
+        body,
+        issues,
+        primaryAction,
+        primaryLabel,
+        secondaryAction,
+        secondaryLabel,
+        hasAnySession,
+        hasPages,
+        selectedPageId,
+        selectedPageExists,
+        scopedCachedPagesCount: scopedCachedPages.length,
+        browserUserId,
+        localUserId,
+        cacheOwnerId,
+        workspaceId,
+        extensionAvailable,
+    };
+}
+
+async function runPageBootstrapSelfHeal(reason = "manual", options = {}) {
+    const force = !!options.force;
+    const snapshot = buildPageBootstrapHealthSnapshot();
+    const now = Date.now();
+
+    if (pageBootstrapHealPromise) {
+        return pageBootstrapHealPromise;
+    }
+
+    if (
+        !force &&
+        now - pageBootstrapLastHealAt < PAGE_BOOTSTRAP_HEAL_COOLDOWN_MS
+    ) {
+        return false;
+    }
+
+    if (!snapshot.hasAnySession && !snapshot.extensionAvailable) {
+        return false;
+    }
+
+    pageBootstrapLastHealAt = now;
+    const requireAdsToken = shouldRequireAdsTokenSync();
+
+    pageBootstrapHealPromise = (async () => {
+        console.log("[FEWFEED] Self-healing page bootstrap:", reason);
+        let synced = false;
+        try {
+            synced = await syncWithExtensionNow({
+                forceRefresh: true,
+                requireAdsToken,
+            });
+        } catch (_) {}
+
+        const latestToken = String(
+            localStorage.getItem("fewfeed_accessToken") ||
+            localStorage.getItem("fewfeed_token") ||
+            "",
+        ).trim();
+
+        try {
+            await fetchPages(latestToken, getCurrentFacebookBrowserUserId());
+        } catch (_) {}
+
+        if (!Array.isArray(allPages) || allPages.length === 0) {
+            try {
+                await syncWithExtensionNow({
+                    forceRefresh: false,
+                    requireAdsToken: false,
+                });
+            } catch (_) {}
+
+            const retryToken = String(
+                localStorage.getItem("fewfeed_accessToken") ||
+                localStorage.getItem("fewfeed_token") ||
+                "",
+            ).trim();
+
+            try {
+                await fetchPages(retryToken, getCurrentFacebookBrowserUserId());
+            } catch (_) {}
+        }
+
+        if ((!Array.isArray(allPages) || allPages.length === 0) && synced) {
+            hydratePageFromLocalStorageFallback();
+        }
+
+        return Array.isArray(allPages) && allPages.length > 0;
+    })().finally(() => {
+        pageBootstrapHealPromise = null;
+        updatePageBootstrapHealthPanel();
+    });
+
+    return pageBootstrapHealPromise;
+}
+
+function schedulePageBootstrapSelfHealRetries() {
+    [1200, 3200, 6500].forEach((delay) => {
+        setTimeout(() => {
+            const snapshot = buildPageBootstrapHealthSnapshot();
+            if (!snapshot.visible) return;
+            if (snapshot.hasPages && snapshot.selectedPageExists) return;
+            if (!snapshot.hasAnySession && !snapshot.extensionAvailable) return;
+            runPageBootstrapSelfHeal(`scheduled-${delay}`).catch(() => {});
+        }, delay);
+    });
+}
+
+function updatePageBootstrapHealthPanel() {
+    if (!pageHealthPanel || !pageHealthTitle || !pageHealthBody || !pageHealthList) {
+        return;
+    }
+
+    const snapshot = buildPageBootstrapHealthSnapshot();
+
+    if (!snapshot.visible) {
+        pageHealthPanel.classList.add("is-hidden");
+        return;
+    }
+
+    pageHealthPanel.classList.remove("is-hidden");
+    pageHealthPanel.dataset.tone = snapshot.tone;
+    pageHealthTitle.textContent = snapshot.title;
+    pageHealthBody.textContent = snapshot.body;
+    pageHealthList.innerHTML = snapshot.issues
+        .map((issue) => `<li>${issue}</li>`)
+        .join("");
+
+    if (pageHealthPrimaryAction) {
+        pageHealthPrimaryAction.textContent = snapshot.primaryLabel;
+        pageHealthPrimaryAction.dataset.action = snapshot.primaryAction;
+        pageHealthPrimaryAction.disabled = pageBootstrapHealPromise !== null;
+        pageHealthPrimaryAction.style.display =
+            snapshot.primaryAction === "hidden" ? "none" : "inline-flex";
+    }
+
+    if (pageHealthSecondaryAction) {
+        pageHealthSecondaryAction.textContent = snapshot.secondaryLabel;
+        pageHealthSecondaryAction.dataset.action = snapshot.secondaryAction;
+        pageHealthSecondaryAction.disabled = pageBootstrapHealPromise !== null;
+        pageHealthSecondaryAction.style.display =
+            snapshot.secondaryAction === "hidden" || snapshot.secondaryAction === "noop"
+                ? "none"
+                : "inline-flex";
+    }
 }
 
 function readScopedJsonObject(key, ownerId = "") {
@@ -2607,10 +2870,11 @@ function renderMultiPageListItems() {
     multiPageList.textContent = "";
 
     if (!allPages.length) {
+        const health = buildPageBootstrapHealthSnapshot();
         multiPageList.innerHTML = `
             <div class="multi-page-empty">
                 <strong>ยังไม่มีเพจให้เลือก</strong>
-                รอ extension ดึงรายชื่อเพจ หรือระบบจะโหลดจากเพจที่เคยบันทึกใน workspace — ลองรีเฟรชหน้า
+                ${health.body}
             </div>
         `;
         return;
@@ -2732,6 +2996,7 @@ function renderMultiPageTargetPicker() {
 
     renderSelectedTargetStrip(currentPageId ? selectedPages : []);
     renderMultiPageListItems();
+    updatePageBootstrapHealthPanel();
 }
 
 window.getSelectedTargetPageIds = function getSelectedTargetPageIds() {
@@ -2758,6 +3023,48 @@ document.addEventListener("click", () => {
 pageDropdown.addEventListener("click", (event) => {
     event.stopPropagation();
 });
+
+async function handlePageHealthAction(action = "") {
+    switch (String(action || "").trim()) {
+        case "heal-pages": {
+            if (pageHealthPrimaryAction) {
+                pageHealthPrimaryAction.disabled = true;
+            }
+            if (pageHealthSecondaryAction) {
+                pageHealthSecondaryAction.disabled = true;
+            }
+            await runPageBootstrapSelfHeal("manual-health-action", { force: true }).catch(() => {});
+            return;
+        }
+        case "open-token":
+            openTokenModal("ads");
+            return;
+        case "open-selector":
+            setPageDropdownOpen(true);
+            return;
+        case "select-only-page":
+            if (allPages.length === 1 && allPages[0]?.id) {
+                setPrimaryPageById(allPages[0].id);
+            } else {
+                setPageDropdownOpen(true);
+            }
+            return;
+        default:
+            return;
+    }
+}
+
+if (pageHealthPrimaryAction) {
+    pageHealthPrimaryAction.addEventListener("click", async () => {
+        await handlePageHealthAction(pageHealthPrimaryAction.dataset.action || "");
+    });
+}
+
+if (pageHealthSecondaryAction) {
+    pageHealthSecondaryAction.addEventListener("click", async () => {
+        await handlePageHealthAction(pageHealthSecondaryAction.dataset.action || "");
+    });
+}
 
 const textBackgroundGrid = document.getElementById("textBackgroundGrid");
 if (textBackgroundGrid) {
@@ -3013,13 +3320,16 @@ function hydratePageFromLocalStorageFallback() {
 }
 
 // Render pages dropdown
-function renderPagesDropdown(pages) {
+function renderPagesDropdown(pages, options = {}) {
+    const skipAutoSelect = !!options.skipAutoSelect;
     allPages = pages;
     if (!selectedTargetPageIds.length) {
         selectedTargetPageIds = loadStoredTargetPageIds();
     }
 
-    if (pages.length > 0) {
+    if (skipAutoSelect) {
+        clearPrimaryPageSelection();
+    } else if (pages.length > 0) {
         const savedPageId = localStorage.getItem("fewfeed_selectedPageId");
         if (savedPageId) {
             const savedIndex = pages.findIndex((page) => String(page.id) === String(savedPageId));
@@ -5056,12 +5366,16 @@ async function fetchPages(accessToken, knownUserId = "") {
             }
         }
 
-        // Only use workspace DB pages when we do not know which Facebook account
-        // the current browser belongs to yet. Once we know the active browser account,
-        // showing unscoped workspace pages risks rendering pages from a previous account
-        // while the new account is still bootstrapping.
-        const canUseWorkspaceDbFallback = !currentUserId;
-        if (canUseWorkspaceDbFallback) {
+        const savedPageId = String(localStorage.getItem("fewfeed_selectedPageId") || "").trim();
+        const activePreviewPageId = String(
+            (typeof getCurrentSelectedPageId === "function" ? getCurrentSelectedPageId() : "")
+            || document.getElementById("previewPageId")?.textContent
+            || "",
+        ).trim();
+        const preferredWorkspacePageId = savedPageId || activePreviewPageId;
+        const shouldAttemptWorkspaceDbFallback = !renderedFromScopedCache;
+
+        if (shouldAttemptWorkspaceDbFallback) {
             try {
                 const response = await fetch("/api/pages");
                 const data = await response.json();
@@ -5077,14 +5391,37 @@ async function fetchPages(accessToken, knownUserId = "") {
                         has_token: Boolean(p.has_token || p.hasToken),
                     }));
 
-                    if (renderedFromScopedCache) {
+                    let safeWorkspacePages = pages;
+                    if (currentUserId) {
+                        if (preferredWorkspacePageId) {
+                            safeWorkspacePages = pages.filter((page) => String(page?.id || "").trim() === preferredWorkspacePageId);
+                        } else if (pages.length === 1) {
+                            safeWorkspacePages = pages;
+                        } else {
+                            safeWorkspacePages = [];
+                        }
+                    }
+
+                    if (!safeWorkspacePages.length && currentUserId && pages.length > 0) {
+                        console.warn(
+                            "[FEWFEED] Falling back to workspace pages without auto-select because current Facebook account is known but no scoped match was found",
+                            { currentUserId, preferredWorkspacePageId, workspacePages: pages.length },
+                        );
+                        renderPagesDropdown(pages, { skipAutoSelect: true });
+                        return;
+                    } else if (!safeWorkspacePages.length) {
+                        console.warn(
+                            "[FEWFEED] Skipped workspace DB pages because no safe page match was found",
+                            { currentUserId, preferredWorkspacePageId, workspacePages: pages.length },
+                        );
+                    } else if (renderedFromScopedCache) {
                         const mergedById = new Map();
                         scopedCachedPages.forEach((page) => {
                             const pageId = String(page?.id || "").trim();
                             if (!pageId) return;
                             mergedById.set(pageId, page);
                         });
-                        pages.forEach((page) => {
+                        safeWorkspacePages.forEach((page) => {
                             const pageId = String(page?.id || "").trim();
                             if (!pageId) return;
                             const existing = mergedById.get(pageId);
@@ -5105,10 +5442,11 @@ async function fetchPages(accessToken, knownUserId = "") {
                             });
                         });
                         renderPagesDropdown(Array.from(mergedById.values()));
+                        return;
                     } else {
-                        renderPagesDropdown(pages);
+                        renderPagesDropdown(safeWorkspacePages);
+                        return;
                     }
-                    return;
                 }
                 console.log("[FEWFEED] No pages returned from /api/pages");
             } catch (error) {
@@ -5116,9 +5454,6 @@ async function fetchPages(accessToken, knownUserId = "") {
             }
         }
 
-        if (currentUserId && !canUseWorkspaceDbFallback) {
-            console.warn("[FEWFEED] No pages from extension or scoped cache for this Facebook account; skipped workspace DB fallback to avoid showing stale pages");
-        }
         const hydrated = hydratePageFromLocalStorageFallback();
         if (!hydrated) {
             renderPagesDropdown([]);
@@ -5253,6 +5588,7 @@ function showCookieStatus(
         "PostToken:",
         effectiveHasPostToken ? "valid" : "invalid",
     );
+    updatePageBootstrapHealthPanel();
 }
 
 // Token Modal Functions
@@ -6187,9 +6523,11 @@ function loadSavedData() {
         }).catch(() => {});
     }, 2500);
     scheduleEarlyExtensionSyncRetries();
+    schedulePageBootstrapSelfHealRetries();
 
     fetchPages(accessToken, getCurrentFacebookBrowserUserId());
     fetchAdAccounts(accessToken);
+    updatePageBootstrapHealthPanel();
 }
 
 // Load on startup

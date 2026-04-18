@@ -141,7 +141,7 @@ async function waitMs(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieData?: string): Promise<string> {
+export async function fetchFreshPageToken(pageId: string, accessToken?: string, cookieData?: string): Promise<string> {
     const headers = buildFacebookHeaders(cookieData);
     if (accessToken) {
         try {
