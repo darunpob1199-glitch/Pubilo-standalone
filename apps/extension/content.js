@@ -822,10 +822,14 @@ window.addEventListener("message", async (event) => {
         accessToken: event.data.accessToken,
         cookieData: event.data.cookieData,
         linkUrl: event.data.linkUrl,
+        previewLinkUrl: event.data.previewLinkUrl,
         imageUrl: event.data.imageUrl,
         primaryText: event.data.primaryText,
+        linkName: event.data.linkName,
         description: event.data.description,
         caption: event.data.caption,
+        adAccountId: event.data.adAccountId,
+        callToAction: event.data.callToAction,
       });
     } catch (error) {
       const errorMessage = String(error?.message || error || "publish_news_direct_failed");

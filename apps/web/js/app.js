@@ -291,6 +291,65 @@ function compressImage(dataUrl, maxSize = 1200, quality = 0.8) {
     });
 }
 
+// Aspect ratio to pixel dimensions mapping (base = 1080px)
+// Returns { width, height } for the given aspect ratio string
+function getAspectRatioDimensions(aspectRatio, baseSize = 1080) {
+    const ratioMap = {
+        "1:1":  { width: baseSize, height: baseSize },
+        "16:9": { width: baseSize, height: Math.round(baseSize * 9 / 16) },   // 1080x608
+        "4:3":  { width: baseSize, height: Math.round(baseSize * 3 / 4) },    // 1080x810
+        "9:16": { width: Math.round(baseSize * 9 / 16), height: baseSize },   // 608x1080
+        "2:3":  { width: Math.round(baseSize * 2 / 3), height: baseSize },    // 720x1080
+        "3:4":  { width: Math.round(baseSize * 3 / 4), height: baseSize },    // 810x1080
+    };
+    return ratioMap[aspectRatio] || ratioMap["1:1"];
+}
+
+// Center-crop image to a given aspect ratio, then resize to target dimensions.
+// Supports: 1:1, 16:9, 4:3, 9:16, 2:3, 3:4
+function cropToAspectRatio(dataUrl, aspectRatio = "1:1", baseSize = 1080, quality = 0.85) {
+    const dims = getAspectRatioDimensions(aspectRatio, baseSize);
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            const srcW = img.width;
+            const srcH = img.height;
+            // Calculate crop region to match target aspect ratio
+            const targetRatio = dims.width / dims.height;
+            const srcRatio = srcW / srcH;
+            let cropW, cropH, cropX, cropY;
+            if (srcRatio > targetRatio) {
+                // Source is wider than target: crop sides
+                cropH = srcH;
+                cropW = Math.round(srcH * targetRatio);
+                cropX = Math.round((srcW - cropW) / 2);
+                cropY = 0;
+            } else {
+                // Source is taller than target: crop top/bottom
+                cropW = srcW;
+                cropH = Math.round(srcW / targetRatio);
+                cropX = 0;
+                cropY = Math.round((srcH - cropH) / 2);
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = dims.width;
+            canvas.height = dims.height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, dims.width, dims.height);
+            const result = canvas.toDataURL("image/jpeg", quality);
+            console.log(`[FEWFEED] Cropped to ${aspectRatio} (${dims.width}x${dims.height}):`, Math.round(dataUrl.length / 1024), "KB →", Math.round(result.length / 1024), "KB");
+            resolve(result);
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+    });
+}
+
+// Backward-compatible wrapper: crop to square (1080x1080)
+function cropToSquare(dataUrl, size = 1080, quality = 0.85) {
+    return cropToAspectRatio(dataUrl, "1:1", size, quality);
+}
+
 // Load settings from API (per-page) - database only
 async function loadSettings() {
     const pageId = getCurrentPageId();

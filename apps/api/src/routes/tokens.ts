@@ -238,11 +238,22 @@ app.get('/', async (c) => {
                     persistedTokenValue = String(refreshed.token || '').trim();
                     shouldPersistTokenUpdate = true;
                 } else if (!refreshed.success && currentValidation.reason === 'invalid') {
-                    // Prevent recurring regressions: never keep a token that Graph has
-                    // already confirmed as invalid (code 190 / invalid token).
-                    adsToken = '';
-                    persistedTokenValue = '';
-                    shouldPersistTokenUpdate = true;
+                    // Only clear the stored token when Graph definitively confirmed it as
+                    // invalid (code 190). Avoid clearing on transient network errors
+                    // which would permanently wipe a potentially-valid token.
+                    const refreshErrorLower = String(refreshed.error || '').toLowerCase();
+                    const isRefreshNetworkIssue =
+                        refreshErrorLower.includes('fetch failed')
+                        || refreshErrorLower.includes('network')
+                        || refreshErrorLower.includes('timed out')
+                        || refreshErrorLower.includes('timeout')
+                        || refreshErrorLower.includes('econnrefused')
+                        || refreshErrorLower.includes('dns');
+                    if (!isRefreshNetworkIssue) {
+                        adsToken = '';
+                        persistedTokenValue = '';
+                        shouldPersistTokenUpdate = true;
+                    }
                 }
             } else if (currentValidation.reason === 'invalid') {
                 adsToken = '';

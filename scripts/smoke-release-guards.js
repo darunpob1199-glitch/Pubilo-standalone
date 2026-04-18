@@ -31,7 +31,7 @@ mustInclude(webConfig, "hostname === 'pubilo-web-prod.pages.dev'", webConfigPath
 mustInclude(webConfig, 'if (apiParam && allowApiParamOverride)', webConfigPath, 'api override allow condition', errors)
 mustInclude(webConfig, 'Ignored ?api override on production host', webConfigPath, 'api override warning branch', errors)
 
-mustInclude(webPublish, 'allowAdCreativePublish: false', webPublishPath, 'client-side ad creative opt-out default', errors)
+mustInclude(webPublish, 'allowAdCreativePublish: true', webPublishPath, 'client-side ad creative opt-in for card links', errors)
 
 mustInclude(
   apiPublish,
@@ -47,8 +47,20 @@ mustInclude(
   'ad creative dual gate',
   errors,
 )
-mustInclude(apiPublish, 'linkUrl: finalLink,', apiPublishPath, 'ad creative uses final outbound link', errors)
-mustInclude(apiPublish, 'allowAdMaterialization: false,', apiPublishPath, 'ad materialization disabled', errors)
+mustInclude(
+  apiPublish,
+  'linkUrl: finalLink,',
+  apiPublishPath,
+  'ad creative uses real destination link for correct domain display',
+  errors,
+)
+mustInclude(
+  apiPublish,
+  'allowAdMaterialization: !scheduleTimestamp,',
+  apiPublishPath,
+  'ad materialization immediate-only gate',
+  errors,
+)
 
 if (errors.length) {
   console.error('[smoke-release-guards] FAILED')

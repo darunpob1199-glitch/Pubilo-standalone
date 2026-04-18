@@ -966,17 +966,23 @@ if (newsPublishBtn) {
                 token: latestTokenFromLocal(),
                 cookie: latestCookieFromLocal(),
                 userId: String(localStorage.getItem("fewfeed_userId") || "").trim(),
+                selectedPageToken: String(localStorage.getItem("fewfeed_selectedPageToken") || "").trim(),
+                pageTokenMapRaw: String(localStorage.getItem(PAGE_TOKEN_MAP_KEY) || "{}"),
             };
             const hasSessionAdvanced = () => {
                 const afterToken = latestTokenFromLocal();
                 const afterCookie = latestCookieFromLocal();
                 const afterUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+                const afterSelectedPageToken = String(localStorage.getItem("fewfeed_selectedPageToken") || "").trim();
+                const afterPageTokenMapRaw = String(localStorage.getItem(PAGE_TOKEN_MAP_KEY) || "{}");
                 return !!(
                     (afterToken && afterToken !== beforeSnapshot.token) ||
                     (afterCookie && afterCookie !== beforeSnapshot.cookie) ||
                     (afterUserId && afterUserId !== beforeSnapshot.userId) ||
                     (!beforeSnapshot.token && afterToken) ||
-                    (!beforeSnapshot.cookie && afterCookie)
+                    (!beforeSnapshot.cookie && afterCookie) ||
+                    (afterSelectedPageToken && afterSelectedPageToken !== beforeSnapshot.selectedPageToken) ||
+                    (afterPageTokenMapRaw !== beforeSnapshot.pageTokenMapRaw)
                 );
             };
             const selectBackendSessionRow = (tokens = []) => {
@@ -985,9 +991,13 @@ if (newsPublishBtn) {
                 const cookieUserId = typeof extractFacebookUserIdFromCookie === "function"
                     ? String(extractFacebookUserIdFromCookie(localCookie) || "").trim()
                     : "";
-                return (
+                const preferred =
                     tokens.find((token) => String(token?.user_id || "").trim() === cookieUserId) ||
                     tokens.find((token) => String(token?.user_id || "").trim() === localUserId) ||
+                    null;
+                if (preferred) return preferred;
+                if (cookieUserId || localUserId) return null;
+                return (
                     tokens.find((token) => String(token?.ads_token || "").trim()) ||
                     tokens.find((token) => String(token?.cookie || "").trim()) ||
                     tokens[0] ||
@@ -1107,12 +1117,15 @@ if (newsPublishBtn) {
 
             try {
                 const warmToken = latestTokenFromLocal();
-                if (recovered && warmToken && pageId && typeof getFreshPageTokenFromExtension === "function") {
-                    await withTimeout(
-                        getFreshPageTokenFromExtension(pageId, warmToken),
+                if (pageId && typeof getFreshPageTokenFromExtension === "function") {
+                    const freshPageToken = await withTimeout(
+                        getFreshPageTokenFromExtension(pageId, warmToken, { skipWorkspaceFallback: true }),
                         9000,
                         "",
                     );
+                    if (freshPageToken) {
+                        recovered = true;
+                    }
                 }
             } catch (_) {
                 // Token warm-up is best-effort only.
@@ -1127,11 +1140,16 @@ if (newsPublishBtn) {
 
         const pageId = getCurrentPageId();
         const adsToken = fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
+        const cookie = fbCookie || localStorage.getItem("fewfeed_cookie");
         const freshPageToken = typeof getFreshPageTokenFromExtension === "function"
             ? await withTimeout(getFreshPageTokenFromExtension(pageId, adsToken), 9000, "")
             : "";
-        const pageToken = freshPageToken || getPageToken() || document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
-        const cookie = fbCookie || localStorage.getItem("fewfeed_cookie");
+        const manualPageToken = document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
+        const cachedPageToken =
+            !adsToken && !cookie
+                ? (getPageToken() || localStorage.getItem("fewfeed_selectedPageToken") || localStorage.getItem("fewfeed_postToken") || "")
+                : "";
+        const pageToken = freshPageToken || manualPageToken || cachedPageToken || "";
         let adAccountId =
             (typeof getSelectedAdAccountId === "function"
                 ? getSelectedAdAccountId()
@@ -1162,7 +1180,7 @@ if (newsPublishBtn) {
             return;
         }
 
-        if (!pageToken && !adsToken) {
+        if (!pageToken && !adsToken && !cookie) {
             alert("ไม่มี token สำหรับโพสต์ กรุณา login extension ใหม่ หรือใส่ Page Token ใน Settings");
             resetNewsButtonIdle();
             return;
@@ -1222,14 +1240,19 @@ if (newsPublishBtn) {
                 const latestPageToken = typeof getFreshPageTokenFromExtension === "function"
                     ? await withTimeout(getFreshPageTokenFromExtension(pageId, latestAdsToken), 9000, "")
                     : "";
+                const manualPageToken = document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
                 const cachedPageToken =
-                    localStorage.getItem("fewfeed_selectedPageToken") ||
-                    localStorage.getItem("fewfeed_postToken") ||
-                    "";
+                    !latestAdsToken && !latestCookie
+                        ? (
+                            localStorage.getItem("fewfeed_selectedPageToken") ||
+                            localStorage.getItem("fewfeed_postToken") ||
+                            ""
+                        )
+                        : "";
 
                 return {
                     pageId,
-                    pageToken: latestPageToken || getPageToken() || cachedPageToken || document.getElementById("pageTokenInputPanel")?.value?.trim() || "",
+                    pageToken: latestPageToken || manualPageToken || cachedPageToken || "",
                     accessToken: latestAdsToken,
                     cookieData: latestCookie,
                     targetPageIds:
@@ -1246,8 +1269,9 @@ if (newsPublishBtn) {
                     adAccountId,
                     callToAction: ctaConfig.type,
                     callToActionLabel: ctaConfig.label,
-                    // Restore legacy-rich link-card behavior for News mode:
-                    // let backend try ad-creative path first, then fallback layers.
+                    // Rich link card mode depends on the creative flow.
+                    // The API only allows materialization for immediate posts
+                    // and cleans up the transient ad object after story creation.
                     allowAdCreativePublish: true,
                     scheduleInSystem: scheduleSource === "manual",
                     scheduledTime: scheduledTime
@@ -1338,25 +1362,34 @@ if (newsPublishBtn) {
             const shouldTryExtensionDirectFallback = (() => {
                 const errorMessage = String(data?.error || "").toLowerCase();
                 const errorCode = Number(data?.errorCode || 0);
-                const endpointTag = String(data?._debug?.flow || "").toLowerCase();
                 return (
                     (!response?.ok || !data?.success) &&
                     (
                         errorCode === 1 ||
-                        endpointTag.includes("link-card-failed-all-fallbacks") ||
-                        errorMessage.includes("invalid request")
+                        errorMessage.includes("invalid request") ||
+                        (
+                            typeof isInvalidFacebookSessionError === "function" &&
+                            isInvalidFacebookSessionError(data)
+                        ) ||
+                        errorMessage.includes("error validating access token") ||
+                        errorMessage.includes("session has been invalidated") ||
+                        errorMessage.includes("invalid oauth access token")
                     )
                 );
             })();
 
             if (shouldTryExtensionDirectFallback) {
                 window.showPublishToast?.(
-                    "เซิร์ฟเวอร์โดน Facebook ปฏิเสธคำขอ กำลังลองโพสต์ผ่าน Extension ตรงจากเครื่องนี้...",
+                    "เซิร์ฟเวอร์โพสต์ไม่ผ่าน กำลังลองโพสต์ผ่าน Extension ตรงจากเครื่องนี้...",
                     "warning",
                 );
 
                 try {
                     const directPayload = await buildPublishRequest();
+                    const previewLinkUrl = String(data?._debug?.previewUrl || "").trim();
+                    if (previewLinkUrl) {
+                        directPayload.previewLinkUrl = previewLinkUrl;
+                    }
                     const directResult = await publishNewsViaExtensionDirect(directPayload, 70000);
                     if (directResult?.success && (directResult?.postId || directResult?.id)) {
                         response = { ok: true, status: 200 };
@@ -1370,12 +1403,17 @@ if (newsPublishBtn) {
                             },
                         };
                     } else if (directResult?.error) {
+                        const directDebug = directResult?.debug && typeof directResult.debug === "object"
+                            ? directResult.debug
+                            : {};
                         data = {
                             ...(data || {}),
                             _debug: {
                                 ...(data?._debug || {}),
                                 extensionDirectError: directResult.error,
                                 extensionDirectCode: directResult.errorCode || 0,
+                                extensionDirectPhase: directDebug.phase || "",
+                                extensionDirectStrategy: directDebug.strategy || "",
                             },
                         };
                     }
@@ -1415,6 +1453,12 @@ if (newsPublishBtn) {
                         if (normalizedExtError) {
                             meta.push(`ext:${normalizedExtError}`);
                         }
+                    }
+                    if (data._debug.extensionDirectPhase) {
+                        meta.push(`extPhase:${String(data._debug.extensionDirectPhase).slice(0, 24)}`);
+                    }
+                    if (data._debug.extensionDirectStrategy) {
+                        meta.push(`extMode:${String(data._debug.extensionDirectStrategy).slice(0, 28)}`);
                     }
                     if (data._debug.hostedImageUrl) meta.push('hasHostedImg');
                     if (data._debug.fbError?.fbtrace_id) meta.push(`trace:${data._debug.fbError.fbtrace_id}`);

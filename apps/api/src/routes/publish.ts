@@ -3,6 +3,8 @@ import { Env } from '../index';
 import { recordPublishHistory } from '../lib/publish-history';
 import { decryptSecret } from '../lib/encryption';
 import { getWorkspaceId } from '../lib/workspace';
+import { createNewsLinkPreview } from '../lib/news-link-previews';
+import { getAppOrigin } from '../auth/session';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -40,6 +42,47 @@ function buildFacebookGraphHeaders(): Record<string, string> {
     return {
         'User-Agent': FACEBOOK_USER_AGENT,
     };
+}
+
+async function deleteGraphNodeWithToken(
+    nodeId: string,
+    accessToken: string,
+    headers?: Record<string, string>,
+): Promise<{ ok: boolean; error?: string }> {
+    const normalizedId = String(nodeId || '').trim();
+    const normalizedToken = String(accessToken || '').trim();
+    if (!normalizedId || !normalizedToken) {
+        return {
+            ok: false,
+            error: 'missing_id_or_access_token',
+        };
+    }
+
+    try {
+        const response = await fetch(
+            `${FB_API}/${encodeURIComponent(normalizedId)}?access_token=${encodeURIComponent(normalizedToken)}`,
+            {
+                method: 'DELETE',
+                headers,
+            },
+        );
+        const data = await response.json() as any;
+        if (response.ok && data?.success === true) {
+            return { ok: true };
+        }
+        const code = data?.error?.code ? ` code=${data.error.code}` : '';
+        const type = data?.error?.type ? ` type=${data.error.type}` : '';
+        const subcode = data?.error?.error_subcode ? ` subcode=${data.error.error_subcode}` : '';
+        return {
+            ok: false,
+            error: String(data?.error?.message || data?.message || 'Graph delete failed') + code + type + subcode,
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
 }
 
 function extractAccessTokenFromHtml(html: string): string {
@@ -528,16 +571,23 @@ function normalizeCallToActionType(callToAction?: string): string {
         : 'SHOP_NOW';
 }
 
-function buildNewsPreviewUrl(requestUrl: string, params: {
-    targetUrl: string;
+function buildNewsPreviewUrl(baseUrl: string, params: {
+    previewId?: string;
+    targetUrl?: string;
     imageUrl?: string;
     title?: string;
     description?: string;
     siteName?: string;
     version?: string;
 }): string {
-    const previewUrl = new URL('/api/news-link', requestUrl);
-    previewUrl.searchParams.set('target', params.targetUrl);
+    const previewUrl = new URL('/api/news-link', baseUrl);
+
+    if (params.previewId) {
+        previewUrl.searchParams.set('id', params.previewId);
+    }
+    if (params.targetUrl) {
+        previewUrl.searchParams.set('target', params.targetUrl);
+    }
 
     if (params.imageUrl) previewUrl.searchParams.set('image', params.imageUrl);
     if (params.title) previewUrl.searchParams.set('title', params.title);
@@ -546,6 +596,19 @@ function buildNewsPreviewUrl(requestUrl: string, params: {
     if (params.version) previewUrl.searchParams.set('v', params.version);
 
     return previewUrl.toString();
+}
+
+function isControlledNewsPreviewUrl(rawUrl?: string): boolean {
+    const normalized = String(rawUrl || '').trim();
+    if (!normalized) return false;
+
+    try {
+        const parsed = new URL(normalized);
+        return parsed.pathname === '/api/news-link'
+            && (parsed.searchParams.has('id') || parsed.searchParams.has('target'));
+    } catch {
+        return false;
+    }
 }
 
 function deriveSiteName(inputCaption?: string, targetUrl?: string): string {
@@ -956,11 +1019,14 @@ async function publishLinkCardViaFeed(params: {
     scheduledTime?: number | null;
     allowMetadataDropRetry?: boolean;
 }): Promise<{ postId: string; createdAsDraft: boolean }> {
+    const shouldLetFacebookScrapePreview = isControlledNewsPreviewUrl(params.linkUrl);
     const hasLinkMetadata = Boolean(
-        params.title ||
-        params.caption ||
-        params.description ||
-        params.pictureUrl,
+        !shouldLetFacebookScrapePreview && (
+            params.title ||
+            params.caption ||
+            params.description ||
+            params.pictureUrl
+        ),
     );
     const hasCallToAction = Boolean(params.callToActionType);
 
@@ -977,7 +1043,7 @@ async function publishLinkCardViaFeed(params: {
 
         if (params.message) body.set('message', params.message);
 
-        if (options.includeLinkMetadata) {
+        if (options.includeLinkMetadata && !shouldLetFacebookScrapePreview) {
             if (params.title) body.set('name', params.title);
             if (params.caption) body.set('caption', params.caption);
             if (params.description) body.set('description', params.description);
@@ -1547,7 +1613,7 @@ async function materializeCreativeWithAd(params: {
     creativeId: string;
     headers?: Record<string, string>;
     seed?: GhostAdSeed | null;
-}): Promise<{ adId: string; adsetId: string; campaignId: string; postId: string; seedAdId: string; adData: any }> {
+}): Promise<{ adId: string; adsetId: string; campaignId: string; postId: string; seedAdId: string; adData: any; bootstrapSeedCreated: boolean }> {
     let seed =
         params.seed
         ?? await loadGhostAdSeed(params.env, params.organizationId, params.pageId, params.adAccountId)
@@ -1637,6 +1703,7 @@ async function materializeCreativeWithAd(params: {
                 seedAdId: seed.adId || '',
                 postId: adStoryResult.postId,
                 adData: adStoryResult.raw,
+                bootstrapSeedCreated: seed.source === 'bootstrap',
             };
         } catch (error) {
             lastError = error instanceof Error ? error.message : String(error);
@@ -1691,6 +1758,8 @@ async function createStandaloneAdCreative(params: {
     materializeAdAccountId?: string;
     hasReusableSeed?: boolean;
     scannedAccounts?: string[];
+    cleanupAdId?: string;
+    bootstrapSeedCreated?: boolean;
 }> {
     const creativePayload: Record<string, any> = {
         page_id: params.pageId,
@@ -1798,6 +1867,8 @@ async function createStandaloneAdCreative(params: {
             materializeAdAccountId: seedContext.adAccountId || params.adAccountId,
             hasReusableSeed: !!seedContext.seed,
             scannedAccounts: seedContext.scannedAccounts,
+            cleanupAdId: materialized.adId,
+            bootstrapSeedCreated: materialized.bootstrapSeedCreated,
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -2035,8 +2106,19 @@ app.post('/', async (c) => {
         const attachmentCaption = (caption || '').trim();
         const attachmentDescription = (description || '').trim();
         const previewSiteName = deriveSiteName(caption, finalLink);
+        const previewUrlBase = getAppOrigin(c.env, c.req.url);
+        const previewRecordId = isLinkAttachmentPost
+            ? await createNewsLinkPreview(c.env, {
+                targetUrl: finalLink,
+                imageUrl: hostedImageUrl || undefined,
+                title: attachmentTitle || 'ดูรายละเอียดสินค้า',
+                description: attachmentDescription || finalMessage || 'แตะเพื่อดูรายละเอียดสินค้า',
+                siteName: previewSiteName,
+            })
+            : '';
         const previewUrl = isLinkAttachmentPost
-            ? buildNewsPreviewUrl(c.req.url, {
+            ? buildNewsPreviewUrl(previewUrlBase, {
+                previewId: previewRecordId,
                 targetUrl: finalLink,
                 imageUrl: hostedImageUrl || undefined,
                 title: attachmentTitle || 'ดูรายละเอียดสินค้า',
@@ -2046,6 +2128,7 @@ app.post('/', async (c) => {
             })
             : '';
         const publishLinkUrl = isLinkAttachmentPost ? previewUrl : finalLink;
+        const richLinkPreviewOnly = isLinkAttachmentPost && requiresRichLinkCard;
 
         const shouldQueueInSystem = !!scheduleTimestamp && !!scheduleInSystem && !internalRun;
         const currentBatchId = typeof batchId === 'string' && batchId.trim()
@@ -2395,9 +2478,7 @@ app.post('/', async (c) => {
             : true;
         const rawClientAdCreativeFlag = body.allowAdCreativePublish ?? body.useAdCreativeFlow ?? body.enableAdCreativePublish;
         const adCreativeRequestedByClient = rawClientAdCreativeFlag == null
-            // News mode historically relied on ad-creative materialization for
-            // stable rich link-card rendering. Keep it on by default.
-            ? String(postMode || '').trim().toLowerCase() === 'news'
+            ? false
             : parseBooleanFlag(rawClientAdCreativeFlag);
         const adCreativeFlowEnabled = adCreativeAllowedByEnv && adCreativeRequestedByClient;
 
@@ -2423,6 +2504,9 @@ app.post('/', async (c) => {
                 effectiveAccessToken,
             ]);
             const feedLinkCandidates = (() => {
+                if (richLinkPreviewOnly && publishLinkUrl) {
+                    return [publishLinkUrl];
+                }
                 if (publishLinkUrl && finalLink && publishLinkUrl !== finalLink) {
                     // Try controlled preview URL first to keep stable rich metadata.
                     // If Facebook rejects/failed preview scraping, fallback to direct link.
@@ -2457,8 +2541,10 @@ app.post('/', async (c) => {
                         accessToken: effectiveAccessToken,
                         cookieHeaders: tokenRequestHeaders,
                         adAccountId: resolvedAdAccountId,
-                        // Ad creative should point to the real outbound destination.
-                        // Using preview URL here causes posts to render as api.pubilo.com cards.
+                        // Use the real destination URL directly so Facebook displays the
+                        // correct domain (e.g. LAZADA.CO.TH instead of PUBILO.COM).
+                        // Ad Creative API accepts image/title/description inline, so it
+                        // does not need to scrape a preview page for OG metadata.
                         linkUrl: finalLink,
                         hostedImageUrl: hostedImageUrl || undefined,
                         message: finalMessage,
@@ -2466,13 +2552,34 @@ app.post('/', async (c) => {
                         caption: previewSiteName || undefined,
                         description: attachmentDescription || undefined,
                         callToAction: normalizedCallToAction,
-                        // Keep disabled by default to avoid unstable Facebook
-                        // ad-materialization errors ("Error loading application").
-                        allowAdMaterialization: false,
+                        // Rich card publishing depends on obtaining object_story_id.
+                        // Allow ad materialization for immediate posts, then clean up
+                        // the transient ad object right after publish succeeds.
+                        allowAdMaterialization: !scheduleTimestamp,
                     });
 
                     if (!scheduleTimestamp && pageTokenForPublish) {
                         await publishExistingUnpublishedPost(creativeResult.postId, pageTokenForPublish, tokenRequestHeaders);
+                    }
+
+                    let transientAdCleanup: { attempted: boolean; deleted: boolean; error: string } | null = null;
+                    if (!scheduleTimestamp && creativeResult.cleanupAdId && effectiveAccessToken) {
+                        const cleanupResult = await deleteGraphNodeWithToken(
+                            creativeResult.cleanupAdId,
+                            effectiveAccessToken,
+                            tokenRequestHeaders,
+                        );
+                        transientAdCleanup = {
+                            attempted: true,
+                            deleted: cleanupResult.ok,
+                            error: cleanupResult.ok ? '' : String(cleanupResult.error || ''),
+                        };
+                        if (!cleanupResult.ok) {
+                            console.warn('[publish] Failed to delete transient materialized ad:', {
+                                adId: creativeResult.cleanupAdId,
+                                error: cleanupResult.error,
+                            });
+                        }
                     }
 
                     const publishedUrl = buildFacebookPostUrl(creativeResult.postId, pageId);
@@ -2480,15 +2587,25 @@ app.post('/', async (c) => {
                         flow: 'adcreative',
                         creativeId: creativeResult.creativeId,
                         materializedBy: creativeResult.materializedBy,
+                        bootstrapSeedCreated: !!creativeResult.bootstrapSeedCreated,
+                        transientAdCleanup,
                     });
                     const hideResult = await maybeHideAfterPublish(creativeResult.postId, pageTokenForPublish);
+
+                    const warningMessages: string[] = [];
+                    if (hideResult.attempted && !hideResult.hidden) {
+                        warningMessages.push(`ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}`);
+                    }
+                    if (transientAdCleanup?.attempted && !transientAdCleanup.deleted) {
+                        warningMessages.push(`ลบ ad ชั่วคราวไม่สำเร็จ: ${transientAdCleanup.error}`);
+                    }
 
                     return c.json({
                         success: true,
                         postId: creativeResult.postId,
                         url: publishedUrl,
                         timelineHidden: hideResult.hidden,
-                        ...(hideResult.attempted && !hideResult.hidden ? { warning: `ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}` } : {}),
+                        ...(warningMessages.length > 0 ? { warning: warningMessages.join(' | ') } : {}),
                         needsScheduling: !!scheduleTimestamp,
                         ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
                         _debug: {
@@ -2499,6 +2616,8 @@ app.post('/', async (c) => {
                             materializeAdAccountId: creativeResult.materializeAdAccountId || resolvedAdAccountId,
                             hasReusableSeed: !!creativeResult.hasReusableSeed,
                             scannedAccounts: creativeResult.scannedAccounts || [],
+                            bootstrapSeedCreated: !!creativeResult.bootstrapSeedCreated,
+                            transientAdCleanup,
                             hide: hideResult,
                         },
                     });
@@ -2508,7 +2627,10 @@ app.post('/', async (c) => {
                         ...adCreativeDebug,
                         ...((((error as Error & { debug?: Record<string, unknown> }).debug) || {})),
                     };
-                    console.warn('[publish] adcreative failed, falling back to feed:', adCreativeError);
+                    console.warn('[publish] adcreative failed, falling back to feed:', {
+                        error: adCreativeError,
+                        debug: adCreativeDebug,
+                    });
                 }
             }
 
@@ -2915,6 +3037,16 @@ app.post('/', async (c) => {
                     ? `โพสต์ไม่สำเร็จ: ${nonSessionReason}`
                     : 'โพสต์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
 
+            console.warn('[publish] link card failed all fallbacks:', {
+                adCreativeError,
+                adCreativeDebug,
+                feedError: lastFeedError,
+                photoFallbackError: normalizedPhotoFallbackError,
+                resolvedErrorCode,
+                resolvedErrorSubcode,
+                pageTokenCandidates: pageTokenCandidates.length,
+            });
+
             return c.json({
                 success: false,
                 error: userMessage,
@@ -2927,6 +3059,7 @@ app.post('/', async (c) => {
                     adCreativeError,
                     feedError: lastFeedError,
                     photoFallbackError: normalizedPhotoFallbackError,
+                    previewUrl,
                     candidatesTried: pageTokenCandidates.length,
                     candidateCount: pageTokenCandidates.length,
                     lastFeedCode,

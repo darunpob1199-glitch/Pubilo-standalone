@@ -23,6 +23,7 @@ const DELETE_BATCH_DEFAULT = 50;
 const DELETE_BATCH_MIN = 1;
 const DELETE_BATCH_MAX = 200;
 const DELETE_BATCH_PRESETS = [50, 80, 120];
+const POST_TOOL_OPTIMISTIC_JOB_TTL_MS = 30000;
 
 const postToolStates = {
     hide: createPostToolState(),
@@ -53,12 +54,15 @@ const postToolDateRangeFilterUtils = window.PubiloDateRangeFilter || {
     },
 };
 
+const AUTH_RECOVERY_COOLDOWN_MS = 30000;
+
 function createPostToolState() {
     return {
         pageId: "",
         pageMetaById: {},
         pageResolveAttempts: 0,
         authRecoveryTried: false,
+        authRecoveryTriedAt: 0,
         authRecoveryInFlight: false,
         activeJobId: 0,
         lastJobToastKey: "",
@@ -115,6 +119,7 @@ function resetPostToolStateDefaults(toolKey) {
     state.pageResolveAttempts = 0;
     state.pageMetaById = {};
     state.authRecoveryTried = false;
+    state.authRecoveryTriedAt = 0;
     state.authRecoveryInFlight = false;
     state.activeJobId = 0;
     state.lastJobToastKey = "";
@@ -414,12 +419,18 @@ async function tryRecoverPostToolFacebookSession(toolKey, { manual = false } = {
     const state = postToolStates[toolKey];
     if (!state) return false;
     if (state.authRecoveryInFlight) return false;
-    if (!manual && state.authRecoveryTried) return false;
+    // Allow automatic retry after cooldown period instead of permanent block.
+    // This handles cases where Facebook restores the session moments after initial failure.
+    if (!manual && state.authRecoveryTried) {
+        const elapsed = Date.now() - (state.authRecoveryTriedAt || 0);
+        if (elapsed < AUTH_RECOVERY_COOLDOWN_MS) return false;
+    }
     if (typeof syncWithExtensionNow !== "function") return false;
 
     state.authRecoveryInFlight = true;
     if (!manual) {
         state.authRecoveryTried = true;
+        state.authRecoveryTriedAt = Date.now();
     }
 
     try {
@@ -1185,6 +1196,57 @@ function updatePostToolActionButton(toolKey, eligible = getPostToolEligibleFilte
         : `ลบที่เลือก${selectedCount ? ` (${selectedCount})` : ""}`;
 }
 
+function isPostToolJobInFlight(job) {
+    const status = String(job?.status || "").trim().toLowerCase();
+    return status === "pending" || status === "processing";
+}
+
+function isRecentOptimisticPostToolJob(job) {
+    if (!job?.__optimistic) return false;
+    const createdAtMs = Date.parse(String(job.created_at || ""));
+    if (!Number.isFinite(createdAtMs)) return false;
+    return Date.now() - createdAtMs < POST_TOOL_OPTIMISTIC_JOB_TTL_MS;
+}
+
+function buildOptimisticPostToolJob(toolKey, jobId, pageId, totalCount) {
+    const nowIso = new Date().toISOString();
+    return {
+        id: Number(jobId || 0),
+        page_id: String(pageId || "").trim(),
+        action: postToolConfigs[toolKey]?.action || toolKey,
+        status: "pending",
+        total_count: Number(totalCount || 0),
+        processed_count: 0,
+        success_count: 0,
+        failed_count: 0,
+        created_at: nowIso,
+        updated_at: nowIso,
+        __optimistic: true,
+    };
+}
+
+function mergeOptimisticPostToolJobs(existingJobs, incomingJobs, activeJobId) {
+    const nextJobs = Array.isArray(incomingJobs) ? incomingJobs.slice() : [];
+    const fetchedIds = new Set(nextJobs.map((job) => Number(job?.id || 0)).filter((id) => id > 0));
+    const activeId = Number(activeJobId || 0);
+    if (!activeId || fetchedIds.has(activeId)) {
+        return nextJobs;
+    }
+
+    const optimisticJob = (Array.isArray(existingJobs) ? existingJobs : []).find((job) => {
+        const jobId = Number(job?.id || 0);
+        if (jobId !== activeId) return false;
+        if (!isPostToolJobInFlight(job)) return false;
+        return isRecentOptimisticPostToolJob(job);
+    });
+
+    if (!optimisticJob) {
+        return nextJobs;
+    }
+
+    return [optimisticJob, ...nextJobs];
+}
+
 function renderPostToolDayFilters(toolKey) {
     const state = postToolStates[toolKey];
     const dom = getPostToolDom(toolKey);
@@ -1777,7 +1839,7 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false, skip
     const state = postToolStates[toolKey];
     const dom = getPostToolDom(toolKey);
     let pageId = getPostToolActivePageId(toolKey);
-    const allowWorkspaceHistoryFallback = toolKey === "delete";
+    const allowWorkspaceHistoryFallback = false;
 
     if (allowWorkspaceHistoryFallback && !pageId) {
         await hydrateDeletePostToolPageOptions();
@@ -1884,6 +1946,17 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false, skip
             fetchSource = pageId ? "facebook" : "history";
             strictLive = !!pageId;
         }
+
+        console.log(`[PostTools:${toolKey}] Loading posts for page:`, pageId, {
+            source: fetchSource,
+            strictLive,
+            hasPostToken: !!auth.postToken,
+            hasAccessToken: !!auth.accessToken,
+            hasCookie: !!auth.cookieData,
+            hasHideToken: !!auth.hideToken,
+            accessTokenPrefix: auth.accessToken ? auth.accessToken.substring(0, 15) + "..." : "(none)",
+        });
+
         const response = await fetch("/api/published-posts", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1902,6 +1975,15 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false, skip
         });
         const data = await response.json();
 
+        console.log(`[PostTools:${toolKey}] API response:`, {
+            success: data.success,
+            postCount: Array.isArray(data.logs) ? data.logs.length : 0,
+            source: data.meta?.source || data.errorCategory || "(none)",
+            error: data.error || "(none)",
+            errorCategory: data.errorCategory || "(none)",
+            hasMore: !!data.meta?.hasMore,
+        });
+
         if (!data.success) {
             if (isPostToolFacebookAuthInvalidError(data)) {
                 const handled = await handleAuthInvalid(data, data.error);
@@ -1912,6 +1994,31 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false, skip
         }
 
         const incomingPosts = Array.isArray(data.logs) ? data.logs : [];
+
+        // If API returned success but 0 posts and the source indicates a fallback/cookie-only
+        // path, and we haven't tried recovery yet, trigger recovery to get a fresh token.
+        if (
+            !append
+            && incomingPosts.length === 0
+            && !state.authRecoveryTried
+            && pageId
+        ) {
+            const metaSource = String(data.meta?.source || "").toLowerCase();
+            const isLikelyTokenIssue =
+                metaSource.includes("history-fallback")
+                || metaSource.includes("cookie")
+                || metaSource.includes("html");
+            if (isLikelyTokenIssue) {
+                console.log(`[PostTools:${toolKey}] Empty result with source="${metaSource}", attempting recovery...`);
+                const recovered = await tryRecoverPostToolFacebookSession(toolKey);
+                if (recovered) {
+                    showPostToolStatusToast("รีเชื่อม Facebook ใหม่แล้ว กำลังโหลดโพสต์อีกครั้ง...", "success");
+                    state.pendingReload = true;
+                    return;
+                }
+            }
+        }
+
         state.authRecoveryTried = false;
         state.posts = append ? mergePostToolPosts(state.posts, incomingPosts) : incomingPosts;
         if (state.localRemovedIds.size) {
@@ -2198,7 +2305,8 @@ async function loadPostToolJobs(toolKey) {
     try {
         const response = await fetch(`/api/post-action-jobs?pageId=${encodeURIComponent(pageId)}&action=${encodeURIComponent(postToolConfigs[toolKey].action)}&limit=8`);
         const data = await response.json();
-        state.jobs = data.success && Array.isArray(data.jobs) ? data.jobs : [];
+        const fetchedJobs = data.success && Array.isArray(data.jobs) ? data.jobs : [];
+        state.jobs = mergeOptimisticPostToolJobs(state.jobs, fetchedJobs, state.activeJobId);
         if (state.activeJobId && !state.jobs.some((job) => Number(job.id || 0) === Number(state.activeJobId))) {
             state.activeJobId = 0;
         }
@@ -2210,9 +2318,13 @@ async function loadPostToolJobs(toolKey) {
         maybeNotifyPostToolJobCompletion(toolKey);
         updatePostToolPolling(toolKey);
     } catch (_) {
-        state.jobs = [];
+        const hasOptimisticInFlight = state.jobs.some((job) => isRecentOptimisticPostToolJob(job) && isPostToolJobInFlight(job));
+        if (!hasOptimisticInFlight) {
+            state.jobs = [];
+        }
         renderPostToolJobs(toolKey);
         renderPostToolExecutionStatus(toolKey);
+        updatePostToolPolling(toolKey);
     }
 }
 
@@ -2276,12 +2388,21 @@ async function runPostToolAction(toolKey) {
 
         state.activeJobId = Number(data.jobId || 0);
         if (state.activeJobId) {
+            state.jobs = [
+                buildOptimisticPostToolJob(toolKey, state.activeJobId, pageId, selectedPosts.length),
+                ...state.jobs.filter((job) => Number(job?.id || 0) !== Number(state.activeJobId)),
+            ];
             state.expandedJobIds.add(state.activeJobId);
+            renderPostToolJobs(toolKey);
+            renderPostToolExecutionStatus(toolKey);
+            updatePostToolPolling(toolKey);
             showPostToolStatusToast(`เริ่มงานลบโพสต์ ${selectedPosts.length} รายการแล้ว`, "success");
         }
         state.selectedIds.clear();
         renderPostToolTable(toolKey);
-        await loadPostToolJobs(toolKey);
+        window.setTimeout(() => {
+            loadPostToolJobs(toolKey);
+        }, 1200);
         if (toolKey !== "delete" && state.activeJobId) {
             await loadPostToolJobDetail(toolKey, state.activeJobId);
         }
@@ -2505,3 +2626,47 @@ function showHidePostsPanel() {
 function showDeletePostsPanel() {
     showPostToolPanel("delete");
 }
+
+// Proactive background token refresh.
+// Facebook short-lived tokens expire in ~1–2 hours. By refreshing every ~45 minutes
+// while the tab is open, we can avoid the "session expired" error before it happens.
+const PROACTIVE_REFRESH_INTERVAL_MS = 45 * 60 * 1000; // 45 minutes
+let proactiveRefreshTimer = null;
+
+function startProactiveTokenRefresh() {
+    if (proactiveRefreshTimer) return;
+    proactiveRefreshTimer = setInterval(async () => {
+        if (typeof syncWithExtensionNow !== "function") return;
+        try {
+            console.log("[PostTools] Proactive token refresh triggered");
+            await syncWithExtensionNow({ forceRefresh: true });
+            // Reset recovery flags so auto-recovery is available if needed
+            Object.keys(postToolStates).forEach((key) => {
+                postToolStates[key].authRecoveryTried = false;
+                postToolStates[key].authRecoveryTriedAt = 0;
+            });
+        } catch (error) {
+            console.warn("[PostTools] Proactive token refresh failed:", error?.message || error);
+        }
+    }, PROACTIVE_REFRESH_INTERVAL_MS);
+}
+
+// Also refresh when the tab becomes visible again after being hidden
+// (user switched back to this tab after a while).
+if (typeof document !== "undefined") {
+    let lastVisibilityChangeAt = 0;
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible") return;
+        const now = Date.now();
+        const elapsed = now - lastVisibilityChangeAt;
+        lastVisibilityChangeAt = now;
+        // Only trigger refresh if the tab was hidden for at least 10 minutes
+        if (elapsed < 10 * 60 * 1000) return;
+        if (typeof syncWithExtensionNow !== "function") return;
+        console.log("[PostTools] Tab became visible after", Math.round(elapsed / 60000), "min — refreshing tokens");
+        syncWithExtensionNow({ forceRefresh: true }).catch(() => {});
+    });
+}
+
+// Start proactive refresh on load
+startProactiveTokenRefresh();

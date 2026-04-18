@@ -1870,6 +1870,15 @@ async function handleListRequest(env: Env, input: PublishedQueryInput) {
         if (input.strictLive) {
             const errorCategory = String((facebookResult as any).errorCategory || '').trim().toLowerCase();
             const fallbackReason = String((facebookResult as any).error || '').trim().toLowerCase();
+
+            // When the token/session is definitively invalid, return the error directly
+            // so the frontend can trigger its session recovery flow (showing the
+            // "Session Facebook หมดอายุ" UI with the recovery button).
+            // Silently falling back to history would hide the auth problem from the user.
+            if (errorCategory === 'facebook_auth_invalid') {
+                return facebookResult;
+            }
+
             const isFacebookAppError = errorCategory === 'facebook_app_error'
                 || fallbackReason.includes('error loading application');
             if (isFacebookAppError) {

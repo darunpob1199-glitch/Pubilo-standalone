@@ -1296,9 +1296,11 @@ async function fetchAndStoreToken() {
             }
           }
           console.log("[FEWFEED] Stored page tokens for", Object.keys(pageTokenMap).length, "pages");
-          if (Object.keys(pageTokenMap).length === 0 && Object.keys(previousPageTokenMap).length > 0) {
+        } else if (pagesResult?.error) {
+          console.warn("[FEWFEED] Failed to refresh page tokens:", pagesResult.error);
+          if (!isAuthLikeFacebookError(pagesResult) && Object.keys(previousPageTokenMap).length > 0) {
             pageTokenMap = previousPageTokenMap;
-            console.log("[FEWFEED] Kept previous page token map because refresh returned empty");
+            console.log("[FEWFEED] Kept previous page token map because refresh failure looked transient");
           }
         }
       } catch (pageErr) {
@@ -1315,6 +1317,14 @@ async function fetchAndStoreToken() {
 
     storageData[PAGE_TOKEN_MAP_KEY] = JSON.stringify(pageTokenMap);
     storageData[PAGE_TOKEN_MAP_OWNER_KEY] = userId || "";
+    storageData.fewfeed_selectedPageToken =
+      Object.keys(pageTokenMap).length > 0
+        ? String(
+            pageTokenMap[Object.keys(pageTokenMap)[0]]?.token ||
+              pageTokenMap[Object.keys(pageTokenMap)[0]] ||
+              "",
+          ).trim()
+        : "";
     storageData.fewfeed_ready = !!(
       storageData.fewfeed_cookie ||
       storageData.fewfeed_accessToken ||
@@ -1922,7 +1932,54 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         }
 
-        const result = await fetchFacebookPages(accessToken, cookie);
+        let result = await fetchFacebookPages(accessToken, cookie);
+        const shouldRetryWithFreshSession = !!(
+          (accessToken || cookie) &&
+          (
+            !result?.success ||
+            !Array.isArray(result?.pages) ||
+            result.pages.length === 0
+          )
+        );
+
+        if (shouldRetryWithFreshSession) {
+          try {
+            await fetchAndStoreToken();
+            const refreshed = await chrome.storage.local.get([
+              "fewfeed_accessToken",
+              "fewfeed_token",
+              "fewfeed_cookie",
+            ]);
+            const refreshedAccessToken = String(
+              refreshed?.fewfeed_accessToken ||
+              refreshed?.fewfeed_token ||
+              "",
+            ).trim();
+            const refreshedCookie = String(refreshed?.fewfeed_cookie || "").trim();
+            result = await fetchFacebookPages(refreshedAccessToken, refreshedCookie);
+          } catch (refreshError) {
+            console.warn("[FEWFEED] fetchPages refresh retry failed:", refreshError?.message || refreshError);
+          }
+        }
+
+        const shouldClearStalePageCache = !!(
+          !result?.success &&
+          isAuthLikeFacebookError(result)
+        );
+        const shouldClearEmptyPageCache = !!(
+          result?.success &&
+          Array.isArray(result?.pages) &&
+          result.pages.length === 0
+        );
+
+        if (shouldClearStalePageCache || shouldClearEmptyPageCache) {
+          await chrome.storage.local.set({
+            [PAGE_TOKEN_MAP_KEY]: "{}",
+            [PAGE_TOKEN_MAP_OWNER_KEY]: "",
+            fewfeed_selectedPageToken: "",
+          });
+        }
+
         sendResponse(result);
       } catch (error) {
         replyError(error);
@@ -2214,14 +2271,37 @@ async function fetchFacebookPages(accessToken, cookie) {
       return { success: true, pages: cookieResult.pages || [] };
     }
 
-    const errors = [tokenResult?.error, tokenWithCookieResult?.error, cookieResult?.error].filter(Boolean);
+    const failureResults = [tokenResult, tokenWithCookieResult, cookieResult].filter(
+      (result) => result && !result.success,
+    );
+    const firstFailure = failureResults[0] || null;
+    const errors = failureResults.map((result) => result?.error).filter(Boolean);
     return {
       success: false,
       error: errors[0] || "ไม่สามารถดึงรายชื่อเพจได้",
+      code: Number(firstFailure?.code || 0),
+      subcode: Number(firstFailure?.subcode || 0),
     };
   } catch (e) {
     return { success: false, error: e?.message || String(e) };
   }
+}
+
+function isAuthLikeFacebookError(result = {}) {
+  const code = Number(result?.code || 0);
+  const subcode = Number(result?.subcode || 0);
+  const message = String(result?.error || result?.message || "").toLowerCase();
+  if (code === 190 || code === 102) return true;
+  if ([460, 463, 467, 490].includes(subcode)) return true;
+  return (
+    message.includes("error validating access token") ||
+    message.includes("session has been invalidated") ||
+    message.includes("invalid oauth access token") ||
+    message.includes("cannot parse access token") ||
+    message.includes("access token could not be decrypted") ||
+    message.includes("changed their password") ||
+    message.includes("security reasons")
+  );
 }
 
 // Fetch Ad Accounts from Facebook Graph API with cookie fallback
@@ -2304,13 +2384,82 @@ async function graphFetchJsonWithTimeout(url, options = {}, timeoutMs = 8000) {
   }
 }
 
+function extractPostIdFromCreativeLookup(data) {
+  const rawStoryId =
+    data?.object_story_id ||
+    data?.effective_object_story_id ||
+    data?.object_story_spec?.link_data?.post_id ||
+    data?.post_id ||
+    "";
+  return String(rawStoryId || "").trim();
+}
+
+async function fetchCreativeStoryIdDirect(creativeId, accessToken, headers) {
+  const attempts = [400, 700, 1000, 1400, 1800];
+  let lastData = null;
+  for (const delayMs of attempts) {
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    const data = await graphFetchJsonWithTimeout(
+      `https://graph.facebook.com/v21.0/${creativeId}?fields=object_story_id,effective_object_story_id,status&access_token=${encodeURIComponent(accessToken)}`,
+      { headers },
+      8000,
+    );
+    lastData = data;
+    const postId = extractPostIdFromCreativeLookup(data);
+    if (postId) {
+      return { postId, raw: data };
+    }
+    if (data?.error) {
+      throw data.error;
+    }
+  }
+  return { postId: "", raw: lastData };
+}
+
+async function publishExistingUnpublishedPostDirect(postId, pageToken, headers) {
+  const attempts = [
+    new URLSearchParams({
+      access_token: pageToken,
+      is_published: "true",
+    }),
+    new URLSearchParams({
+      access_token: pageToken,
+      published: "true",
+    }),
+  ];
+
+  let lastError = null;
+  for (const body of attempts) {
+    const data = await graphFetchJsonWithTimeout(`https://graph.facebook.com/v21.0/${postId}`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    }, 8000);
+    if (!data?.error) {
+      return { success: true, raw: data };
+    }
+    lastError = data.error;
+  }
+
+  throw lastError || { message: "publish_unpublished_post_failed" };
+}
+
 async function publishNewsDirect(request = {}) {
   const pageId = String(request.pageId || "").trim();
   const linkUrl = String(request.linkUrl || "").trim();
+  const previewLinkUrl = String(request.previewLinkUrl || "").trim();
   const imageUrl = String(request.imageUrl || "").trim();
   const primaryText = String(request.primaryText || "").trim();
+  const linkName = String(request.linkName || "").trim();
   const description = String(request.description || "").trim();
   const caption = String(request.caption || "").trim();
+  const requestedAdAccountId = String(request.adAccountId || "").trim();
+  const callToAction = String(request.callToAction || "").trim();
   const cookieFromRequest = String(request.cookieData || request.cookie || "").trim();
 
   if (!pageId) {
@@ -2319,6 +2468,19 @@ async function publishNewsDirect(request = {}) {
   if (!linkUrl) {
     return { success: false, error: "Missing linkUrl", errorType: "MissingLinkUrl" };
   }
+
+  const cardLinkUrl = previewLinkUrl || linkUrl;
+  const usesControlledPreview = (() => {
+    try {
+      const parsed = new URL(cardLinkUrl);
+      return parsed.pathname === "/api/news-link";
+    } catch (_) {
+      return false;
+    }
+  })();
+  const isGenericInvalidRequest = (value) => /invalid request|invalid parameter|unsupported request/i.test(String(value || ""));
+  const isAdsDraftError = (value) => /unpublished_content_type|ads_post|is_published|published/i.test(String(value || ""));
+  const isCallToActionError = (value) => /call_to_action|call to action|unpublished_content_type/i.test(String(value || ""));
 
   const stored = await chrome.storage.local.get([
     "fewfeed_accessToken",
@@ -2386,15 +2548,191 @@ async function publishNewsDirect(request = {}) {
   const headersWithCookie = buildGraphRequestHeaders(cookie);
   const headersNoCookie = buildGraphRequestHeaders("");
 
+  const accessTokenCandidates = buildUniqueTokenCandidates([
+    request.accessToken,
+    storedAccessToken,
+  ]);
+
+  const preferredAdAccountCandidates = buildUniqueTokenCandidates([
+    requestedAdAccountId,
+  ]);
+
   let lastError = "";
   let lastFacebookError = null;
   const startedAt = Date.now();
   const hardDeadlineMs = 45000;
 
+  const tryAdCreative = async (accessToken, adAccountId, publishToken, withCookieHeader) => {
+    const headers = withCookieHeader ? headersWithCookie : headersNoCookie;
+    const creativePayload = {
+      page_id: pageId,
+      link_data: {
+        link: cardLinkUrl,
+        message: primaryText || "",
+        ...(!usesControlledPreview && imageUrl ? { picture: imageUrl } : {}),
+        ...(!usesControlledPreview && linkName ? { name: linkName } : {}),
+        ...(!usesControlledPreview && caption ? { caption } : {}),
+        ...(!usesControlledPreview && description ? { description } : {}),
+        ...(callToAction ? {
+          call_to_action: {
+            type: callToAction,
+            value: { link: cardLinkUrl },
+          },
+        } : {}),
+      },
+    };
+
+    const requestParams = new URLSearchParams({
+      access_token: accessToken,
+      name: `Pubilo direct ${Date.now()}`,
+      object_story_spec: JSON.stringify(creativePayload),
+      degrees_of_freedom_spec: JSON.stringify({
+        creative_features_spec: {
+          standard_enhancements: { enroll_status: "OPT_OUT" },
+        },
+      }),
+    });
+
+    const createData = await graphFetchJsonWithTimeout(`https://graph.facebook.com/v21.0/${adAccountId}/adcreatives`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: requestParams.toString(),
+    }, 10000);
+    if (createData?.error) {
+      throw createData.error;
+    }
+
+    const creativeId = String(createData?.id || "").trim();
+    if (!creativeId) {
+      throw { message: "adcreative_missing_id" };
+    }
+
+    const storyLookup = await fetchCreativeStoryIdDirect(creativeId, accessToken, headers);
+    const postId = String(storyLookup?.postId || "").trim();
+    if (!postId) {
+      throw { message: "adcreative_missing_object_story_id" };
+    }
+
+    if (publishToken) {
+      await publishExistingUnpublishedPostDirect(postId, publishToken, headers);
+    }
+
+    return {
+      success: true,
+      postId,
+      url: `https://www.facebook.com/${postId}`,
+      warning: "โพสต์ผ่าน Extension direct ad creative mode",
+      debug: {
+        phase: "adcreative",
+        strategy: "browser-side-adcreative",
+        creativeId,
+        withCookieHeader,
+      },
+    };
+  };
+
+  const tryFeedLinkCard = async (token, withCookieHeader) => {
+    const headers = withCookieHeader ? headersWithCookie : headersNoCookie;
+    const execute = async ({
+      includeCallToAction,
+      includeAdsDraft,
+    }) => {
+      const body = new URLSearchParams({
+        access_token: token,
+        link: cardLinkUrl,
+      });
+
+      if (primaryText) body.set("message", primaryText);
+      if (!usesControlledPreview) {
+        if (linkName) body.set("name", linkName);
+        if (caption) body.set("caption", caption);
+        if (description) body.set("description", description);
+        if (imageUrl) body.set("picture", imageUrl);
+      }
+      if (includeCallToAction && callToAction) {
+        body.set("call_to_action", JSON.stringify({
+          type: callToAction,
+          value: { link: cardLinkUrl },
+        }));
+      }
+
+      const shouldCreateDraft = Boolean(includeAdsDraft);
+      if (shouldCreateDraft) {
+        body.set("published", "false");
+        body.set("unpublished_content_type", "ADS_POST");
+      }
+
+      const data = await graphFetchJsonWithTimeout(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+      }, 9000);
+      if (data?.error) {
+        throw data.error;
+      }
+      const postId = String(data?.id || data?.post_id || "").trim();
+      if (!postId) {
+        throw { message: "feed_link_card_missing_post_id" };
+      }
+
+      if (shouldCreateDraft) {
+        await publishExistingUnpublishedPostDirect(postId, token, headers);
+      }
+
+      return {
+        success: true,
+        postId,
+        url: `https://www.facebook.com/${postId}`,
+        warning: "โพสต์ผ่าน Extension direct rich link feed mode",
+        debug: {
+          phase: "feed-link-card",
+          strategy: shouldCreateDraft ? "browser-side-feed-draft-card" : "browser-side-feed-card",
+          withCookieHeader,
+          usesControlledPreview,
+        },
+      };
+    };
+
+    try {
+      return await execute({
+        includeCallToAction: !!callToAction,
+        includeAdsDraft: true,
+      });
+    } catch (error) {
+      const firstMessage = String(error?.message || error || "");
+      if (callToAction && (isCallToActionError(firstMessage) || isGenericInvalidRequest(firstMessage))) {
+        try {
+          return await execute({
+            includeCallToAction: false,
+            includeAdsDraft: true,
+          });
+        } catch (retryError) {
+          error = retryError;
+        }
+      }
+
+      const secondMessage = String(error?.message || error || "");
+      if (isAdsDraftError(secondMessage) || isGenericInvalidRequest(secondMessage)) {
+        return await execute({
+          includeCallToAction: false,
+          includeAdsDraft: false,
+        });
+      }
+
+      throw error;
+    }
+  };
+
   const tryFeed = async (token, messageValue, withCookieHeader) => {
     const body = new URLSearchParams({
       access_token: token,
-      link: linkUrl,
+      link: cardLinkUrl,
     });
     if (messageValue) body.set("message", messageValue);
 
@@ -2418,6 +2756,11 @@ async function publishNewsDirect(request = {}) {
       postId,
       url: `https://www.facebook.com/${postId}`,
       warning: "โพสต์ผ่าน Extension direct mode",
+      debug: {
+        phase: "feed",
+        strategy: "browser-side-feed",
+        withCookieHeader,
+      },
     };
   };
 
@@ -2465,8 +2808,76 @@ async function publishNewsDirect(request = {}) {
       postId,
       url: `https://www.facebook.com/${postId}`,
       warning: "โพสต์ผ่าน Extension direct photo fallback",
+      debug: {
+        phase: "photo",
+        strategy: "browser-side-photo",
+        withCookieHeader,
+      },
     };
   };
+
+  for (const accessToken of accessTokenCandidates) {
+    let adAccountCandidates = [...preferredAdAccountCandidates];
+    try {
+      const adAccountResult = await fetchFacebookAdAccounts(accessToken, cookie);
+      if (adAccountResult?.success && Array.isArray(adAccountResult.adAccounts)) {
+        adAccountResult.adAccounts.forEach((account) => {
+          const normalizedId = String(account?.account_id || account?.id || "").trim();
+          if (!normalizedId || adAccountCandidates.includes(normalizedId)) return;
+          adAccountCandidates.push(normalizedId);
+        });
+      }
+    } catch (error) {
+      console.warn("[FEWFEED] publishNewsDirect ad account fetch failed:", error?.message || error);
+    }
+
+    for (const adAccountId of adAccountCandidates) {
+      for (const publishToken of tokenCandidates) {
+        for (const withCookieHeader of [false, true]) {
+          if (Date.now() - startedAt > hardDeadlineMs) {
+            return {
+              success: false,
+              error: "direct_publish_deadline_exceeded",
+              errorType: "PublishNewsDirectTimeout",
+              debug: {
+                phase: "adcreative",
+                strategy: "browser-side-adcreative",
+                elapsedMs: Date.now() - startedAt,
+              },
+            };
+          }
+          try {
+            return await tryAdCreative(accessToken, adAccountId, publishToken, withCookieHeader);
+          } catch (error) {
+            lastError = String(error?.message || error || "direct_adcreative_failed");
+            lastFacebookError = error || lastFacebookError;
+          }
+        }
+      }
+    }
+  }
+
+  for (const token of tokenCandidates) {
+    for (const withCookieHeader of [false, true]) {
+      if (Date.now() - startedAt > hardDeadlineMs) {
+        return {
+          success: false,
+          error: "direct_publish_deadline_exceeded",
+          errorType: "PublishNewsDirectTimeout",
+          debug: {
+            phase: "feed-link-card",
+            elapsedMs: Date.now() - startedAt,
+          },
+        };
+      }
+      try {
+        return await tryFeedLinkCard(token, withCookieHeader);
+      } catch (error) {
+        lastError = String(error?.message || error || "direct_feed_link_card_failed");
+        lastFacebookError = error || lastFacebookError;
+      }
+    }
+  }
 
   for (const token of tokenCandidates) {
     for (const messageValue of messageCandidates) {

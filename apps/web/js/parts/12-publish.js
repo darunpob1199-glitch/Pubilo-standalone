@@ -1497,7 +1497,14 @@ function setupPublishHandler(mode) {
             // Compress image before upload to avoid 413 error
             let imageToUpload = publishSnapshot.selectedImage;
             if (imageToUpload && imageToUpload.startsWith("data:")) {
-                imageToUpload = await compressImage(imageToUpload, 1200, 0.8);
+                // Get selected aspect ratio for current mode
+                const selectedAspectRatio = (mode === "link")
+                    ? (typeof getLinkImageSize === "function" ? getLinkImageSize() : "1:1")
+                    : (mode === "news")
+                        ? (typeof getNewsImageSize === "function" ? getNewsImageSize() : "1:1")
+                        : "1:1";
+                // Crop to the selected aspect ratio (e.g., 1:1=1080x1080, 16:9=1080x608, etc.)
+                imageToUpload = await cropToAspectRatio(imageToUpload, selectedAspectRatio, 1080, 0.85);
             }
 
             const descriptionText = isLinkMode
@@ -1550,7 +1557,7 @@ function setupPublishHandler(mode) {
                 callToActionLabel: ctaConfig.label,
                 fbDtsg: fbDtsg, // Required for GraphQL scheduling
                 hideOnPublish: getHideOnPublishEnabledSnapshot(),
-                allowAdCreativePublish: false,
+                allowAdCreativePublish: true,
                 scheduleInSystem: scheduleSource === "manual",
                 scheduledTime: scheduledTime
                     ? Math.floor(scheduledTime.getTime() / 1000)
@@ -1801,9 +1808,13 @@ function setupPublishHandler(mode) {
                         const cookieUserId = typeof extractFacebookUserIdFromCookie === "function"
                             ? String(extractFacebookUserIdFromCookie(localCookie) || "").trim()
                             : "";
-                        return (
+                        const preferred =
                             tokens.find((token) => String(token?.user_id || "").trim() === cookieUserId) ||
                             tokens.find((token) => String(token?.user_id || "").trim() === localUserId) ||
+                            null;
+                        if (preferred) return preferred;
+                        if (cookieUserId || localUserId) return null;
+                        return (
                             tokens.find((token) => isAcceptableAdsTokenCandidate(token?.ads_token)) ||
                             tokens.find((token) => String(token?.cookie || "").trim()) ||
                             tokens[0] ||
@@ -1876,28 +1887,38 @@ function setupPublishHandler(mode) {
                         }
                     }
 
-                    if (recovered) {
-                        // Prime freshest page token before retrying.
-                        try {
-                            const latestToken =
-                                fbToken ||
-                                localStorage.getItem("fewfeed_accessToken") ||
-                                localStorage.getItem("fewfeed_token") ||
-                                "";
-                            const pageIdForRecovery = String(
-                                publishSnapshot?.pageId ||
-                                getCurrentPageId() ||
-                                "",
-                            ).trim();
-                            if (typeof getFreshPageTokenFromExtension === "function" && pageIdForRecovery) {
-                                await getFreshPageTokenFromExtension(pageIdForRecovery, latestToken || "");
+                    try {
+                        const latestToken =
+                            fbToken ||
+                            localStorage.getItem("fewfeed_accessToken") ||
+                            localStorage.getItem("fewfeed_token") ||
+                            "";
+                        const pageIdForRecovery = String(
+                            publishSnapshot?.pageId ||
+                            getCurrentPageId() ||
+                            "",
+                        ).trim();
+                        if (typeof getFreshPageTokenFromExtension === "function" && pageIdForRecovery) {
+                            const freshPageToken = await getFreshPageTokenFromExtension(
+                                pageIdForRecovery,
+                                latestToken || "",
+                                { skipWorkspaceFallback: true },
+                            );
+                            if (freshPageToken) {
+                                recovered = true;
                             }
-                            if (typeof hydrateSelectedPageTokenFromWorkspace === "function" && pageIdForRecovery) {
-                                await hydrateSelectedPageTokenFromWorkspace(pageIdForRecovery, { silent: true });
-                            }
-                        } catch (_) {
-                            // Best-effort token warm-up; retry can still continue.
                         }
+                        if (!recovered && typeof hydrateSelectedPageTokenFromWorkspace === "function" && pageIdForRecovery) {
+                            const hydratedPageToken = await hydrateSelectedPageTokenFromWorkspace(pageIdForRecovery, { silent: true });
+                            if (hydratedPageToken && hasSessionAdvanced()) {
+                                recovered = true;
+                            }
+                        }
+                    } catch (_) {
+                        // Best-effort token warm-up; retry can still continue.
+                    }
+
+                    if (recovered) {
 
                         showPublishToast("รีเฟรช Facebook session แล้ว กำลังลองโพสต์ให้อีกครั้ง", "warning");
                         els.publishBtn.textContent =
@@ -3635,9 +3656,10 @@ async function fetchAdAccounts(accessToken) {
     return activeAdAccountsFetchPromise;
 }
 
-async function getFreshPageTokenFromExtension(pageId, accessToken) {
+async function getFreshPageTokenFromExtension(pageId, accessToken, options = {}) {
     const normalizedPageId = String(pageId || "").trim();
     const normalizedAccessToken = String(accessToken || "").trim();
+    const skipWorkspaceFallback = !!(options && options.skipWorkspaceFallback);
     const hasCookie = !!String(localStorage.getItem("fewfeed_cookie") || "").trim();
     if (!normalizedPageId || (!normalizedAccessToken && !hasCookie)) return "";
 
@@ -3697,11 +3719,13 @@ async function getFreshPageTokenFromExtension(pageId, accessToken) {
         }
     }
 
-    const workspaceToken = await hydrateSelectedPageTokenFromWorkspace(normalizedPageId, {
-        silent: true,
-    });
-    if (workspaceToken) {
-        return workspaceToken;
+    if (!skipWorkspaceFallback) {
+        const workspaceToken = await hydrateSelectedPageTokenFromWorkspace(normalizedPageId, {
+            silent: true,
+        });
+        if (workspaceToken) {
+            return workspaceToken;
+        }
     }
 
     if (lastError) {
@@ -3793,6 +3817,39 @@ function getCurrentFacebookBrowserUserId() {
     );
     if (cookieUserId) return cookieUserId;
     return String(localStorage.getItem("fewfeed_userId") || "").trim();
+}
+
+function selectWorkspaceTokenForCurrentUser(tokens = [], options = {}) {
+    if (!Array.isArray(tokens) || tokens.length === 0) return null;
+
+    const currentBrowserUserId = String(
+        options.currentBrowserUserId || getCurrentFacebookBrowserUserId() || "",
+    ).trim();
+    const currentUserId = String(
+        options.currentUserId || localStorage.getItem("fewfeed_userId") || "",
+    ).trim();
+    const requireUserMatch = options.requireUserMatch !== false;
+
+    const matchingByBrowser = currentBrowserUserId
+        ? tokens.filter((token) => String(token?.user_id || "").trim() === currentBrowserUserId)
+        : [];
+    const matchingByLocalUser = currentUserId
+        ? tokens.filter((token) => String(token?.user_id || "").trim() === currentUserId)
+        : [];
+
+    const preferred =
+        matchingByBrowser.find((token) => isAcceptableAdsTokenCandidate(token?.ads_token)) ||
+        matchingByBrowser[0] ||
+        matchingByLocalUser.find((token) => isAcceptableAdsTokenCandidate(token?.ads_token)) ||
+        matchingByLocalUser[0];
+
+    if (preferred) return preferred;
+
+    if (requireUserMatch && (currentBrowserUserId || currentUserId)) {
+        return null;
+    }
+
+    return tokens.find((token) => isAcceptableAdsTokenCandidate(token?.ads_token)) || tokens[0] || null;
 }
 
 function persistWorkspaceFacebookSessionSnapshot(sessionData) {
@@ -4050,18 +4107,10 @@ async function hydrateFacebookCredentialsFromWorkspace() {
 
     const currentBrowserUserId = getCurrentFacebookBrowserUserId();
     const currentUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
-    const matchingByBrowser = tokens.filter(
-        (token) => String(token.user_id || "") === currentBrowserUserId,
-    );
-    const matchingByLocalUser = tokens.filter(
-        (token) => String(token.user_id || "") === currentUserId,
-    );
-    const preferred =
-        matchingByBrowser.find((token) => isAcceptableAdsTokenCandidate(token?.ads_token)) ||
-        matchingByBrowser[0] ||
-        matchingByLocalUser.find((token) => isAcceptableAdsTokenCandidate(token?.ads_token)) ||
-        matchingByLocalUser[0] ||
-        (!currentBrowserUserId ? tokens.find((token) => isAcceptableAdsTokenCandidate(token?.ads_token)) || tokens[0] : null);
+    const preferred = selectWorkspaceTokenForCurrentUser(tokens, {
+        currentBrowserUserId,
+        currentUserId,
+    });
 
     if (!preferred) {
         if (currentBrowserUserId) {
@@ -5333,9 +5382,9 @@ async function openTokenModal(type) {
                 });
                 const payload = await response.json().catch(() => ({}));
                 const tokens = Array.isArray(payload?.tokens) ? payload.tokens : [];
-                const selected =
-                    tokens.find((token) => String(token?.user_id || "") === String(localStorage.getItem("fewfeed_userId") || "")) ||
-                    tokens[0];
+                const selected = selectWorkspaceTokenForCurrentUser(tokens, {
+                    currentUserId: String(localStorage.getItem("fewfeed_userId") || "").trim(),
+                });
                 const refreshedTokenRaw = String(selected?.ads_token || "").trim();
                 const refreshedToken = isAcceptableAdsTokenCandidate(refreshedTokenRaw)
                     ? refreshedTokenRaw
@@ -5725,9 +5774,9 @@ async function runTokenDiagnostic() {
         const res = await fetch("/api/tokens?refreshFromCookie=1");
         const payload = await res.json().catch(() => ({}));
         const tokens = Array.isArray(payload?.tokens) ? payload.tokens : [];
-        const selected =
-            tokens.find((token) => String(token?.user_id || "") === String(localStorage.getItem("fewfeed_userId") || "")) ||
-            tokens[0];
+        const selected = selectWorkspaceTokenForCurrentUser(tokens, {
+            currentUserId: String(localStorage.getItem("fewfeed_userId") || "").trim(),
+        });
         const selectedAdsTokenRaw = String(selected?.ads_token || "").trim();
         const selectedAdsToken = isAcceptableAdsTokenCandidate(selectedAdsTokenRaw)
             ? selectedAdsTokenRaw
