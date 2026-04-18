@@ -1718,6 +1718,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === "resetPubiloBrowserState") {
+    (async () => {
+      try {
+        await chrome.storage.local.remove([
+          "fewfeed_accessToken",
+          "fewfeed_token",
+          "fewfeed_fbDtsg",
+          "fewfeed_userId",
+          "fewfeed_userName",
+          "fewfeed_cookie",
+          "fewfeed_ready",
+          "fewfeed_lastFetch",
+          "fewfeed_avatarUrl",
+          "fewfeed_selectedPageToken",
+          PAGE_TOKEN_MAP_KEY,
+          PAGE_TOKEN_MAP_OWNER_KEY,
+          ACCESS_TOKEN_VALIDATED_AT_KEY,
+          ACCESS_TOKEN_VALIDATION_STATUS_KEY,
+        ]);
+        await chrome.storage.local.set({
+          [PAGE_TOKEN_MAP_KEY]: "{}",
+          [PAGE_TOKEN_MAP_OWNER_KEY]: "",
+          [ACCESS_TOKEN_VALIDATED_AT_KEY]: 0,
+          [ACCESS_TOKEN_VALIDATION_STATUS_KEY]: "manual_reset",
+        });
+        sendResponse({ success: true });
+      } catch (error) {
+        replyError(error);
+      }
+    })();
+    return true;
+  }
+
   if (request.action === "getStoredData") {
     (async () => {
       try {
@@ -2559,6 +2592,8 @@ async function publishNewsDirect(request = {}) {
 
   let lastError = "";
   let lastFacebookError = null;
+  let lastPhase = "";
+  let lastStrategy = "";
   const startedAt = Date.now();
   const hardDeadlineMs = 45000;
 
@@ -2817,14 +2852,25 @@ async function publishNewsDirect(request = {}) {
   };
 
   for (const accessToken of accessTokenCandidates) {
-    let adAccountCandidates = [...preferredAdAccountCandidates];
+    let adAccountCandidates = [];
     try {
       const adAccountResult = await fetchFacebookAdAccounts(accessToken, cookie);
       if (adAccountResult?.success && Array.isArray(adAccountResult.adAccounts)) {
+        const accessibleIds = [];
         adAccountResult.adAccounts.forEach((account) => {
           const normalizedId = String(account?.account_id || account?.id || "").trim();
-          if (!normalizedId || adAccountCandidates.includes(normalizedId)) return;
-          adAccountCandidates.push(normalizedId);
+          if (!normalizedId || accessibleIds.includes(normalizedId)) return;
+          accessibleIds.push(normalizedId);
+        });
+        preferredAdAccountCandidates.forEach((candidateId) => {
+          if (candidateId && accessibleIds.includes(candidateId) && !adAccountCandidates.includes(candidateId)) {
+            adAccountCandidates.push(candidateId);
+          }
+        });
+        accessibleIds.forEach((candidateId) => {
+          if (candidateId && !adAccountCandidates.includes(candidateId)) {
+            adAccountCandidates.push(candidateId);
+          }
         });
       }
     } catch (error) {
@@ -2834,6 +2880,8 @@ async function publishNewsDirect(request = {}) {
     for (const adAccountId of adAccountCandidates) {
       for (const publishToken of tokenCandidates) {
         for (const withCookieHeader of [false, true]) {
+          lastPhase = "adcreative";
+          lastStrategy = withCookieHeader ? "browser-side-adcreative-cookie" : "browser-side-adcreative";
           if (Date.now() - startedAt > hardDeadlineMs) {
             return {
               success: false,
@@ -2859,6 +2907,8 @@ async function publishNewsDirect(request = {}) {
 
   for (const token of tokenCandidates) {
     for (const withCookieHeader of [false, true]) {
+      lastPhase = "feed-link-card";
+      lastStrategy = withCookieHeader ? "browser-side-feed-card-cookie" : "browser-side-feed-card";
       if (Date.now() - startedAt > hardDeadlineMs) {
         return {
           success: false,
@@ -2882,6 +2932,8 @@ async function publishNewsDirect(request = {}) {
   for (const token of tokenCandidates) {
     for (const messageValue of messageCandidates) {
       for (const withCookieHeader of [false, true]) {
+        lastPhase = "feed";
+        lastStrategy = withCookieHeader ? "browser-side-feed-cookie" : "browser-side-feed";
         if (Date.now() - startedAt > hardDeadlineMs) {
           return {
             success: false,
@@ -2906,6 +2958,8 @@ async function publishNewsDirect(request = {}) {
   for (const token of tokenCandidates) {
     for (const messageValue of messageCandidates) {
       for (const withCookieHeader of [false, true]) {
+        lastPhase = "photo";
+        lastStrategy = withCookieHeader ? "browser-side-photo-cookie" : "browser-side-photo";
         if (Date.now() - startedAt > hardDeadlineMs) {
           return {
             success: false,
@@ -2934,6 +2988,8 @@ async function publishNewsDirect(request = {}) {
     errorCode: Number(lastFacebookError?.code || 0) || undefined,
     errorSubcode: Number(lastFacebookError?.error_subcode || 0) || undefined,
     debug: {
+      phase: lastPhase,
+      strategy: lastStrategy,
       pageId,
       tokenCandidateCount: tokenCandidates.length,
       hasCookie: !!cookie,

@@ -28,6 +28,20 @@ async function safeSendMessage(msg, retries = 3) {
 const PAGE_TOKEN_MAP_KEY = "fewfeed_pageTokenMap";
 const PAGE_SUMMARY_MAP_KEY = "fewfeed_pageSummaryMap";
 const PAGE_CACHE_USER_ID_KEY = "fewfeed_pageCacheUserId";
+const PUBILO_SESSION_LOCAL_KEYS = [
+  "fewfeed_accessToken",
+  "fewfeed_token",
+  "fewfeed_fbDtsg",
+  "fewfeed_cookie",
+  "fewfeed_userId",
+  "fewfeed_userName",
+  "fewfeed_avatarUrl",
+  "fewfeed_postToken",
+  "fewfeed_ready",
+  "fewfeed_lastFetch",
+  "fewfeed_accessTokenValidatedAt",
+  "fewfeed_accessTokenValidationStatus",
+];
 const PAGE_SCOPED_LOCAL_KEYS = [
   PAGE_TOKEN_MAP_KEY,
   PAGE_SUMMARY_MAP_KEY,
@@ -100,6 +114,17 @@ function clearPageScopedCache(reason = "") {
   PAGE_SCOPED_LOCAL_KEYS.forEach((key) => localStorage.removeItem(key));
   if (reason) {
     console.log("[Pubilo Content] Cleared page-scoped cache:", reason);
+  }
+}
+
+function clearPubiloLocalBrowserState(reason = "") {
+  clearPageScopedCache(reason);
+  PUBILO_SESSION_LOCAL_KEYS.forEach((key) => localStorage.removeItem(key));
+  try {
+    delete document.documentElement.dataset.fewfeedSession;
+  } catch (_) {}
+  if (reason) {
+    console.log("[Pubilo Content] Cleared Pubilo local browser state:", reason);
   }
 }
 
@@ -738,6 +763,32 @@ window.addEventListener("message", async (event) => {
     }, "*");
   }
 
+  if (event.data.type === "FEWFEED_RESET_BROWSER_STATE") {
+    const requestId = String(event.data.requestId || "").trim();
+    let response;
+    try {
+      response = await safeSendMessage({
+        action: "resetPubiloBrowserState",
+      });
+    } catch (error) {
+      const errorMessage = String(error?.message || error || "reset_browser_state_failed");
+      response = {
+        success: false,
+        reason: isMessageChannelDisconnectedError(errorMessage)
+          ? "extension_context_invalidated"
+          : "content_exception",
+        error: errorMessage,
+      };
+    }
+
+    clearPubiloLocalBrowserState("manual-reset");
+    window.postMessage({
+      type: "FEWFEED_RESET_BROWSER_STATE_RESPONSE",
+      data: response,
+      requestId,
+    }, "*");
+  }
+
   // Page requesting to fetch Ad Accounts from Facebook API
   if (event.data.type === "FEWFEED_FETCH_AD_ACCOUNTS") {
     const requestId = String(event.data.requestId || "").trim();
@@ -933,4 +984,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Mark that extension is installed
 document.documentElement.setAttribute("data-fewfeed-extension", "true");
 window.postMessage({ type: "FEWFEED_EXTENSION_READY" }, "*");
-console.log("[Pubilo Content] Extension v9.2.2 ready - robust message channel recovery");
+console.log("[Pubilo Content] Extension v9.2.7 ready - robust message channel recovery");

@@ -2482,10 +2482,23 @@ app.post('/', async (c) => {
             : parseBooleanFlag(rawClientAdCreativeFlag);
         const adCreativeFlowEnabled = adCreativeAllowedByEnv && adCreativeRequestedByClient;
 
-        if (adCreativeFlowEnabled && isLinkAttachmentPost && effectiveAccessToken && !resolvedAdAccountId) {
+        if (adCreativeFlowEnabled && isLinkAttachmentPost && effectiveAccessToken) {
             try {
                 accessibleAdAccounts = await fetchAccessibleAdAccountIds(effectiveAccessToken, tokenRequestHeaders);
-                resolvedAdAccountId = accessibleAdAccounts[0] || '';
+                if (accessibleAdAccounts.length > 0) {
+                    if (!resolvedAdAccountId) {
+                        resolvedAdAccountId = accessibleAdAccounts[0] || '';
+                    } else if (!accessibleAdAccounts.includes(resolvedAdAccountId)) {
+                        console.warn('[publish] Selected ad account is not accessible for current token, switching to first accessible account:', {
+                            selected: resolvedAdAccountId,
+                            accessibleCount: accessibleAdAccounts.length,
+                            fallback: accessibleAdAccounts[0] || '',
+                        });
+                        resolvedAdAccountId = accessibleAdAccounts[0] || '';
+                    }
+                } else if (!resolvedAdAccountId) {
+                    resolvedAdAccountId = '';
+                }
             } catch (error) {
                 console.warn('[publish] Failed to auto-resolve ad account from access token:', error);
             }

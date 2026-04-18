@@ -1119,7 +1119,7 @@ if (newsPublishBtn) {
                 const warmToken = latestTokenFromLocal();
                 if (pageId && typeof getFreshPageTokenFromExtension === "function") {
                     const freshPageToken = await withTimeout(
-                        getFreshPageTokenFromExtension(pageId, warmToken, { skipWorkspaceFallback: true }),
+                        getFreshPageTokenFromExtension(pageId, warmToken, { skipWorkspaceFallback: false }),
                         9000,
                         "",
                     );
@@ -1142,7 +1142,11 @@ if (newsPublishBtn) {
         const adsToken = fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
         const cookie = fbCookie || localStorage.getItem("fewfeed_cookie");
         const freshPageToken = typeof getFreshPageTokenFromExtension === "function"
-            ? await withTimeout(getFreshPageTokenFromExtension(pageId, adsToken), 9000, "")
+            ? await withTimeout(
+                getFreshPageTokenFromExtension(pageId, adsToken, { skipWorkspaceFallback: false }),
+                9000,
+                "",
+            )
             : "";
         const manualPageToken = document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
         const cachedPageToken =
@@ -1151,23 +1155,26 @@ if (newsPublishBtn) {
                 : "";
         const pageToken = freshPageToken || manualPageToken || cachedPageToken || "";
         let adAccountId =
+            (typeof getVerifiedSelectedAdAccountId === "function"
+                ? getVerifiedSelectedAdAccountId()
+                : (typeof getSelectedAdAccountId === "function"
+                    ? getSelectedAdAccountId()
+                    : "")) ||
             (typeof getSelectedAdAccountId === "function"
-                ? getSelectedAdAccountId()
+                ? (() => {
+                    const currentSelected = String(getSelectedAdAccountId() || "").trim();
+                    const adAccountSelect = document.getElementById("newsAdAccountSelect") || document.getElementById("adAccountSelect");
+                    if (!currentSelected || !adAccountSelect) return "";
+                    const hasMatchingOption = Array.from(adAccountSelect.options || []).some((option) => {
+                        const optionValue = String(option.value || "").trim();
+                        return optionValue && optionValue === currentSelected;
+                    });
+                    return hasMatchingOption ? currentSelected : "";
+                })()
                 : "") ||
             document.getElementById("newsAdAccountSelect")?.value ||
             document.getElementById("adAccountSelect")?.value ||
             "";
-        if (!adAccountId) {
-            adAccountId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
-            if (adAccountId && typeof syncSelectedAdAccountValue === "function") {
-                syncSelectedAdAccountValue(adAccountId);
-            } else if (adAccountId) {
-                const adAccountInput = document.getElementById("adAccountSelect");
-                if (adAccountInput) adAccountInput.value = adAccountId;
-                const newsAdAccountInput = document.getElementById("newsAdAccountSelect");
-                if (newsAdAccountInput) newsAdAccountInput.value = adAccountId;
-            }
-        }
         const newsUrlInputEl = document.getElementById("newsUrlInput");
         const newsPrimaryTextEl = document.getElementById("newsPrimaryText");
         const newsPreviewDescEl = document.getElementById("newsPreviewDescription");
@@ -1238,7 +1245,11 @@ if (newsPublishBtn) {
                 const latestAdsToken = fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
                 const latestCookie = fbCookie || localStorage.getItem("fewfeed_cookie");
                 const latestPageToken = typeof getFreshPageTokenFromExtension === "function"
-                    ? await withTimeout(getFreshPageTokenFromExtension(pageId, latestAdsToken), 9000, "")
+                    ? await withTimeout(
+                        getFreshPageTokenFromExtension(pageId, latestAdsToken, { skipWorkspaceFallback: false }),
+                        9000,
+                        "",
+                    )
                     : "";
                 const manualPageToken = document.getElementById("pageTokenInputPanel")?.value?.trim() || "";
                 const cachedPageToken =

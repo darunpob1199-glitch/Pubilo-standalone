@@ -1107,7 +1107,9 @@ function setupPublishHandler(mode) {
                     localStorage.getItem("fewfeed_token") ||
                     "";
                 const freshPageToken = adsToken
-                    ? await getFreshPageTokenFromExtension(pageId, adsToken)
+                    ? await getFreshPageTokenFromExtension(pageId, adsToken, {
+                        skipWorkspaceFallback: false,
+                    })
                     : "";
                 const pageToken =
                     freshPageToken ||
@@ -1208,7 +1210,9 @@ function setupPublishHandler(mode) {
                     localStorage.getItem("fewfeed_token") ||
                     "";
                 const freshPageToken = adsToken
-                    ? await getFreshPageTokenFromExtension(pageId, adsToken)
+                    ? await getFreshPageTokenFromExtension(pageId, adsToken, {
+                        skipWorkspaceFallback: false,
+                    })
                     : "";
                 const pageToken =
                     freshPageToken ||
@@ -1294,7 +1298,9 @@ function setupPublishHandler(mode) {
                     localStorage.getItem("fewfeed_token") ||
                     "";
                 const freshPageToken = adsToken
-                    ? await getFreshPageTokenFromExtension(pageId, adsToken)
+                    ? await getFreshPageTokenFromExtension(pageId, adsToken, {
+                        skipWorkspaceFallback: false,
+                    })
                     : "";
                 const pageToken =
                     freshPageToken ||
@@ -1418,7 +1424,9 @@ function setupPublishHandler(mode) {
                 fbToken ||
                 localStorage.getItem("fewfeed_accessToken") ||
                 localStorage.getItem("fewfeed_token");
-            let freshPageToken = await getFreshPageTokenFromExtension(pageId, adsToken);
+            let freshPageToken = await getFreshPageTokenFromExtension(pageId, adsToken, {
+                skipWorkspaceFallback: false,
+            });
             const cachedPageToken =
                 localStorage.getItem("fewfeed_selectedPageToken") ||
                 localStorage.getItem("fewfeed_postToken") ||
@@ -1428,7 +1436,10 @@ function setupPublishHandler(mode) {
                 getPageToken() ||
                 cachedPageToken ||
                 "";
-            if (!resolvedPageToken) {
+            const hasCurrentBrowserCookie = !!String(
+                fbCookie || localStorage.getItem("fewfeed_cookie") || "",
+            ).trim();
+            if (!resolvedPageToken && !adsToken && !hasCurrentBrowserCookie) {
                 const workspacePageToken = await hydrateSelectedPageTokenFromWorkspace(pageId, {
                     silent: true,
                 });
@@ -1439,13 +1450,18 @@ function setupPublishHandler(mode) {
             }
             const cookie =
                 fbCookie || localStorage.getItem("fewfeed_cookie");
-            let adAccountId = getSelectedAdAccountId();
-            if (!adAccountId) {
-                adAccountId = String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
-                if (adAccountId) {
-                    syncSelectedAdAccountValue(adAccountId);
-                }
-            }
+            let adAccountId =
+                getVerifiedSelectedAdAccountId() ||
+                (() => {
+                    const currentSelected = String(getSelectedAdAccountId() || "").trim();
+                    const adAccountSelect = document.getElementById("newsAdAccountSelect") || document.getElementById("adAccountSelect");
+                    if (!currentSelected || !adAccountSelect) return "";
+                    const hasMatchingOption = Array.from(adAccountSelect.options || []).some((option) => {
+                        const optionValue = String(option.value || "").trim();
+                        return optionValue && optionValue === currentSelected;
+                    });
+                    return hasMatchingOption ? currentSelected : "";
+                })();
 
             if (!adsToken && !resolvedPageToken) {
                 throw new Error(
@@ -1902,7 +1918,7 @@ function setupPublishHandler(mode) {
                             const freshPageToken = await getFreshPageTokenFromExtension(
                                 pageIdForRecovery,
                                 latestToken || "",
-                                { skipWorkspaceFallback: true },
+                                { skipWorkspaceFallback: false },
                             );
                             if (freshPageToken) {
                                 recovered = true;
@@ -2186,16 +2202,16 @@ function buildPageBootstrapHealthSnapshot() {
             : "ให้ reload extension และเปิด site access ให้ pubilo.com ก่อน ระบบจะดึงเพจต่อได้";
         primaryAction = "open-token";
         primaryLabel = "เปิด Token";
-        secondaryAction = extensionAvailable ? "noop" : "heal-pages";
-        secondaryLabel = extensionAvailable ? "ปิด" : "ดึงใหม่";
+        secondaryAction = "reset-browser-state";
+        secondaryLabel = "รีเซ็ต Pubilo";
     } else if (!hasPages) {
         tone = "warning";
         title = "ยังไม่มีรายชื่อเพจ";
         body = "ระบบกำลังรอ page list จาก extension หรือ workspace ของ browser นี้";
         primaryAction = "heal-pages";
         primaryLabel = "ดึงเพจใหม่";
-        secondaryAction = "open-token";
-        secondaryLabel = "เปิด Token";
+        secondaryAction = "reset-browser-state";
+        secondaryLabel = "รีเซ็ต Pubilo";
     } else if (!selectedPageId || !selectedPageExists) {
         tone = "info";
         title = "ยังไม่ได้เลือกเพจหลัก";
@@ -2207,8 +2223,8 @@ function buildPageBootstrapHealthSnapshot() {
             primaryAction = "open-selector";
             primaryLabel = "เลือกเพจ";
         }
-        secondaryAction = "heal-pages";
-        secondaryLabel = "ดึงใหม่";
+        secondaryAction = "reset-browser-state";
+        secondaryLabel = "รีเซ็ต Pubilo";
     }
 
     return {
@@ -2413,6 +2429,36 @@ function clearPageScopedCache(reason = "") {
     selectedTargetPageIds = [];
     if (reason) {
         console.log("[FEWFEED] Cleared page-scoped cache:", reason);
+    }
+}
+
+function clearLocalPubiloBrowserSessionState(reason = "") {
+    [
+        "fewfeed_accessToken",
+        "fewfeed_token",
+        "fewfeed_fbDtsg",
+        "fewfeed_cookie",
+        "fewfeed_userId",
+        "fewfeed_userName",
+        "fewfeed_avatarUrl",
+        "fewfeed_postToken",
+        "fewfeed_ready",
+        "fewfeed_lastFetch",
+        "fewfeed_accessTokenValidatedAt",
+        "fewfeed_accessTokenValidationStatus",
+    ].forEach((key) => localStorage.removeItem(key));
+
+    fbToken = "";
+    fbCookie = "";
+    fbPostToken = "";
+    lastSessionDrivenFetchKey = "";
+    selectedPageIndex = 0;
+    if (document?.documentElement?.dataset) {
+        delete document.documentElement.dataset.fewfeedSession;
+    }
+
+    if (reason) {
+        console.log("[FEWFEED] Cleared local Pubilo browser session state:", reason);
     }
 }
 
@@ -3049,6 +3095,9 @@ async function handlePageHealthAction(action = "") {
                 setPageDropdownOpen(true);
             }
             return;
+        case "reset-browser-state":
+            await resetPubiloBrowserState();
+            return;
         default:
             return;
     }
@@ -3660,6 +3709,23 @@ function getSelectedAdAccountId() {
     return String(localStorage.getItem("fewfeed_selectedAdAccountId") || "").trim();
 }
 
+function getVerifiedSelectedAdAccountId() {
+    const controls = getAdAccountUiControls();
+    for (const control of controls) {
+        const select = control?.select;
+        const selected = String(select?.value || "").trim();
+        if (!selected || !select) continue;
+        const hasMatchingOption = Array.from(select.options || []).some((option) => {
+            const optionValue = String(option.value || "").trim();
+            return optionValue && optionValue === selected;
+        });
+        if (hasMatchingOption) {
+            return selected;
+        }
+    }
+    return "";
+}
+
 function syncSelectedAdAccountValue(selectedId) {
     const normalizedSelectedId = String(selectedId || "").trim();
     const controls = getAdAccountUiControls();
@@ -3776,7 +3842,7 @@ function renderAdAccountOptions(adAccounts, preferredId = "", options = {}) {
             select.appendChild(option);
         });
 
-        if (!preferredExists && effectivePreferredId) {
+        if (!preferredExists && effectivePreferredId && options.preserveStaleSelection === true) {
             const staleOption = document.createElement("option");
             staleOption.value = effectivePreferredId;
             staleOption.textContent = `บัญชีที่เคยเลือก · ${effectivePreferredId} (ยังไม่พบในสิทธิ์ตอนนี้)`;
@@ -3947,14 +4013,11 @@ async function fetchAdAccounts(accessToken) {
                 );
             }
             if (fallbackId) {
-                syncSelectedAdAccountValue(fallbackId);
-                renderAdAccountOptions([], fallbackId, {
-                    errorMessage: "โหลดบัญชียิงแอดไม่สำเร็จ แต่ยังใช้บัญชีที่เคยเลือกได้",
-                });
-                return fallbackId;
+                console.warn("[FEWFEED] Clearing stale selected ad account because fresh list fetch failed:", fallbackId);
             }
+            syncSelectedAdAccountValue("");
             renderAdAccountOptions([], "", {
-                errorMessage: "โหลดบัญชียิงแอดไม่สำเร็จ ลองกดรีเฟรชหรือกด extension อีกครั้ง",
+                errorMessage: "โหลดบัญชียิงแอดไม่สำเร็จ จึงไม่ใช้บัญชีที่ค้างไว้ ลองกดรีเฟรชหรือกด extension อีกครั้ง",
             });
             return "";
         } finally {
@@ -4891,6 +4954,107 @@ async function requestStoredTokensFromExtension() {
             window.postMessage({ type: "FEWFEED_GET_DATA" }, "*");
         }, 1200);
     });
+}
+
+async function requestExtensionBrowserStateReset() {
+    return new Promise((resolve) => {
+        let settled = false;
+        let requestInterval = null;
+        const requestId = `reset_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            window.removeEventListener("message", handleMessage);
+            clearTimeout(timeout);
+            if (requestInterval) {
+                clearInterval(requestInterval);
+                requestInterval = null;
+            }
+            resolve(result || { success: false });
+        };
+
+        const handleMessage = (event) => {
+            if (event.source !== window) return;
+            if (event.data.type !== "FEWFEED_RESET_BROWSER_STATE_RESPONSE") return;
+            const incomingRequestId = String(event.data.requestId || "").trim();
+            if (incomingRequestId && incomingRequestId !== requestId) return;
+            finish(event.data.data || { success: false });
+        };
+
+        const timeout = setTimeout(() => {
+            finish({ success: false, reason: "timeout" });
+        }, 6000);
+
+        const postRequest = () => {
+            window.postMessage(
+                {
+                    type: "FEWFEED_RESET_BROWSER_STATE",
+                    requestId,
+                },
+                "*",
+            );
+        };
+
+        window.addEventListener("message", handleMessage);
+        postRequest();
+        requestInterval = setInterval(() => {
+            if (settled) return;
+            postRequest();
+        }, 1200);
+    });
+}
+
+async function resetPubiloBrowserState() {
+    const confirmed = window.confirm(
+        "รีเซ็ต state ของ Pubilo บน browser นี้ใช่ไหม?\n\nระบบจะล้าง token/page cache ที่ค้างผิด แล้วดึงใหม่อัตโนมัติ โดยจะไม่ logout Facebook ออกทั้งเครื่อง",
+    );
+    if (!confirmed) return false;
+
+    if (pageHealthPrimaryAction) {
+        pageHealthPrimaryAction.disabled = true;
+    }
+    if (pageHealthSecondaryAction) {
+        pageHealthSecondaryAction.disabled = true;
+    }
+
+    let extensionReset = null;
+    try {
+        const extensionReady =
+            document.body.getAttribute("data-extension-ready") === "true" ||
+            hasSeenExtensionReadySignal ||
+            typeof window.pubiloExtension !== "undefined";
+        if (extensionReady) {
+            extensionReset = await requestExtensionBrowserStateReset();
+        }
+    } catch (error) {
+        extensionReset = {
+            success: false,
+            reason: "exception",
+            error: error?.message || String(error),
+        };
+    }
+
+    clearPageScopedCache("manual-reset");
+    clearPrimaryPageSelection();
+    clearWorkspaceFacebookSessionSnapshot("manual-reset");
+    clearLocalPubiloBrowserSessionState("manual-reset");
+    allPages = [];
+    targetPageSearchQuery = "";
+    renderPagesDropdown([], { skipAutoSelect: true });
+    showCookieStatus(false, "", "", false, false, false);
+    updatePageBootstrapHealthPanel();
+
+    showPublishToast(
+        extensionReset?.success
+            ? "รีเซ็ต state ของ Pubilo แล้ว กำลังดึงข้อมูลใหม่"
+            : "ล้าง state ของ Pubilo แล้ว กำลังดึงข้อมูลใหม่",
+        "success",
+    );
+
+    await runPageBootstrapSelfHeal("manual-browser-reset", { force: true }).catch(() => false);
+    updatePageBootstrapHealthPanel();
+    return true;
 }
 
 async function refreshFacebookTokensFromExtension() {

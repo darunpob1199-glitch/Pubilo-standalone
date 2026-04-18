@@ -5628,7 +5628,7 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// Fetch pages from Facebook API via extension or direct call
+// Fetch pages from Facebook API via extension or direct call + backend DB
 function fetchPages(accessToken) {
     // Determine if this is Post Token (starts with EAAChZC from Postcron) or Ads Token (starts with EAABsbCS)
     const tokenType = accessToken?.startsWith("EAAChZC")
@@ -5652,26 +5652,67 @@ function fetchPages(accessToken) {
         "*",
     );
 
-    // Also try direct API call as fallback (must include access_token field to get Page Tokens)
-    fetch(
+    // Fetch from both Facebook API and backend, then merge
+    const fbPromise = fetch(
         `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}&fields=access_token,id,name,picture,is_published&limit=100`,
     )
         .then((res) => res.json())
+        .then((data) => (data.data && data.data.length > 0) ? data.data : [])
+        .catch((err) => {
+            console.log("[FEWFEED] Direct API failed:", err.message);
+            return [];
+        });
+
+    const backendPromise = fetch("/api/pages")
+        .then((res) => res.json())
         .then((data) => {
-            if (data.data && data.data.length > 0) {
-                renderPagesDropdown(data.data);
-                console.log(
-                    "[FEWFEED] Pages loaded (direct):",
-                    data.data.length,
-                );
+            if (data.success && Array.isArray(data.pages)) {
+                return data.pages.map((p) => ({
+                    id: p.id || p.page_id,
+                    name: p.name || p.page_name || ("เพจ " + (p.id || p.page_id)),
+                    picture: p.picture || null,
+                    access_token: null, // Backend pages don't have fresh tokens
+                    _fromBackend: true,
+                }));
             }
+            return [];
         })
-        .catch((err) =>
+        .catch((err) => {
+            console.log("[FEWFEED] Backend pages failed:", err.message);
+            return [];
+        });
+
+    Promise.all([fbPromise, backendPromise]).then(([fbPages, backendPages]) => {
+        // Merge: FB pages take priority (they have fresh access_tokens)
+        const mergedById = new Map();
+
+        // Add Facebook API pages first (highest priority - fresh token)
+        fbPages.forEach((page) => {
+            if (page.id) {
+                mergedById.set(String(page.id), page);
+            }
+        });
+
+        // Add backend pages that aren't already in the list
+        backendPages.forEach((page) => {
+            const pageId = String(page.id || "");
+            if (pageId && !mergedById.has(pageId)) {
+                mergedById.set(pageId, page);
+            }
+        });
+
+        const mergedPages = Array.from(mergedById.values());
+        if (mergedPages.length > 0) {
+            renderPagesDropdown(mergedPages);
             console.log(
-                "[FEWFEED] Direct API failed:",
-                err.message,
-            ),
-        );
+                "[FEWFEED] Pages loaded (merged):",
+                mergedPages.length,
+                "(FB:", fbPages.length, "Backend:", backendPages.length, ")",
+            );
+        } else {
+            console.log("[FEWFEED] No pages found from any source");
+        }
+    });
 }
 
 // Helper: Show cookie status with Token/Cookie indicators in header
