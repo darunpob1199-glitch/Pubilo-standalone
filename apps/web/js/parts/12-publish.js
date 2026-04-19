@@ -3642,6 +3642,78 @@ function requestPagesFromExtension(accessToken, cookie = "") {
     });
 }
 
+async function expandSingleExtensionPageListWithWorkspace(extensionPages = []) {
+    if (!Array.isArray(extensionPages) || extensionPages.length !== 1) {
+        return Array.isArray(extensionPages) ? extensionPages : [];
+    }
+
+    const onlyPageId = String(extensionPages[0]?.id || "").trim();
+    if (!onlyPageId) return extensionPages;
+
+    try {
+        const response = await fetch("/api/pages");
+        const data = await response.json();
+        if (!data?.success || !Array.isArray(data.pages) || data.pages.length <= 1) {
+            return extensionPages;
+        }
+
+        const normalizedWorkspacePages = data.pages.map((p) => ({
+            id: String(p?.id || "").trim(),
+            name: pickPreferredPageName(p?.id, p?.name),
+            picture: p?.picture || {
+                data: {
+                    url: pickPreferredPagePicture(p?.id, p?.picture?.data?.url),
+                },
+            },
+            color: p?.color || "#f59e0b",
+            has_token: Boolean(p?.has_token || p?.hasToken),
+        })).filter((page) => page.id);
+
+        if (normalizedWorkspacePages.length <= 1) {
+            return extensionPages;
+        }
+
+        const workspaceHasOnlyPage = normalizedWorkspacePages.some((page) => page.id === onlyPageId);
+        if (!workspaceHasOnlyPage) {
+            return extensionPages;
+        }
+
+        const mergedPagesById = new Map();
+        normalizedWorkspacePages.forEach((page) => {
+            mergedPagesById.set(page.id, page);
+        });
+        extensionPages.forEach((page) => {
+            const pageId = String(page?.id || "").trim();
+            if (!pageId) return;
+            const existing = mergedPagesById.get(pageId);
+            mergedPagesById.set(pageId, {
+                ...(existing || {}),
+                ...page,
+                id: pageId,
+                name: pickPreferredPageName(pageId, page?.name, existing?.name),
+                picture: {
+                    data: {
+                        url: pickPreferredPagePicture(
+                            pageId,
+                            page?.picture?.data?.url || page?.picture,
+                            existing?.picture?.data?.url || existing?.picture,
+                        ),
+                    },
+                },
+            });
+        });
+
+        console.warn(
+            "[FEWFEED] Extension returned a single page, expanding selector from workspace pages",
+            { extensionPages: extensionPages.length, workspacePages: normalizedWorkspacePages.length },
+        );
+        return Array.from(mergedPagesById.values());
+    } catch (error) {
+        console.warn("[FEWFEED] Failed to expand single-page extension result from workspace:", error);
+        return extensionPages;
+    }
+}
+
 function requestAdAccountsFromExtension(accessToken) {
     return new Promise((resolve, reject) => {
         let settled = false;
@@ -5707,13 +5779,76 @@ async function fetchPages(accessToken, knownUserId = "") {
                             },
                         };
                     });
+                    let pagesToRender = normalizedPages;
+
+                    if (normalizedPages.length === 1) {
+                        try {
+                            const response = await fetch("/api/pages");
+                            const data = await response.json();
+                            const workspacePages = Array.isArray(data?.pages)
+                                ? data.pages.map((page) => ({
+                                    id: String(page?.id || "").trim(),
+                                    name: pickPreferredPageName(page?.id, page?.name),
+                                    picture: page?.picture || {
+                                        data: {
+                                            url: pickPreferredPagePicture(
+                                                page?.id,
+                                                page?.picture?.data?.url,
+                                            ),
+                                        },
+                                    },
+                                    color: page?.color || "#f59e0b",
+                                    has_token: Boolean(page?.has_token || page?.hasToken),
+                                })).filter((page) => page.id)
+                                : [];
+                            const extensionPageId = String(normalizedPages[0]?.id || "").trim();
+                            const shouldExpandFromWorkspace =
+                                workspacePages.length > 1 &&
+                                extensionPageId &&
+                                workspacePages.some((page) => page.id === extensionPageId);
+
+                            if (shouldExpandFromWorkspace) {
+                                const mergedById = new Map();
+                                workspacePages.forEach((page) => {
+                                    mergedById.set(page.id, page);
+                                });
+                                normalizedPages.forEach((page) => {
+                                    const pageId = String(page?.id || "").trim();
+                                    if (!pageId) return;
+                                    const existing = mergedById.get(pageId) || {};
+                                    mergedById.set(pageId, {
+                                        ...existing,
+                                        ...page,
+                                        id: pageId,
+                                        name: pickPreferredPageName(pageId, page?.name, existing?.name),
+                                        picture: {
+                                            data: {
+                                                url: pickPreferredPagePicture(
+                                                    pageId,
+                                                    page?.picture?.data?.url || page?.picture,
+                                                    existing?.picture?.data?.url || existing?.picture,
+                                                ),
+                                            },
+                                        },
+                                    });
+                                });
+                                pagesToRender = Array.from(mergedById.values());
+                                console.warn(
+                                    "[FEWFEED] Extension returned a single page; expanded selector from workspace pages",
+                                    { extensionPageId, extensionPages: normalizedPages.length, workspacePages: workspacePages.length },
+                                );
+                            }
+                        } catch (error) {
+                            console.warn("[FEWFEED] Failed to expand single extension page from workspace pages:", error);
+                        }
+                    }
 
                     mergeLoadedPageTokens(normalizedPages, localStorage.getItem("fewfeed_userId") || "");
-                    renderPagesDropdown(normalizedPages);
+                    renderPagesDropdown(pagesToRender);
                     if (normalizedAccessToken) {
                         fetchAdAccounts(normalizedAccessToken);
                     }
-                    console.log("[FEWFEED] Pages loaded from extension:", extensionPages.length);
+                    console.log("[FEWFEED] Pages loaded from extension:", extensionPages.length, "rendered:", pagesToRender.length);
 
                     normalizedPages.forEach((page) => {
                         const pageId = String(page?.id || "").trim();
