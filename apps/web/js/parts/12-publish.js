@@ -4274,7 +4274,7 @@ async function getFreshPageTokenFromExtension(pageId, accessToken, options = {})
     const hasCookie = !!String(localStorage.getItem("fewfeed_cookie") || "").trim();
     if (!normalizedPageId || (!normalizedAccessToken && !hasCookie)) return "";
 
-    let lastError = null;
+    // Build extension fetch candidates
     const extensionFetchCandidates = [];
     if (normalizedAccessToken) {
         extensionFetchCandidates.push(normalizedAccessToken);
@@ -4283,66 +4283,100 @@ async function getFreshPageTokenFromExtension(pageId, accessToken, options = {})
         extensionFetchCandidates.push("");
     }
 
-    for (const tokenCandidate of extensionFetchCandidates) {
-        try {
-            const pages = await requestPagesFromExtension(tokenCandidate);
-            if (!Array.isArray(pages) || pages.length === 0) continue;
-
-            const matchedPage = pages.find((page) => String(page.id) === normalizedPageId);
-            const nextToken = typeof matchedPage?.access_token === "string" ? matchedPage.access_token.trim() : "";
-            if (!nextToken) continue;
-
-            const cacheOwnerId = normalizePageCacheOwnerId();
-            const tokenMap = readScopedPageTokenMap(cacheOwnerId);
-            tokenMap[normalizedPageId] = nextToken;
-            writeScopedPageTokenMap(tokenMap, cacheOwnerId);
-            localStorage.setItem("fewfeed_selectedPageToken", nextToken);
-
-            const tokenInput = document.getElementById("pageTokenInputPanel");
-            if (tokenInput) {
-                tokenInput.value = nextToken;
-            }
-
+    // Helper: try extension candidates sequentially
+    const tryExtension = async () => {
+        for (const tokenCandidate of extensionFetchCandidates) {
             try {
-                await fetch("/api/page-settings", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        pageId: normalizedPageId,
-                        postToken: nextToken,
-                        pageName: matchedPage?.name || undefined,
-                        pictureUrl: matchedPage?.picture?.data?.url || undefined,
-                    }),
+                const pages = await requestPagesFromExtension(tokenCandidate);
+                if (!Array.isArray(pages) || pages.length === 0) continue;
+
+                const matchedPage = pages.find((page) => String(page.id) === normalizedPageId);
+                const nextToken = typeof matchedPage?.access_token === "string" ? matchedPage.access_token.trim() : "";
+                if (!nextToken) continue;
+
+                const cacheOwnerId = normalizePageCacheOwnerId();
+                const tokenMap = readScopedPageTokenMap(cacheOwnerId);
+                tokenMap[normalizedPageId] = nextToken;
+                writeScopedPageTokenMap(tokenMap, cacheOwnerId);
+                localStorage.setItem("fewfeed_selectedPageToken", nextToken);
+
+                const tokenInput = document.getElementById("pageTokenInputPanel");
+                if (tokenInput) {
+                    tokenInput.value = nextToken;
+                }
+
+                try {
+                    await fetch("/api/page-settings", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            pageId: normalizedPageId,
+                            postToken: nextToken,
+                            pageName: matchedPage?.name || undefined,
+                            pictureUrl: matchedPage?.picture?.data?.url || undefined,
+                        }),
+                    });
+                } catch (persistError) {
+                    console.warn("[FEWFEED] Failed to persist fresh page token:", persistError);
+                }
+
+                mergeLoadedPageTokens(pages, cacheOwnerId);
+
+                ensureLocalAdsTokenFromFallback({
+                    pageId: normalizedPageId,
+                    pageTokenMap: tokenMap,
                 });
-            } catch (persistError) {
-                console.warn("[FEWFEED] Failed to persist fresh page token:", persistError);
+                return nextToken;
+            } catch (error) {
+                // Continue to next candidate
             }
+        }
+        return "";
+    };
 
-            mergeLoadedPageTokens(pages, cacheOwnerId);
-
-            ensureLocalAdsTokenFromFallback({
-                pageId: normalizedPageId,
-                pageTokenMap: tokenMap,
+    // Helper: try workspace fallback
+    const tryWorkspace = async () => {
+        if (skipWorkspaceFallback) return "";
+        try {
+            const workspaceToken = await hydrateSelectedPageTokenFromWorkspace(normalizedPageId, {
+                silent: true,
             });
-            return nextToken;
-        } catch (error) {
-            lastError = error;
+            return workspaceToken || "";
+        } catch (_) {
+            return "";
         }
-    }
+    };
 
-    if (!skipWorkspaceFallback) {
-        const workspaceToken = await hydrateSelectedPageTokenFromWorkspace(normalizedPageId, {
-            silent: true,
-        });
-        if (workspaceToken) {
-            return workspaceToken;
+    // Run extension and workspace fallback in PARALLEL - first non-empty result wins.
+    // This prevents the 16+ second delay when extension doesn't respond.
+    try {
+        const candidates = [tryExtension()];
+        if (!skipWorkspaceFallback) {
+            candidates.push(tryWorkspace());
         }
-    }
 
-    if (lastError) {
-        console.warn("[FEWFEED] Fresh page token fetch failed:", lastError);
+        // True first-wins race: resolve as soon as ANY candidate returns a token.
+        // Workspace fallback typically returns in ~1s while extension waits 8s.
+        const result = await Promise.race([
+            new Promise((resolve) => {
+                let pending = candidates.length;
+                candidates.forEach((p) =>
+                    p.then((token) => {
+                        if (token) resolve(token);
+                        else if (--pending <= 0) resolve("");
+                    }).catch(() => {
+                        if (--pending <= 0) resolve("");
+                    }),
+                );
+            }),
+            // Overall timeout safety net
+            new Promise((resolve) => setTimeout(() => resolve(""), 10000)),
+        ]);
+        return result || "";
+    } catch (error) {
+        console.warn("[FEWFEED] Fresh page token fetch failed:", error);
+        return "";
     }
-    return "";
 }
 
 function isInvalidFacebookSessionError(data) {

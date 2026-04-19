@@ -5542,10 +5542,26 @@ window.addEventListener("message", (event) => {
             response.pages &&
             response.pages.length > 0
         ) {
-            renderPagesDropdown(response.pages);
+            // Merge extension pages with existing pages instead of replacing.
+            // Extension pages take priority (fresh access_token).
+            const mergedById = new Map();
+
+            // Keep existing pages first (from backend/previous load)
+            allPages.forEach((page) => {
+                if (page.id) mergedById.set(String(page.id), page);
+            });
+
+            // Extension pages override (they have fresh tokens)
+            response.pages.forEach((page) => {
+                if (page.id) mergedById.set(String(page.id), page);
+            });
+
+            const mergedPages = Array.from(mergedById.values());
+            renderPagesDropdown(mergedPages);
             console.log(
-                "[FEWFEED] Pages loaded:",
-                response.pages.length,
+                "[FEWFEED] Pages loaded (extension merged):",
+                mergedPages.length,
+                "(ext:", response.pages.length, "existing:", allPages.length, ")",
             );
             // Re-trigger navigation in case we landed on #pending before pages were loaded
             if (window.location.hash === "#pending") {
