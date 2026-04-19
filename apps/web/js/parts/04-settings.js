@@ -350,7 +350,9 @@ let scheduledPostTimes = [];
 
 function getCurrentPageId() {
     const pageSelect = document.getElementById("pageSelect");
-    return pageSelect ? pageSelect.value : null;
+    const raw = String(pageSelect?.value || "").trim();
+    if (!raw || raw === "0" || !/^\d+$/.test(raw)) return "";
+    return raw;
 }
 
 // Get current user ID
