@@ -6,7 +6,12 @@ const postToolConfigs = {
         panelId: "hidePostsPanel",
         prefix: "hidePosts",
         empty: "ยังไม่ได้โหลดโพสต์จากเพจ",
-        confirm: (count) => confirm(`ต้องการซ่อน ${count} โพสต์ที่เลือกใช่ไหม`),
+        confirm: async (count) => {
+            if (typeof window.pubiloConfirm === "function") {
+                return window.pubiloConfirm(`ต้องการซ่อน ${count} โพสต์ที่เลือกใช่ไหม`);
+            }
+            return confirm(`ต้องการซ่อน ${count} โพสต์ที่เลือกใช่ไหม`);
+        },
     },
     delete: {
         key: "delete",
@@ -15,7 +20,12 @@ const postToolConfigs = {
         panelId: "deletePostsPanel",
         prefix: "deletePosts",
         empty: "ยังไม่ได้โหลดโพสต์จากเพจ",
-        confirm: (count) => confirm(`กำลังจะลบ ${count} โพสต์จากเพจนี้\nยืนยันการลบหรือไม่`),
+        confirm: async (count) => {
+            if (typeof window.pubiloConfirm === "function") {
+                return window.pubiloConfirm(`กำลังจะลบ ${count} โพสต์จากเพจนี้\nยืนยันการลบหรือไม่`);
+            }
+            return confirm(`กำลังจะลบ ${count} โพสต์จากเพจนี้\nยืนยันการลบหรือไม่`);
+        },
     },
 };
 
@@ -58,6 +68,7 @@ const AUTH_RECOVERY_COOLDOWN_MS = 30000;
 
 function createPostToolState() {
     return {
+        actionInFlight: false,
         pageId: "",
         pageMetaById: {},
         pageResolveAttempts: 0,
@@ -117,6 +128,7 @@ function resetPostToolStateDefaults(toolKey) {
     state.pagination.loadingMore = false;
     state.pagination.lastBatchCount = 0;
     state.pageResolveAttempts = 0;
+    state.actionInFlight = false;
     state.pageMetaById = {};
     state.authRecoveryTried = false;
     state.authRecoveryTriedAt = 0;
@@ -1189,8 +1201,12 @@ function updatePostToolActionButton(toolKey, eligible = getPostToolEligibleFilte
 
     const selectedCount = eligible.filter((post) => state.selectedIds.has(getPostToolItemId(post))).length;
     const hasActionablePage = toolKey !== "delete" || !!getPostToolActivePageId(toolKey);
-    dom.runBtn.disabled = selectedCount === 0 || state.loading || !hasActionablePage;
+    dom.runBtn.disabled = selectedCount === 0 || state.loading || state.actionInFlight || !hasActionablePage;
     dom.runBtn.title = hasActionablePage ? "" : "เลือกเพจหลักก่อนลบโพสต์";
+    if (state.actionInFlight) {
+        dom.runBtn.textContent = toolKey === "hide" ? "กำลังเริ่มงานซ่อน..." : "กำลังเริ่มงานลบ...";
+        return;
+    }
     dom.runBtn.textContent = toolKey === "hide"
         ? `ซ่อนที่เลือก${selectedCount ? ` (${selectedCount})` : ""}`
         : `ลบที่เลือก${selectedCount ? ` (${selectedCount})` : ""}`;
@@ -2330,6 +2346,7 @@ async function loadPostToolJobs(toolKey) {
 
 async function runPostToolAction(toolKey) {
     const state = postToolStates[toolKey];
+    if (state.actionInFlight) return;
     const eligible = getPostToolEligibleFilteredPosts(toolKey);
     const selectedPosts = eligible.filter((post) => state.selectedIds.has(getPostToolItemId(post)));
     const batchSize = normalizeDeleteBatchSize(state.filters.batchSize, DELETE_BATCH_DEFAULT);
@@ -2350,11 +2367,14 @@ async function runPostToolAction(toolKey) {
         return;
     }
 
-    if (!postToolConfigs[toolKey].confirm(selectedPosts.length)) {
+    const confirmed = await postToolConfigs[toolKey].confirm(selectedPosts.length);
+    if (!confirmed) {
         return;
     }
 
     const auth = getPostToolAuth(pageId);
+    state.actionInFlight = true;
+    updatePostToolActionButton(toolKey, eligible);
 
     try {
         const response = await fetch("/api/post-action-jobs", {
@@ -2408,7 +2428,14 @@ async function runPostToolAction(toolKey) {
             await loadPostToolJobDetail(toolKey, state.activeJobId);
         }
     } catch (error) {
-        alert(`Error: ${error.message}`);
+        if (typeof window.showPubiloBlockingMessage === "function") {
+            await window.showPubiloBlockingMessage(`Error: ${error.message}`);
+        } else {
+            alert(`Error: ${error.message}`);
+        }
+    } finally {
+        state.actionInFlight = false;
+        renderPostToolTable(toolKey);
     }
 }
 

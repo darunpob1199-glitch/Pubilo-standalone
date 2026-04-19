@@ -1565,19 +1565,29 @@ if (newsPublishBtn) {
                 typeof window.autoResetPubiloBrowserState === "function";
             if (isPublishTimeout) {
                 window.showPublishToast?.("คำขอโพสต์นานกว่าปกติ โพสต์อาจสำเร็จไปแล้ว กรุณาตรวจที่หน้า Published ก่อนกดซ้ำ", "warning");
-                alert(String(errMessage || "คำขอโพสต์ใช้เวลานานกว่าปกติ"));
+                if (typeof window.showPubiloBlockingMessage === "function") {
+                    await window.showPubiloBlockingMessage(String(errMessage || "คำขอโพสต์ใช้เวลานานกว่าปกติ"));
+                } else {
+                    alert(String(errMessage || "คำขอโพสต์ใช้เวลานานกว่าปกติ"));
+                }
             } else if (isSessionExpiredError) {
-                alert(
-                    willAutoResetPubiloState
-                        ? "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง"
-                        : "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง",
-                );
+                const sessionMessage = willAutoResetPubiloState
+                    ? "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง"
+                    : "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง";
+                if (typeof window.showPubiloBlockingMessage === "function") {
+                    await window.showPubiloBlockingMessage(sessionMessage);
+                } else {
+                    alert(sessionMessage);
+                }
             } else {
-                alert(
-                    willAutoResetPubiloState
-                        ? `เกิดข้อผิดพลาด: ${errMessage}\n\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้`
-                        : "เกิดข้อผิดพลาด: " + errMessage,
-                );
+                const genericMessage = willAutoResetPubiloState
+                    ? `เกิดข้อผิดพลาด: ${errMessage}\n\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้`
+                    : "เกิดข้อผิดพลาด: " + errMessage;
+                if (typeof window.showPubiloBlockingMessage === "function") {
+                    await window.showPubiloBlockingMessage(genericMessage);
+                } else {
+                    alert(genericMessage);
+                }
             }
             if (willAutoResetPubiloState) {
                 setTimeout(() => {

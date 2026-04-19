@@ -724,6 +724,7 @@ async function uploadTextPostSquareImage(dataUrl) {
 
 window.renderTextComposerUi = renderTextComposerUi;
 let publishToastTimer = null;
+let pubiloDialogController = null;
 const PUBLISH_IN_FLIGHT_STORAGE_KEY = "fewfeed_publishInFlightState";
 const PUBLISH_IN_FLIGHT_MAX_AGE_MS = 2 * 60 * 1000;
 const publishInFlightByMode = {
@@ -900,6 +901,97 @@ function showPublishToast(message, type = "success") {
 
 window.showPublishToast = showPublishToast;
 
+function ensurePubiloDialog() {
+    let root = document.getElementById("pubiloDialogRoot");
+    if (root) return root;
+
+    root = document.createElement("div");
+    root.id = "pubiloDialogRoot";
+    root.className = "pubilo-dialog-backdrop";
+    root.innerHTML = `
+        <div class="pubilo-dialog" role="dialog" aria-modal="true" aria-labelledby="pubiloDialogTitle">
+            <div class="pubilo-dialog-title" id="pubiloDialogTitle">Pubilo</div>
+            <div class="pubilo-dialog-body" id="pubiloDialogBody"></div>
+            <div class="pubilo-dialog-actions">
+                <button type="button" class="pubilo-dialog-btn secondary" id="pubiloDialogCancel">Cancel</button>
+                <button type="button" class="pubilo-dialog-btn primary" id="pubiloDialogConfirm">OK</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(root);
+    return root;
+}
+
+function closePubiloDialog(result = false) {
+    if (!pubiloDialogController) return;
+    const { root, resolve, cleanup } = pubiloDialogController;
+    pubiloDialogController = null;
+    root.classList.remove("visible");
+    cleanup?.();
+    resolve?.(result);
+}
+
+function openPubiloDialog(message, options = {}) {
+    if (pubiloDialogController) {
+        closePubiloDialog(false);
+    }
+
+    const root = ensurePubiloDialog();
+    const titleEl = root.querySelector("#pubiloDialogTitle");
+    const bodyEl = root.querySelector("#pubiloDialogBody");
+    const cancelBtn = root.querySelector("#pubiloDialogCancel");
+    const confirmBtn = root.querySelector("#pubiloDialogConfirm");
+    const isConfirm = !!options.confirm;
+
+    titleEl.textContent = options.title || "Pubilo";
+    bodyEl.textContent = String(message || "");
+    cancelBtn.style.display = isConfirm ? "inline-flex" : "none";
+    cancelBtn.textContent = options.cancelText || "Cancel";
+    confirmBtn.textContent = options.confirmText || "OK";
+
+    return new Promise((resolve) => {
+        const onCancel = () => closePubiloDialog(false);
+        const onConfirm = () => closePubiloDialog(true);
+        const onKeyDown = (event) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closePubiloDialog(false);
+            }
+        };
+
+        const cleanup = () => {
+            cancelBtn.removeEventListener("click", onCancel);
+            confirmBtn.removeEventListener("click", onConfirm);
+            document.removeEventListener("keydown", onKeyDown);
+        };
+
+        pubiloDialogController = {
+            root,
+            resolve,
+            cleanup,
+        };
+
+        cancelBtn.addEventListener("click", onCancel);
+        confirmBtn.addEventListener("click", onConfirm);
+        document.addEventListener("keydown", onKeyDown);
+        root.classList.add("visible");
+        confirmBtn.focus();
+    });
+}
+
+window.pubiloAlert = function pubiloAlert(message, title = "Pubilo") {
+    return openPubiloDialog(message, { title, confirm: false, confirmText: "OK" });
+};
+
+window.pubiloConfirm = function pubiloConfirm(message, title = "Pubilo", options = {}) {
+    return openPubiloDialog(message, {
+        title,
+        confirm: true,
+        confirmText: options.confirmText || "OK",
+        cancelText: options.cancelText || "Cancel",
+    });
+};
+
 function restorePublishButtonState(mode, publishBtn) {
     if (!publishBtn) return;
     publishBtn.textContent =
@@ -935,6 +1027,16 @@ function focusPrimaryComposerField(mode, els) {
         }
     }
 }
+
+async function showPubiloBlockingMessage(message, title = "Pubilo") {
+    if (typeof window.pubiloAlert === "function") {
+        await window.pubiloAlert(message, title);
+        return;
+    }
+    alert(message);
+}
+
+window.showPubiloBlockingMessage = showPubiloBlockingMessage;
 
 function handleImmediatePublishSuccess(mode, els = null) {
     const modeEls = els || (typeof getModeElements === "function" ? getModeElements(mode) : null);
@@ -1975,23 +2077,23 @@ function setupPublishHandler(mode) {
                 typeof autoResetPubiloBrowserState === "function";
             if (isPublishTimeout) {
                 showPublishToast("คำขอโพสต์นานกว่าปกติ โพสต์อาจสำเร็จไปแล้ว กรุณาตรวจที่หน้า Published ก่อนกดซ้ำ", "warning");
-                alert(errMessage);
+                await showPubiloBlockingMessage(errMessage);
             } else if (isNetworkFetchError) {
-                alert("เชื่อมต่อ API ไม่สำเร็จ (network) กรุณาลองใหม่อีกครั้ง");
+                await showPubiloBlockingMessage("เชื่อมต่อ API ไม่สำเร็จ (network) กรุณาลองใหม่อีกครั้ง");
             } else if (isExtensionContextError) {
-                alert(
+                await showPubiloBlockingMessage(
                     willAutoResetPubiloState
                         ? "Extension หลุดการเชื่อมต่อกับหน้านี้\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง"
                         : "Extension หลุดการเชื่อมต่อกับหน้านี้\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง",
                 );
             } else if (isSessionExpiredError) {
-                alert(
+                await showPubiloBlockingMessage(
                     willAutoResetPubiloState
                         ? "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง"
                         : "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง",
                 );
             } else {
-                alert(
+                await showPubiloBlockingMessage(
                     willAutoResetPubiloState
                         ? `Publish failed: ${err.message}\n\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้`
                         : "Publish failed: " + err.message,
