@@ -280,12 +280,41 @@
                 width: 100%;
             }
 
-            .sidebar-page-selector .page-dropdown {
+            body.page-picker-open {
+                overflow: hidden;
+            }
+
+            .page-picker-modal {
+                position: fixed;
+                inset: 0;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                padding: 1.5rem;
+                z-index: 2100;
+            }
+
+            .page-picker-modal.visible {
+                display: flex;
+            }
+
+            .page-picker-backdrop {
                 position: absolute;
-                top: 100%;
-                left: 0;
-                right: 0;
-                z-index: 100;
+                inset: 0;
+                background: rgba(15, 23, 42, 0.42);
+                backdrop-filter: blur(12px);
+            }
+
+            .page-picker-modal .page-dropdown {
+                position: relative;
+                top: auto;
+                left: auto;
+                right: auto;
+                width: min(430px, calc(100vw - 32px));
+                max-height: min(78vh, 720px);
+                display: none;
+                flex-direction: column;
+                z-index: 1;
             }
 
             .multi-page-dropdown-head {
@@ -317,6 +346,38 @@
                 font-weight: 600;
                 color: #6b7280;
                 white-space: nowrap;
+            }
+
+            .page-picker-head-actions {
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+            }
+
+            .page-picker-close {
+                width: 36px;
+                height: 36px;
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 999px;
+                background: #fff;
+                color: #111827;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                flex-shrink: 0;
+                transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+            }
+
+            .page-picker-close:hover {
+                border-color: rgba(17, 24, 39, 0.18);
+                box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+                transform: translateY(-1px);
+            }
+
+            .page-picker-close svg {
+                width: 16px;
+                height: 16px;
             }
 
             .multi-page-search-shell {
@@ -697,6 +758,12 @@
                 color: #111827;
             }
 
+            .page-selector-open-hint {
+                font-size: 0.72rem;
+                font-weight: 700;
+                color: #6b7280;
+            }
+
             .page-selector-skeleton {
                 display: flex;
                 align-items: center;
@@ -765,6 +832,10 @@
                 display: block;
             }
 
+            .page-picker-modal .page-dropdown.visible {
+                display: flex;
+            }
+
             .page-dropdown-item {
                 display: flex;
                 align-items: center;
@@ -807,6 +878,29 @@
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
+            }
+
+            @media (max-width: 768px) {
+                .page-picker-modal {
+                    align-items: flex-end;
+                    padding: 0.75rem;
+                }
+
+                .page-picker-modal .page-dropdown {
+                    width: 100%;
+                    max-height: 82vh;
+                    border-radius: 24px 24px 18px 18px;
+                }
+
+                .multi-page-dropdown-head {
+                    flex-direction: column;
+                    align-items: stretch;
+                }
+
+                .page-picker-head-actions {
+                    width: 100%;
+                    justify-content: space-between;
+                }
             }
 
             .preview-page-info h3 {

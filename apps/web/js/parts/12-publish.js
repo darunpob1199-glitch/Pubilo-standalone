@@ -2154,6 +2154,8 @@ const EXTENSION_FETCH_COOLDOWN_MS = 5000;
 // Page selector elements
 const pageSelector = document.getElementById("pageSelector");
 const pageDropdown = document.getElementById("pageDropdown");
+const pagePickerModal = document.getElementById("pagePickerModal");
+const pagePickerCloseBtn = document.getElementById("pagePickerCloseBtn");
 const multiPageTriggerValue = document.getElementById("pageSelectorTargetSummary");
 const multiPageCountBadge = document.getElementById("pageSelectorTargetCount");
 const multiPageSelectedMeta = document.getElementById("multiPageSelectedMeta");
@@ -2908,8 +2910,12 @@ function getOrderedPagesForPicker(pages, currentPageId) {
 
 function setPageDropdownOpen(isOpen) {
     if (!pageDropdown || !pageSelector) return;
-    pageDropdown.classList.toggle("visible", !!isOpen);
-    pageSelector.classList.toggle("open", !!isOpen);
+    const nextIsOpen = !!isOpen;
+    pageDropdown.classList.toggle("visible", nextIsOpen);
+    pageSelector.classList.toggle("open", nextIsOpen);
+    pagePickerModal?.classList.toggle("visible", nextIsOpen);
+    pagePickerModal?.setAttribute("aria-hidden", nextIsOpen ? "false" : "true");
+    document.body.classList.toggle("page-picker-open", nextIsOpen);
     if (isOpen && multiPageSearchInput) {
         multiPageSearchInput.focus();
         multiPageSearchInput.select();
@@ -3221,20 +3227,38 @@ window.clearSelectedTargetPages = function clearSelectedTargetPages() {
     renderMultiPageTargetPicker();
 };
 
-// Toggle dropdown
-pageSelector.addEventListener("click", (e) => {
-    e.stopPropagation();
-    setPageDropdownOpen(!pageDropdown.classList.contains("visible"));
-});
+// Toggle page picker modal
+if (pageSelector && pageDropdown) {
+    pageSelector.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setPageDropdownOpen(!pageDropdown.classList.contains("visible"));
+    });
+}
 
-// Close dropdown when clicking outside
-document.addEventListener("click", () => {
-    setPageDropdownOpen(false);
-});
+if (pagePickerModal) {
+    pagePickerModal.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        if (target === pagePickerModal || target.dataset.closePagePicker === "true") {
+            setPageDropdownOpen(false);
+        }
+    });
+}
 
-pageDropdown.addEventListener("click", (event) => {
-    event.stopPropagation();
-});
+if (pagePickerCloseBtn) {
+    pagePickerCloseBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setPageDropdownOpen(false);
+    });
+}
+
+if (pageDropdown) {
+    pageDropdown.addEventListener("click", (event) => {
+        event.stopPropagation();
+    });
+}
 
 async function handlePageHealthAction(action = "") {
     switch (String(action || "").trim()) {
@@ -7136,6 +7160,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
 document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+        if (pagePickerModal?.classList.contains("visible")) {
+            setPageDropdownOpen(false);
+        }
         closeLightbox();
     }
 });

@@ -237,19 +237,30 @@
                     </div>
                     <div class="page-selector-meta">
                         <span class="page-selector-target-count" id="pageSelectorTargetCount">0</span>
+                        <span class="page-selector-open-hint">เปลี่ยนเพจ</span>
                         <svg class="page-dropdown-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
                             <path d="M6 9l6 6 6-6" />
                         </svg>
                     </div>
                 </div>
-                <div class="page-dropdown" id="pageDropdown">
+            </div>
+            <div class="page-picker-modal" id="pagePickerModal" aria-hidden="true">
+                <div class="page-picker-backdrop" data-close-page-picker="true"></div>
+                <div class="page-dropdown" id="pageDropdown" role="dialog" aria-modal="true" aria-labelledby="pagePickerTitle">
                     <div class="multi-page-dropdown-head">
                         <div>
                             <p class="multi-page-eyebrow">Page Routing</p>
-                            <h4>เลือกเพจหลักและเพจปลายทาง</h4>
+                            <h4 id="pagePickerTitle">เลือกเพจหลักและเพจปลายทาง</h4>
                         </div>
-                        <span class="multi-page-selected-meta" id="multiPageSelectedMeta">ยังไม่เลือกเพจหลัก</span>
+                        <div class="page-picker-head-actions">
+                            <span class="multi-page-selected-meta" id="multiPageSelectedMeta">ยังไม่เลือกเพจหลัก</span>
+                            <button type="button" class="page-picker-close" id="pagePickerCloseBtn" aria-label="ปิดตัวเลือกเพจ">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M18 6L6 18M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                     <div class="multi-page-search-shell">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
