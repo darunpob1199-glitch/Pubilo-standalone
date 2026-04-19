@@ -5784,29 +5784,27 @@ async function fetchPages(accessToken, knownUserId = "") {
                         has_token: Boolean(p.has_token || p.hasToken),
                     }));
 
-                    let safeWorkspacePages = pages;
-                    if (currentUserId) {
-                        if (preferredWorkspacePageId) {
-                            safeWorkspacePages = pages.filter((page) => String(page?.id || "").trim() === preferredWorkspacePageId);
-                        } else if (pages.length === 1) {
-                            safeWorkspacePages = pages;
-                        } else {
-                            safeWorkspacePages = [];
-                        }
-                    }
+                    const preferredWorkspacePages = preferredWorkspacePageId
+                        ? pages.filter((page) => String(page?.id || "").trim() === preferredWorkspacePageId)
+                        : [];
+                    const orderedWorkspacePages = preferredWorkspacePages.length
+                        ? [
+                            ...preferredWorkspacePages,
+                            ...pages.filter((page) => String(page?.id || "").trim() !== preferredWorkspacePageId),
+                        ]
+                        : pages;
 
-                    if (!safeWorkspacePages.length && currentUserId && pages.length > 0) {
+                    if (currentUserId && pages.length > 0) {
+                        if (pages.length === 1) {
+                            renderPagesDropdown(orderedWorkspacePages);
+                            return;
+                        }
                         console.warn(
-                            "[FEWFEED] Falling back to workspace pages without auto-select because current Facebook account is known but no scoped match was found",
+                            "[FEWFEED] Falling back to workspace pages without auto-select because extension did not return a scoped page list",
                             { currentUserId, preferredWorkspacePageId, workspacePages: pages.length },
                         );
-                        renderPagesDropdown(pages, { skipAutoSelect: true });
+                        renderPagesDropdown(orderedWorkspacePages, { skipAutoSelect: true });
                         return;
-                    } else if (!safeWorkspacePages.length) {
-                        console.warn(
-                            "[FEWFEED] Skipped workspace DB pages because no safe page match was found",
-                            { currentUserId, preferredWorkspacePageId, workspacePages: pages.length },
-                        );
                     } else if (renderedFromScopedCache) {
                         const mergedById = new Map();
                         scopedCachedPages.forEach((page) => {
@@ -5814,7 +5812,7 @@ async function fetchPages(accessToken, knownUserId = "") {
                             if (!pageId) return;
                             mergedById.set(pageId, page);
                         });
-                        safeWorkspacePages.forEach((page) => {
+                        orderedWorkspacePages.forEach((page) => {
                             const pageId = String(page?.id || "").trim();
                             if (!pageId) return;
                             const existing = mergedById.get(pageId);
@@ -5837,7 +5835,7 @@ async function fetchPages(accessToken, knownUserId = "") {
                         renderPagesDropdown(Array.from(mergedById.values()));
                         return;
                     } else {
-                        renderPagesDropdown(safeWorkspacePages);
+                        renderPagesDropdown(orderedWorkspacePages);
                         return;
                     }
                 }
