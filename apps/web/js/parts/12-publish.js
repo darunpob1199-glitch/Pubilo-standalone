@@ -1966,15 +1966,27 @@ function setupPublishHandler(mode) {
             console.error("[FEWFEED] Error:", errMessage);
             const isNetworkFetchError =
                 /failed to fetch|networkerror|network request failed|load failed/i.test(errMessage);
+            if (isSessionExpiredError || isExtensionContextError) {
+                try {
+                    if (typeof clearPageScopedCache === "function") {
+                        clearPageScopedCache("publish-session-expired");
+                    }
+                    if (typeof clearLocalPubiloBrowserSessionState === "function") {
+                        clearLocalPubiloBrowserSessionState("publish-session-expired");
+                    }
+                } catch (_) {
+                    // Best-effort: never let cleanup block the error message.
+                }
+            }
             if (isPublishTimeout) {
                 showPublishToast("คำขอโพสต์นานกว่าปกติ โพสต์อาจสำเร็จไปแล้ว กรุณาตรวจที่หน้า Published ก่อนกดซ้ำ", "warning");
                 alert(errMessage);
             } else if (isNetworkFetchError) {
                 alert("เชื่อมต่อ API ไม่สำเร็จ (network) กรุณาลองใหม่อีกครั้ง");
             } else if (isExtensionContextError) {
-                alert("Extension หลุดการเชื่อมต่อกับหน้านี้\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง");
+                alert("Extension หลุดการเชื่อมต่อกับหน้านี้\nระบบล้าง session เก่าให้แล้ว\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง");
             } else if (isSessionExpiredError) {
-                alert("Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง");
+                alert("Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบล้าง cache ให้อัตโนมัติแล้ว ไม่ต้องล้าง browser เอง\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง");
             } else {
                 alert("Publish failed: " + err.message);
             }
