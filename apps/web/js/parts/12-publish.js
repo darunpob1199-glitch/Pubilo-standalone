@@ -1966,6 +1966,19 @@ function setupPublishHandler(mode) {
             console.error("[FEWFEED] Error:", errMessage);
             const isNetworkFetchError =
                 /failed to fetch|networkerror|network request failed|load failed/i.test(errMessage);
+            const shouldAutoResetPubiloState =
+                /session has been invalidated|error validating access token|facebook session หมดอายุ|invalid oauth access token|extension context invalidated|link-card-failed-all-fallbacks|invalid request/i.test(
+                    errMessage,
+                );
+            let didAutoResetPubiloState = false;
+            if (
+                shouldAutoResetPubiloState &&
+                typeof autoResetPubiloBrowserState === "function"
+            ) {
+                didAutoResetPubiloState = await Promise.resolve(
+                    autoResetPubiloBrowserState(`publish-${mode}-failed`),
+                ).catch(() => false);
+            }
             if (isSessionExpiredError || isExtensionContextError) {
                 try {
                     if (typeof clearPageScopedCache === "function") {
@@ -1984,11 +1997,23 @@ function setupPublishHandler(mode) {
             } else if (isNetworkFetchError) {
                 alert("เชื่อมต่อ API ไม่สำเร็จ (network) กรุณาลองใหม่อีกครั้ง");
             } else if (isExtensionContextError) {
-                alert("Extension หลุดการเชื่อมต่อกับหน้านี้\nระบบล้าง session เก่าให้แล้ว\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง");
+                alert(
+                    didAutoResetPubiloState
+                        ? "Extension หลุดการเชื่อมต่อกับหน้านี้\nระบบรีเซ็ต state ของ Pubilo ให้แล้ว ไม่ต้องล้าง browser data เอง\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง"
+                        : "Extension หลุดการเชื่อมต่อกับหน้านี้\nระบบล้าง session เก่าให้แล้ว\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง",
+                );
             } else if (isSessionExpiredError) {
-                alert("Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบล้าง cache ให้อัตโนมัติแล้ว ไม่ต้องล้าง browser เอง\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง");
+                alert(
+                    didAutoResetPubiloState
+                        ? "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบรีเซ็ต state ของ Pubilo ให้แล้ว ไม่ต้องล้าง browser data เอง\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง"
+                        : "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบล้าง cache ให้อัตโนมัติแล้ว ไม่ต้องล้าง browser เอง\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง",
+                );
             } else {
-                alert("Publish failed: " + err.message);
+                alert(
+                    didAutoResetPubiloState
+                        ? `Publish failed: ${err.message}\n\nระบบรีเซ็ต state ของ Pubilo ให้แล้ว ไม่ต้องล้าง browser data เอง`
+                        : "Publish failed: " + err.message,
+                );
             }
             els.publishBtn.textContent =
                 typeof getPrimaryPublishLabel === "function"
@@ -5027,11 +5052,20 @@ async function requestExtensionBrowserStateReset() {
     });
 }
 
-async function resetPubiloBrowserState() {
-    const confirmed = window.confirm(
-        "รีเซ็ต state ของ Pubilo บน browser นี้ใช่ไหม?\n\nระบบจะล้าง token/page cache ที่ค้างผิด แล้วดึงใหม่อัตโนมัติ โดยจะไม่ logout Facebook ออกทั้งเครื่อง",
-    );
-    if (!confirmed) return false;
+let lastAutomaticBrowserStateResetAt = 0;
+
+async function performPubiloBrowserStateReset(options = {}) {
+    const requireConfirm = !!options.requireConfirm;
+    const reason = String(options.reason || "").trim();
+    const startupMessage = String(options.startupMessage || "").trim();
+    const successMessage = String(options.successMessage || "").trim();
+
+    if (requireConfirm) {
+        const confirmed = window.confirm(
+            "รีเซ็ต state ของ Pubilo บน browser นี้ใช่ไหม?\n\nระบบจะล้าง token/page cache ที่ค้างผิด แล้วดึงใหม่อัตโนมัติ โดยจะไม่ logout Facebook ออกทั้งเครื่อง",
+        );
+        if (!confirmed) return false;
+    }
 
     if (pageHealthPrimaryAction) {
         pageHealthPrimaryAction.disabled = true;
@@ -5067,17 +5101,47 @@ async function resetPubiloBrowserState() {
     showCookieStatus(false, "", "", false, false, false);
     updatePageBootstrapHealthPanel();
 
+    if (startupMessage) {
+        showPublishToast(startupMessage, "warning");
+    }
+
     showPublishToast(
-        extensionReset?.success
-            ? "รีเซ็ต state ของ Pubilo แล้ว กำลังดึงข้อมูลใหม่"
-            : "ล้าง state ของ Pubilo แล้ว กำลังดึงข้อมูลใหม่",
+        successMessage ||
+            (extensionReset?.success
+                ? "รีเซ็ต state ของ Pubilo แล้ว กำลังดึงข้อมูลใหม่"
+                : "ล้าง state ของ Pubilo แล้ว กำลังดึงข้อมูลใหม่"),
         "success",
     );
 
-    await runPageBootstrapSelfHeal("manual-browser-reset", { force: true }).catch(() => false);
+    await runPageBootstrapSelfHeal(reason || "manual-browser-reset", { force: true }).catch(() => false);
     updatePageBootstrapHealthPanel();
     return true;
 }
+
+async function resetPubiloBrowserState() {
+    return performPubiloBrowserStateReset({
+        requireConfirm: true,
+        reason: "manual-browser-reset",
+    });
+}
+
+async function autoResetPubiloBrowserState(reason = "auto-browser-reset") {
+    const now = Date.now();
+    if (now - lastAutomaticBrowserStateResetAt < 15000) {
+        console.log("[FEWFEED] Skipping repeated automatic Pubilo reset during cooldown:", reason);
+        return false;
+    }
+
+    lastAutomaticBrowserStateResetAt = now;
+    return performPubiloBrowserStateReset({
+        requireConfirm: false,
+        reason,
+        startupMessage: "ตรวจพบ state ของ Pubilo ค้างหลังโพสต์ไม่สำเร็จ กำลังรีเซ็ตให้อัตโนมัติ",
+        successMessage: "ระบบรีเซ็ต state ของ Pubilo ให้แล้ว กำลังดึงข้อมูลใหม่",
+    });
+}
+
+window.autoResetPubiloBrowserState = autoResetPubiloBrowserState;
 
 async function refreshFacebookTokensFromExtension() {
     return new Promise((resolve) => {
