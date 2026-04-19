@@ -110,15 +110,43 @@ function getPageCacheOwnerId() {
   return String(localStorage.getItem(PAGE_CACHE_USER_ID_KEY) || "").trim();
 }
 
-function clearPageScopedCache(reason = "") {
-  PAGE_SCOPED_LOCAL_KEYS.forEach((key) => localStorage.removeItem(key));
+function clearPageScopedCache(reason = "", options = {}) {
+  const preservePrimarySelection = !!options.preservePrimarySelection;
+  const preserveTargetPages = !!options.preserveTargetPages;
+  const preserveSelectedAdAccount = !!options.preserveSelectedAdAccount;
+  const preservePageSummaries = !!options.preservePageSummaries;
+
+  const keysToRemove = PAGE_SCOPED_LOCAL_KEYS.filter((key) => {
+    if (preservePageSummaries && (key === PAGE_SUMMARY_MAP_KEY || key === PAGE_CACHE_USER_ID_KEY)) {
+      return false;
+    }
+    if (
+      preservePrimarySelection &&
+      (
+        key === "fewfeed_selectedPageId" ||
+        key === "fewfeed_selectedPageName" ||
+        key === "fewfeed_selectedPagePicture"
+      )
+    ) {
+      return false;
+    }
+    if (preserveTargetPages && key === "fewfeed_targetPageIds") {
+      return false;
+    }
+    if (preserveSelectedAdAccount && key === "fewfeed_selectedAdAccountId") {
+      return false;
+    }
+    return true;
+  });
+
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
   if (reason) {
     console.log("[Pubilo Content] Cleared page-scoped cache:", reason);
   }
 }
 
-function clearPubiloLocalBrowserState(reason = "") {
-  clearPageScopedCache(reason);
+function clearPubiloLocalBrowserState(reason = "", options = {}) {
+  clearPageScopedCache(reason, options);
   PUBILO_SESSION_LOCAL_KEYS.forEach((key) => localStorage.removeItem(key));
   try {
     delete document.documentElement.dataset.fewfeedSession;
@@ -765,6 +793,10 @@ window.addEventListener("message", async (event) => {
 
   if (event.data.type === "FEWFEED_RESET_BROWSER_STATE") {
     const requestId = String(event.data.requestId || "").trim();
+    const preservePrimarySelection = !!event.data.preservePrimarySelection;
+    const preserveTargetPages = !!event.data.preserveTargetPages;
+    const preserveSelectedAdAccount = !!event.data.preserveSelectedAdAccount;
+    const preservePageSummaries = !!event.data.preservePageSummaries;
     let response;
     try {
       response = await safeSendMessage({
@@ -781,7 +813,12 @@ window.addEventListener("message", async (event) => {
       };
     }
 
-    clearPubiloLocalBrowserState("manual-reset");
+    clearPubiloLocalBrowserState("manual-reset", {
+      preservePrimarySelection,
+      preserveTargetPages,
+      preserveSelectedAdAccount,
+      preservePageSummaries,
+    });
     window.postMessage({
       type: "FEWFEED_RESET_BROWSER_STATE_RESPONSE",
       data: response,

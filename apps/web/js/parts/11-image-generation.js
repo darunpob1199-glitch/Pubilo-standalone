@@ -948,7 +948,7 @@ if (newsPublishBtn) {
                 String(value || ""),
             );
         const shouldAutoResetPubiloState = (value) =>
-            /session has been invalidated|error validating access token|facebook session หมดอายุ|invalid oauth access token|extension context invalidated|link-card-failed-all-fallbacks|invalid request/i.test(
+            /session has been invalidated|error validating access token|facebook session หมดอายุ|invalid oauth access token|extension context invalidated/i.test(
                 String(value || ""),
             );
         const attemptNewsSessionRecovery = async () => {
@@ -1560,32 +1560,33 @@ if (newsPublishBtn) {
             const isPublishTimeout = isPublishTimeoutError(err);
             const errMessage = String(err?.message || err || "");
             const isSessionExpiredError = isSessionExpiredErrorMessage(errMessage);
-            let didAutoResetPubiloState = false;
-            if (
+            const willAutoResetPubiloState =
                 shouldAutoResetPubiloState(errMessage) &&
-                typeof window.autoResetPubiloBrowserState === "function"
-            ) {
-                didAutoResetPubiloState = await withTimeout(
-                    Promise.resolve(window.autoResetPubiloBrowserState("news-publish-failed")),
-                    7000,
-                    false,
-                ).catch(() => false);
-            }
+                typeof window.autoResetPubiloBrowserState === "function";
             if (isPublishTimeout) {
                 window.showPublishToast?.("คำขอโพสต์นานกว่าปกติ โพสต์อาจสำเร็จไปแล้ว กรุณาตรวจที่หน้า Published ก่อนกดซ้ำ", "warning");
                 alert(String(errMessage || "คำขอโพสต์ใช้เวลานานกว่าปกติ"));
             } else if (isSessionExpiredError) {
                 alert(
-                    didAutoResetPubiloState
-                        ? "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบรีเซ็ต state ของ Pubilo ให้แล้ว ไม่ต้องล้าง browser data เอง\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง"
+                    willAutoResetPubiloState
+                        ? "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง"
                         : "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง",
                 );
             } else {
                 alert(
-                    didAutoResetPubiloState
-                        ? `เกิดข้อผิดพลาด: ${errMessage}\n\nระบบรีเซ็ต state ของ Pubilo ให้แล้ว ไม่ต้องล้าง browser data เอง`
+                    willAutoResetPubiloState
+                        ? `เกิดข้อผิดพลาด: ${errMessage}\n\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้`
                         : "เกิดข้อผิดพลาด: " + errMessage,
                 );
+            }
+            if (willAutoResetPubiloState) {
+                setTimeout(() => {
+                    withTimeout(
+                        Promise.resolve(window.autoResetPubiloBrowserState("news-publish-failed")),
+                        7000,
+                        false,
+                    ).catch(() => false);
+                }, 0);
             }
             const baseLabel = typeof getPrimaryPublishLabel === "function"
                 ? getPrimaryPublishLabel("news")

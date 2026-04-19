@@ -1967,30 +1967,12 @@ function setupPublishHandler(mode) {
             const isNetworkFetchError =
                 /failed to fetch|networkerror|network request failed|load failed/i.test(errMessage);
             const shouldAutoResetPubiloState =
-                /session has been invalidated|error validating access token|facebook session หมดอายุ|invalid oauth access token|extension context invalidated|link-card-failed-all-fallbacks|invalid request/i.test(
+                /session has been invalidated|error validating access token|facebook session หมดอายุ|invalid oauth access token|extension context invalidated/i.test(
                     errMessage,
                 );
-            let didAutoResetPubiloState = false;
-            if (
+            const willAutoResetPubiloState =
                 shouldAutoResetPubiloState &&
-                typeof autoResetPubiloBrowserState === "function"
-            ) {
-                didAutoResetPubiloState = await Promise.resolve(
-                    autoResetPubiloBrowserState(`publish-${mode}-failed`),
-                ).catch(() => false);
-            }
-            if (isSessionExpiredError || isExtensionContextError) {
-                try {
-                    if (typeof clearPageScopedCache === "function") {
-                        clearPageScopedCache("publish-session-expired");
-                    }
-                    if (typeof clearLocalPubiloBrowserSessionState === "function") {
-                        clearLocalPubiloBrowserSessionState("publish-session-expired");
-                    }
-                } catch (_) {
-                    // Best-effort: never let cleanup block the error message.
-                }
-            }
+                typeof autoResetPubiloBrowserState === "function";
             if (isPublishTimeout) {
                 showPublishToast("คำขอโพสต์นานกว่าปกติ โพสต์อาจสำเร็จไปแล้ว กรุณาตรวจที่หน้า Published ก่อนกดซ้ำ", "warning");
                 alert(errMessage);
@@ -1998,22 +1980,29 @@ function setupPublishHandler(mode) {
                 alert("เชื่อมต่อ API ไม่สำเร็จ (network) กรุณาลองใหม่อีกครั้ง");
             } else if (isExtensionContextError) {
                 alert(
-                    didAutoResetPubiloState
-                        ? "Extension หลุดการเชื่อมต่อกับหน้านี้\nระบบรีเซ็ต state ของ Pubilo ให้แล้ว ไม่ต้องล้าง browser data เอง\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง"
-                        : "Extension หลุดการเชื่อมต่อกับหน้านี้\nระบบล้าง session เก่าให้แล้ว\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง",
+                    willAutoResetPubiloState
+                        ? "Extension หลุดการเชื่อมต่อกับหน้านี้\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง"
+                        : "Extension หลุดการเชื่อมต่อกับหน้านี้\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง",
                 );
             } else if (isSessionExpiredError) {
                 alert(
-                    didAutoResetPubiloState
-                        ? "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบรีเซ็ต state ของ Pubilo ให้แล้ว ไม่ต้องล้าง browser data เอง\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง"
-                        : "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบล้าง cache ให้อัตโนมัติแล้ว ไม่ต้องล้าง browser เอง\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง",
+                    willAutoResetPubiloState
+                        ? "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง"
+                        : "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง",
                 );
             } else {
                 alert(
-                    didAutoResetPubiloState
-                        ? `Publish failed: ${err.message}\n\nระบบรีเซ็ต state ของ Pubilo ให้แล้ว ไม่ต้องล้าง browser data เอง`
+                    willAutoResetPubiloState
+                        ? `Publish failed: ${err.message}\n\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้`
                         : "Publish failed: " + err.message,
                 );
+            }
+            if (willAutoResetPubiloState) {
+                setTimeout(() => {
+                    Promise.resolve(
+                        autoResetPubiloBrowserState(`publish-${mode}-failed`),
+                    ).catch(() => false);
+                }, 0);
             }
             els.publishBtn.textContent =
                 typeof getPrimaryPublishLabel === "function"
@@ -2461,7 +2450,12 @@ function writeScopedPageSummaryMap(summaryMap, ownerId = "") {
     writeScopedJsonObject(PAGE_SUMMARY_MAP_KEY, summaryMap, ownerId);
 }
 
-function clearPageScopedCache(reason = "") {
+function clearPageScopedCache(reason = "", options = {}) {
+    const preservePrimarySelection = !!options.preservePrimarySelection;
+    const preserveTargetPages = !!options.preserveTargetPages;
+    const preserveSelectedAdAccount = !!options.preserveSelectedAdAccount;
+    const preservePageSummaries = !!options.preservePageSummaries;
+
     [
         PAGE_TOKEN_MAP_KEY,
         PAGE_SUMMARY_MAP_KEY,
@@ -2472,8 +2466,31 @@ function clearPageScopedCache(reason = "") {
         "fewfeed_selectedPageToken",
         "fewfeed_selectedAdAccountId",
         TARGET_PAGE_STORAGE_KEY,
-    ].forEach((key) => localStorage.removeItem(key));
-    selectedTargetPageIds = [];
+    ].forEach((key) => {
+        if (preservePageSummaries && (key === PAGE_SUMMARY_MAP_KEY || key === PAGE_CACHE_USER_ID_KEY)) {
+            return;
+        }
+        if (
+            preservePrimarySelection &&
+            (
+                key === "fewfeed_selectedPageId" ||
+                key === "fewfeed_selectedPageName" ||
+                key === "fewfeed_selectedPagePicture"
+            )
+        ) {
+            return;
+        }
+        if (preserveTargetPages && key === TARGET_PAGE_STORAGE_KEY) {
+            return;
+        }
+        if (preserveSelectedAdAccount && key === "fewfeed_selectedAdAccountId") {
+            return;
+        }
+        localStorage.removeItem(key);
+    });
+    if (!preserveTargetPages) {
+        selectedTargetPageIds = [];
+    }
     if (reason) {
         console.log("[FEWFEED] Cleared page-scoped cache:", reason);
     }
@@ -5003,11 +5020,15 @@ async function requestStoredTokensFromExtension() {
     });
 }
 
-async function requestExtensionBrowserStateReset() {
+async function requestExtensionBrowserStateReset(options = {}) {
     return new Promise((resolve) => {
         let settled = false;
         let requestInterval = null;
         const requestId = `reset_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        const preservePrimarySelection = !!options.preservePrimarySelection;
+        const preserveTargetPages = !!options.preserveTargetPages;
+        const preserveSelectedAdAccount = !!options.preserveSelectedAdAccount;
+        const preservePageSummaries = !!options.preservePageSummaries;
 
         const finish = (result) => {
             if (settled) return;
@@ -5038,6 +5059,10 @@ async function requestExtensionBrowserStateReset() {
                 {
                     type: "FEWFEED_RESET_BROWSER_STATE",
                     requestId,
+                    preservePrimarySelection,
+                    preserveTargetPages,
+                    preserveSelectedAdAccount,
+                    preservePageSummaries,
                 },
                 "*",
             );
@@ -5059,6 +5084,7 @@ async function performPubiloBrowserStateReset(options = {}) {
     const reason = String(options.reason || "").trim();
     const startupMessage = String(options.startupMessage || "").trim();
     const successMessage = String(options.successMessage || "").trim();
+    const preserveVisualState = !!options.preserveVisualState;
 
     if (requireConfirm) {
         const confirmed = window.confirm(
@@ -5081,7 +5107,12 @@ async function performPubiloBrowserStateReset(options = {}) {
             hasSeenExtensionReadySignal ||
             typeof window.pubiloExtension !== "undefined";
         if (extensionReady) {
-            extensionReset = await requestExtensionBrowserStateReset();
+            extensionReset = await requestExtensionBrowserStateReset({
+                preservePrimarySelection: preserveVisualState,
+                preserveTargetPages: preserveVisualState,
+                preservePageSummaries: preserveVisualState,
+                preserveSelectedAdAccount: preserveVisualState,
+            });
         }
     } catch (error) {
         extensionReset = {
@@ -5091,14 +5122,23 @@ async function performPubiloBrowserStateReset(options = {}) {
         };
     }
 
-    clearPageScopedCache("manual-reset");
-    clearPrimaryPageSelection();
+    clearPageScopedCache("manual-reset", {
+        preservePrimarySelection: preserveVisualState,
+        preserveTargetPages: preserveVisualState,
+        preservePageSummaries: preserveVisualState,
+        preserveSelectedAdAccount: preserveVisualState,
+    });
+    if (!preserveVisualState) {
+        clearPrimaryPageSelection();
+    }
     clearWorkspaceFacebookSessionSnapshot("manual-reset");
     clearLocalPubiloBrowserSessionState("manual-reset");
-    allPages = [];
-    targetPageSearchQuery = "";
-    renderPagesDropdown([], { skipAutoSelect: true });
-    showCookieStatus(false, "", "", false, false, false);
+    if (!preserveVisualState) {
+        allPages = [];
+        targetPageSearchQuery = "";
+        renderPagesDropdown([], { skipAutoSelect: true });
+        showCookieStatus(false, "", "", false, false, false);
+    }
     updatePageBootstrapHealthPanel();
 
     if (startupMessage) {
@@ -5136,6 +5176,7 @@ async function autoResetPubiloBrowserState(reason = "auto-browser-reset") {
     return performPubiloBrowserStateReset({
         requireConfirm: false,
         reason,
+        preserveVisualState: true,
         startupMessage: "ตรวจพบ state ของ Pubilo ค้างหลังโพสต์ไม่สำเร็จ กำลังรีเซ็ตให้อัตโนมัติ",
         successMessage: "ระบบรีเซ็ต state ของ Pubilo ให้แล้ว กำลังดึงข้อมูลใหม่",
     });
