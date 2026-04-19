@@ -2512,9 +2512,9 @@ app.post('/', async (c) => {
             // page token lookup temporarily fails.
             const pageTokenCandidates = buildAuthCandidates([
                 freshPageToken,
+                ...recoveredPageTokensFromCandidates,
                 requestedPageToken,
                 storedPageToken,
-                effectiveAccessToken,
             ]);
             const feedLinkCandidates = (() => {
                 if (richLinkPreviewOnly && publishLinkUrl) {
@@ -3073,6 +3073,7 @@ app.post('/', async (c) => {
                     feedError: lastFeedError,
                     photoFallbackError: normalizedPhotoFallbackError,
                     previewUrl,
+                    hostedImageUrl,
                     candidatesTried: pageTokenCandidates.length,
                     candidateCount: pageTokenCandidates.length,
                     lastFeedCode,
@@ -3307,7 +3308,7 @@ app.post('/', async (c) => {
                 isLinkAttachmentPost,
                 hasImage: !!finalImageUrl,
                 imageType: finalImageUrl ? (finalImageUrl.startsWith('data:') ? 'data-url' : finalImageUrl.startsWith('http') ? 'url' : 'unknown') : 'none',
-                hostedImageUrl: hostedImageUrl ? hostedImageUrl.substring(0, 80) : '',
+                hostedImageUrl: hostedImageUrl || '',
                 previewUrl: previewUrl ? previewUrl.substring(0, 120) : '',
                 hasLink: !!finalLink,
                 fbError: lastFacebookError,

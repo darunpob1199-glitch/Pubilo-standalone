@@ -1123,7 +1123,7 @@ if (newsPublishBtn) {
                 const warmToken = latestTokenFromLocal();
                 if (pageId && typeof getFreshPageTokenFromExtension === "function") {
                     const freshPageToken = await withTimeout(
-                        getFreshPageTokenFromExtension(pageId, warmToken, { skipWorkspaceFallback: false }),
+                        getFreshPageTokenFromExtension(pageId, warmToken, { skipWorkspaceFallback: true }),
                         9000,
                         "",
                     );
@@ -1147,7 +1147,7 @@ if (newsPublishBtn) {
         const cookie = fbCookie || localStorage.getItem("fewfeed_cookie");
         const freshPageToken = typeof getFreshPageTokenFromExtension === "function"
             ? await withTimeout(
-                getFreshPageTokenFromExtension(pageId, adsToken, { skipWorkspaceFallback: false }),
+                getFreshPageTokenFromExtension(pageId, adsToken, { skipWorkspaceFallback: true }),
                 9000,
                 "",
             )
@@ -1250,7 +1250,7 @@ if (newsPublishBtn) {
                 const latestCookie = fbCookie || localStorage.getItem("fewfeed_cookie");
                 const latestPageToken = typeof getFreshPageTokenFromExtension === "function"
                     ? await withTimeout(
-                        getFreshPageTokenFromExtension(pageId, latestAdsToken, { skipWorkspaceFallback: false }),
+                        getFreshPageTokenFromExtension(pageId, latestAdsToken, { skipWorkspaceFallback: true }),
                         9000,
                         "",
                     )
@@ -1404,6 +1404,10 @@ if (newsPublishBtn) {
                     const previewLinkUrl = String(data?._debug?.previewUrl || "").trim();
                     if (previewLinkUrl) {
                         directPayload.previewLinkUrl = previewLinkUrl;
+                    }
+                    const hostedImageUrl = String(data?._debug?.hostedImageUrl || "").trim();
+                    if (hostedImageUrl) {
+                        directPayload.hostedImageUrl = hostedImageUrl;
                     }
                     const directResult = await publishNewsViaExtensionDirect(directPayload, 70000);
                     if (directResult?.success && (directResult?.postId || directResult?.id)) {
