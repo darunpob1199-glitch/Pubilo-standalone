@@ -839,6 +839,16 @@ function setPublishInFlight(mode, inFlight) {
     requestAnimationFrame(() => {
         if (publishInFlightByMode[normalizedMode]) {
             applyPublishInFlightButtonUi(normalizedMode);
+        } else {
+            const publishBtn = resolvePublishButtonForMode(normalizedMode);
+            if (publishBtn) {
+                const stillLoading = /กำลังโพสต์|loading/i.test(publishBtn.innerHTML || "");
+                if (stillLoading) {
+                    publishBtn.style.cursor = "";
+                    publishBtn.style.opacity = "";
+                    restorePublishButtonState(normalizedMode, publishBtn);
+                }
+            }
         }
     });
 }
