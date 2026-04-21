@@ -1315,6 +1315,28 @@ async function fetchAndStoreToken() {
       console.log("[FEWFEED] No valid ads token, using previous page token map");
     }
 
+    const freshPageTokenCount = Object.keys(pageTokenMap).length;
+    if (
+      userId &&
+      previousPageTokenMapOwnerId &&
+      String(previousPageTokenMapOwnerId).trim() === String(userId).trim() &&
+      Object.keys(previousPageTokenMap).length > 0 &&
+      freshPageTokenCount > 0 &&
+      freshPageTokenCount < Object.keys(previousPageTokenMap).length
+    ) {
+      pageTokenMap = {
+        ...previousPageTokenMap,
+        ...pageTokenMap,
+      };
+      console.warn(
+        "[FEWFEED] Merged previous page token map to avoid shrinking cached page list",
+        {
+          previousPages: Object.keys(previousPageTokenMap).length,
+          freshPages: freshPageTokenCount,
+        },
+      );
+    }
+
     storageData[PAGE_TOKEN_MAP_KEY] = JSON.stringify(pageTokenMap);
     storageData[PAGE_TOKEN_MAP_OWNER_KEY] = userId || "";
     storageData.fewfeed_selectedPageToken =

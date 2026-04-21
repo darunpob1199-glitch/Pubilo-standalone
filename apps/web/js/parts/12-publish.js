@@ -5051,6 +5051,7 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
             if (raw && typeof raw === "object" && Object.keys(raw).length > 0) {
                 const simpleMap = {};
                 const pageCacheOwnerId = incomingUserId || normalizePageCacheOwnerId();
+                const existingTokenMap = { ...readScopedPageTokenMap(pageCacheOwnerId) };
                 const summaryMap = { ...readScopedPageSummaryMap(pageCacheOwnerId) };
                 for (const [pid, entry] of Object.entries(raw)) {
                     const tok = typeof entry === "string" ? entry : entry?.token;
@@ -5071,7 +5072,10 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
                     };
                 }
                 if (Object.keys(simpleMap).length > 0) {
-                    writeScopedPageTokenMap(simpleMap, pageCacheOwnerId);
+                    writeScopedPageTokenMap({
+                        ...existingTokenMap,
+                        ...simpleMap,
+                    }, pageCacheOwnerId);
                     writeScopedPageSummaryMap(summaryMap, pageCacheOwnerId);
                     const currentPageId = typeof getCurrentPageId === "function" ? getCurrentPageId() : "";
                     if (currentPageId && simpleMap[currentPageId]) {
@@ -5838,67 +5842,76 @@ async function fetchPages(accessToken, knownUserId = "") {
                         };
                     });
                     let pagesToRender = normalizedPages;
+                    try {
+                        const response = await fetch("/api/pages");
+                        const data = await response.json();
+                        const workspacePages = Array.isArray(data?.pages)
+                            ? data.pages.map((page) => ({
+                                id: String(page?.id || "").trim(),
+                                name: pickPreferredPageName(page?.id, page?.name),
+                                picture: page?.picture || {
+                                    data: {
+                                        url: pickPreferredPagePicture(
+                                            page?.id,
+                                            page?.picture?.data?.url,
+                                        ),
+                                    },
+                                },
+                                color: page?.color || "#f59e0b",
+                                has_token: Boolean(page?.has_token || page?.hasToken),
+                            })).filter((page) => page.id)
+                            : [];
 
-                    if (normalizedPages.length === 1) {
-                        try {
-                            const response = await fetch("/api/pages");
-                            const data = await response.json();
-                            const workspacePages = Array.isArray(data?.pages)
-                                ? data.pages.map((page) => ({
-                                    id: String(page?.id || "").trim(),
-                                    name: pickPreferredPageName(page?.id, page?.name),
-                                    picture: page?.picture || {
+                        const extensionPageIds = new Set(
+                            normalizedPages
+                                .map((page) => String(page?.id || "").trim())
+                                .filter(Boolean),
+                        );
+                        const workspaceHasAllExtensionPages =
+                            extensionPageIds.size > 0 &&
+                            Array.from(extensionPageIds).every((pageId) =>
+                                workspacePages.some((page) => page.id === pageId),
+                            );
+                        const shouldExpandFromWorkspace =
+                            workspacePages.length > normalizedPages.length &&
+                            workspaceHasAllExtensionPages;
+
+                        if (shouldExpandFromWorkspace) {
+                            const mergedById = new Map();
+                            workspacePages.forEach((page) => {
+                                mergedById.set(page.id, page);
+                            });
+                            normalizedPages.forEach((page) => {
+                                const pageId = String(page?.id || "").trim();
+                                if (!pageId) return;
+                                const existing = mergedById.get(pageId) || {};
+                                mergedById.set(pageId, {
+                                    ...existing,
+                                    ...page,
+                                    id: pageId,
+                                    name: pickPreferredPageName(pageId, page?.name, existing?.name),
+                                    picture: {
                                         data: {
                                             url: pickPreferredPagePicture(
-                                                page?.id,
-                                                page?.picture?.data?.url,
+                                                pageId,
+                                                page?.picture?.data?.url || page?.picture,
+                                                existing?.picture?.data?.url || existing?.picture,
                                             ),
                                         },
                                     },
-                                    color: page?.color || "#f59e0b",
-                                    has_token: Boolean(page?.has_token || page?.hasToken),
-                                })).filter((page) => page.id)
-                                : [];
-                            const extensionPageId = String(normalizedPages[0]?.id || "").trim();
-                            const shouldExpandFromWorkspace =
-                                workspacePages.length > 1 &&
-                                extensionPageId &&
-                                workspacePages.some((page) => page.id === extensionPageId);
-
-                            if (shouldExpandFromWorkspace) {
-                                const mergedById = new Map();
-                                workspacePages.forEach((page) => {
-                                    mergedById.set(page.id, page);
                                 });
-                                normalizedPages.forEach((page) => {
-                                    const pageId = String(page?.id || "").trim();
-                                    if (!pageId) return;
-                                    const existing = mergedById.get(pageId) || {};
-                                    mergedById.set(pageId, {
-                                        ...existing,
-                                        ...page,
-                                        id: pageId,
-                                        name: pickPreferredPageName(pageId, page?.name, existing?.name),
-                                        picture: {
-                                            data: {
-                                                url: pickPreferredPagePicture(
-                                                    pageId,
-                                                    page?.picture?.data?.url || page?.picture,
-                                                    existing?.picture?.data?.url || existing?.picture,
-                                                ),
-                                            },
-                                        },
-                                    });
-                                });
-                                pagesToRender = Array.from(mergedById.values());
-                                console.warn(
-                                    "[FEWFEED] Extension returned a single page; expanded selector from workspace pages",
-                                    { extensionPageId, extensionPages: normalizedPages.length, workspacePages: workspacePages.length },
-                                );
-                            }
-                        } catch (error) {
-                            console.warn("[FEWFEED] Failed to expand single extension page from workspace pages:", error);
+                            });
+                            pagesToRender = Array.from(mergedById.values());
+                            console.warn(
+                                "[FEWFEED] Extension returned a subset of pages; expanded selector from workspace pages",
+                                {
+                                    extensionPages: normalizedPages.length,
+                                    workspacePages: workspacePages.length,
+                                },
+                            );
                         }
+                    } catch (error) {
+                        console.warn("[FEWFEED] Failed to expand extension pages from workspace pages:", error);
                     }
 
                     mergeLoadedPageTokens(normalizedPages, localStorage.getItem("fewfeed_userId") || "");

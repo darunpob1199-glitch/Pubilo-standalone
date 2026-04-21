@@ -231,6 +231,247 @@ let newsSelectedImages = [];
 let newsGeneratedImages = [];
 let newsIsGenerating = false;
 let newsUploadMode = "device";
+let newsImageChoiceController = null;
+
+function loadImageFromDataUrl(dataUrl) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("โหลดรูปไม่สำเร็จ"));
+        img.src = dataUrl;
+    });
+}
+
+function renderNewsSquareImage(dataUrl, strategy = "fit", size = 1080, quality = 0.9) {
+    if (strategy === "original") {
+        return Promise.resolve(dataUrl);
+    }
+
+    return loadImageFromDataUrl(dataUrl).then((img) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+            return dataUrl;
+        }
+
+        const srcW = img.width || size;
+        const srcH = img.height || size;
+
+        if (strategy === "crop") {
+            const srcRatio = srcW / srcH;
+            const targetRatio = 1;
+            let cropW = srcW;
+            let cropH = srcH;
+            let cropX = 0;
+            let cropY = 0;
+
+            if (srcRatio > targetRatio) {
+                cropW = srcH;
+                cropX = Math.round((srcW - cropW) / 2);
+            } else if (srcRatio < targetRatio) {
+                cropH = srcW;
+                cropY = Math.round((srcH - cropH) / 2);
+            }
+
+            ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, size, size);
+            return canvas.toDataURL("image/jpeg", quality);
+        }
+
+        const coverScale = Math.max(size / srcW, size / srcH);
+        const coverW = srcW * coverScale;
+        const coverH = srcH * coverScale;
+        const coverX = (size - coverW) / 2;
+        const coverY = (size - coverH) / 2;
+
+        ctx.save();
+        ctx.filter = "blur(28px) brightness(0.84)";
+        ctx.drawImage(img, coverX, coverY, coverW, coverH);
+        ctx.restore();
+
+        ctx.fillStyle = "rgba(15, 23, 42, 0.12)";
+        ctx.fillRect(0, 0, size, size);
+
+        const containScale = Math.min(size / srcW, size / srcH);
+        const containW = srcW * containScale;
+        const containH = srcH * containScale;
+        const containX = (size - containW) / 2;
+        const containY = (size - containH) / 2;
+        ctx.drawImage(img, containX, containY, containW, containH);
+        return canvas.toDataURL("image/jpeg", quality);
+    }).catch(() => dataUrl);
+}
+
+async function prepareNewsImageVariants(dataUrl) {
+    const [fitDataUrl, cropDataUrl] = await Promise.all([
+        renderNewsSquareImage(dataUrl, "fit", 1080, 0.9),
+        renderNewsSquareImage(dataUrl, "crop", 1080, 0.9),
+    ]);
+
+    return {
+        fit: fitDataUrl,
+        crop: cropDataUrl,
+        original: dataUrl,
+    };
+}
+
+function ensureNewsImageChoiceModal() {
+    let root = document.getElementById("newsImageChoiceModal");
+    if (root) {
+        return root;
+    }
+
+    root = document.createElement("div");
+    root.id = "newsImageChoiceModal";
+    root.className = "pubilo-dialog-backdrop";
+    root.innerHTML = `
+        <div class="pubilo-dialog news-image-choice-dialog" role="dialog" aria-modal="true" aria-labelledby="newsImageChoiceTitle">
+            <div class="pubilo-dialog-title" id="newsImageChoiceTitle">จัดภาพสำหรับ Card Link</div>
+            <div class="pubilo-dialog-body">
+                <p class="news-image-choice-note">โหมดข่าวควรใช้ภาพ 1080x1080 เพื่อให้ layout นิ่งตอนโพสต์จริง</p>
+                <div class="news-image-choice-grid">
+                    <button type="button" class="news-image-choice-option recommended" data-choice="fit">
+                        <div class="news-image-choice-badge">แนะนำ</div>
+                        <img alt="ใส่เต็ม 1080x1080" />
+                        <strong>ใส่เต็ม 1080x1080</strong>
+                        <span>ไม่ตัดภาพ ใช้พื้นหลังช่วยเติมกรอบ</span>
+                    </button>
+                    <button type="button" class="news-image-choice-option" data-choice="crop">
+                        <img alt="ครอป 1080x1080" />
+                        <strong>ครอป 1080x1080</strong>
+                        <span>ครอปกลางภาพให้เต็มกรอบ</span>
+                    </button>
+                    <button type="button" class="news-image-choice-option" data-choice="original">
+                        <img alt="ใช้ขนาดเดิม" />
+                        <strong>ใช้ขนาดเดิม</strong>
+                        <span>ไม่แตะภาพ แต่อาจแสดงผลไม่เต็มกรอบ</span>
+                    </button>
+                </div>
+            </div>
+            <div class="pubilo-dialog-actions">
+                <button type="button" class="pubilo-dialog-btn secondary" data-dismiss-news-image-choice="true">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(root);
+    return root;
+}
+
+function closeNewsImageChoiceModal(result = null) {
+    if (!newsImageChoiceController) {
+        return;
+    }
+
+    const { root, cleanup, resolve } = newsImageChoiceController;
+    newsImageChoiceController = null;
+    cleanup();
+    root.classList.remove("visible");
+    document.body.classList.remove("page-picker-open");
+    resolve(result);
+}
+
+function openNewsImageChoiceModal(variants) {
+    if (newsImageChoiceController) {
+        closeNewsImageChoiceModal(null);
+    }
+
+    const root = ensureNewsImageChoiceModal();
+    const optionButtons = Array.from(root.querySelectorAll(".news-image-choice-option"));
+    const dismissBtn = root.querySelector('[data-dismiss-news-image-choice="true"]');
+
+    optionButtons.forEach((button) => {
+        const choice = button.dataset.choice;
+        const img = button.querySelector("img");
+        img.src = variants[choice];
+    });
+
+    return new Promise((resolve) => {
+        const cleanupFns = [];
+        const addCleanup = (target, event, handler) => {
+            target.addEventListener(event, handler);
+            cleanupFns.push(() => target.removeEventListener(event, handler));
+        };
+
+        const cleanup = () => {
+            cleanupFns.splice(0).forEach((fn) => fn());
+        };
+
+        const onOptionClick = (event) => {
+            const choice = event.currentTarget.dataset.choice;
+            closeNewsImageChoiceModal(choice);
+        };
+        optionButtons.forEach((button) => addCleanup(button, "click", onOptionClick));
+
+        const onDismiss = () => closeNewsImageChoiceModal(null);
+        addCleanup(dismissBtn, "click", onDismiss);
+        addCleanup(root, "click", (event) => {
+            if (event.target === root) {
+                onDismiss();
+            }
+        });
+        addCleanup(document, "keydown", (event) => {
+            if (event.key === "Escape") {
+                onDismiss();
+            }
+        });
+
+        newsImageChoiceController = { root, cleanup, resolve };
+        document.body.classList.add("page-picker-open");
+        requestAnimationFrame(() => root.classList.add("visible"));
+    });
+}
+
+async function normalizeNewsDeviceUploads(images) {
+    if (!Array.isArray(images) || images.length === 0) {
+        return images;
+    }
+
+    const dimensions = await Promise.all(images.map(async (image) => {
+        try {
+            const img = await loadImageFromDataUrl(image.dataUrl);
+            return { width: img.width, height: img.height };
+        } catch (_) {
+            return { width: 0, height: 0 };
+        }
+    }));
+
+    const firstNonSquareIndex = dimensions.findIndex(({ width, height }) => {
+        if (!width || !height) return false;
+        return Math.abs(width / height - 1) > 0.01;
+    });
+
+    let strategy = "fit";
+    if (firstNonSquareIndex >= 0) {
+        const variants = await prepareNewsImageVariants(images[firstNonSquareIndex].dataUrl);
+        const selected = await openNewsImageChoiceModal(variants);
+        if (!selected) {
+            return null;
+        }
+        strategy = selected;
+    }
+
+    const normalized = await Promise.all(images.map(async (image, index) => {
+        const { width, height } = dimensions[index];
+        let nextDataUrl = image.dataUrl;
+
+        if (strategy === "original") {
+            nextDataUrl = image.dataUrl;
+        } else if (width && height) {
+            nextDataUrl = await renderNewsSquareImage(image.dataUrl, strategy, 1080, 0.9);
+        }
+
+        return {
+            ...image,
+            dataUrl: nextDataUrl,
+            data: String(nextDataUrl).split(",")[1] || image.data,
+            mimeType: "image/jpeg",
+        };
+    }));
+
+    return normalized;
+}
 
 if (newsUploadFromDevice) {
     newsUploadFromDevice.addEventListener("click", () => {
@@ -275,7 +516,12 @@ newsFileInput.addEventListener("change", async (e) => {
         return;
     }
 
-    useUploadedNewsImages(newImages);
+    const normalizedImages = await normalizeNewsDeviceUploads(newImages);
+    if (!normalizedImages) {
+        return;
+    }
+
+    useUploadedNewsImages(normalizedImages);
 });
 
 function useUploadedNewsImages(images) {

@@ -175,9 +175,18 @@ function writeScopedPageCache(pageTokenMapRaw, ownerId = "") {
   const normalizedOwnerId = String(ownerId || localStorage.getItem("fewfeed_userId") || "").trim();
   if (!normalizedOwnerId) return { tokenMap: {}, summaryMap: {} };
 
+  const existingTokenMap = readScopedPageTokenMap(normalizedOwnerId);
+  const existingSummaryMap = (() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PAGE_SUMMARY_MAP_KEY) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  })();
   const raw = typeof pageTokenMapRaw === "string" ? JSON.parse(pageTokenMapRaw || "{}") : pageTokenMapRaw;
-  const tokenMap = {};
-  const summaryMap = {};
+  const tokenMap = { ...existingTokenMap };
+  const summaryMap = { ...existingSummaryMap };
   if (raw && typeof raw === "object") {
     for (const [pageId, entry] of Object.entries(raw)) {
       const token = typeof entry === "string" ? entry : entry?.token;
