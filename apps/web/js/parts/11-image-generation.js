@@ -866,6 +866,201 @@ if (newsDescriptionInput && newsPreviewDesc) {
     });
 }
 
+const NEWS_DRAFT_RECOVERY_STORAGE_KEY = "fewfeed_newsDraftRecoveryState";
+const NEWS_DRAFT_RECOVERY_MAX_AGE_MS = 20 * 60 * 1000;
+
+function getNewsDraftRecoveryStorage() {
+    try {
+        return window.sessionStorage;
+    } catch (_) {
+        return null;
+    }
+}
+
+function clearNewsDraftRecoveryState() {
+    const storage = getNewsDraftRecoveryStorage();
+    if (!storage) return;
+    try {
+        storage.removeItem(NEWS_DRAFT_RECOVERY_STORAGE_KEY);
+    } catch (_) {
+        // Ignore storage write failures.
+    }
+}
+
+function readNewsDraftRecoveryState() {
+    const storage = getNewsDraftRecoveryStorage();
+    if (!storage) return null;
+    try {
+        const raw = storage.getItem(NEWS_DRAFT_RECOVERY_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        const updatedAt = Number(parsed?.updatedAt || 0);
+        if (!updatedAt || Date.now() - updatedAt > NEWS_DRAFT_RECOVERY_MAX_AGE_MS) {
+            clearNewsDraftRecoveryState();
+            return null;
+        }
+        return parsed;
+    } catch (_) {
+        clearNewsDraftRecoveryState();
+        return null;
+    }
+}
+
+function captureNewsDraftRecoveryState(overrides = {}) {
+    const newsUrlInputEl = document.getElementById("newsUrlInput");
+    const newsPrimaryTextEl = document.getElementById("newsPrimaryText");
+    const newsPreviewCaptionEl = document.getElementById("newsPreviewCaption");
+    const newsManualScheduleInputEl = document.getElementById("newsManualScheduleInput");
+    const imageDataUrl =
+        String(
+            overrides.imageDataUrl ||
+                newsGeneratedImages?.[newsSelectedIndex] ||
+                "",
+        ).trim();
+    const imageMimeTypeMatch = imageDataUrl.match(/^data:([^;,]+)[;,]/i);
+    const imageMimeType = String(
+        overrides.imageMimeType || imageMimeTypeMatch?.[1] || "image/jpeg",
+    ).trim();
+    const imageExtension = imageMimeType.includes("png") ? "png" : "jpg";
+    const ctaType =
+        String(
+            overrides.ctaType ||
+                (typeof getCurrentCtaConfig === "function"
+                    ? getCurrentCtaConfig("news")?.type
+                    : "") ||
+                newsCtaTypeSelectEl?.value ||
+                "SHOP_NOW",
+        ).trim() || "SHOP_NOW";
+    const selectedTargetPageIds =
+        Array.isArray(overrides.targetPageIds) && overrides.targetPageIds.length
+            ? overrides.targetPageIds
+            : (typeof getSelectedTargetPageIds === "function"
+                ? getSelectedTargetPageIds()
+                : []);
+    const selectedAdAccountId = String(
+        overrides.adAccountId ||
+            document.getElementById("newsAdAccountSelect")?.value ||
+            document.getElementById("adAccountSelect")?.value ||
+            localStorage.getItem("fewfeed_selectedAdAccountId") ||
+            "",
+    ).trim();
+
+    return {
+        updatedAt: Date.now(),
+        pageId: String(overrides.pageId || getCurrentPageId() || localStorage.getItem("fewfeed_selectedPageId") || "").trim(),
+        pageName: String(overrides.pageName || localStorage.getItem("fewfeed_selectedPageName") || "").trim(),
+        linkUrl: String(overrides.linkUrl || newsUrlInputEl?.value || "").trim(),
+        primaryText: String(overrides.primaryText || newsPrimaryTextEl?.value || "").trim(),
+        description: String(overrides.description || newsDescriptionInput?.value || newsPreviewDesc?.textContent || "").trim(),
+        caption: String(overrides.caption || newsPreviewCaptionEl?.textContent || "S.LAZADA.CO.TH").trim(),
+        manualSchedule: String(overrides.manualSchedule || newsManualScheduleInputEl?.value || "").trim(),
+        ctaType,
+        targetPageIds: selectedTargetPageIds.map((value) => String(value || "").trim()).filter(Boolean),
+        adAccountId: selectedAdAccountId,
+        imageDataUrl,
+        imageMimeType,
+        imageName: String(overrides.imageName || `news-draft.${imageExtension}`).trim(),
+        imageTransformStrategy: String(
+            overrides.imageTransformStrategy ||
+                (typeof newsImageTransformStrategy === "string"
+                    ? newsImageTransformStrategy
+                    : "fit") ||
+                "fit",
+        ).trim() || "fit",
+    };
+}
+
+function persistNewsDraftRecoveryState(overrides = {}) {
+    const storage = getNewsDraftRecoveryStorage();
+    if (!storage) return false;
+    try {
+        const snapshot = captureNewsDraftRecoveryState(overrides);
+        storage.setItem(NEWS_DRAFT_RECOVERY_STORAGE_KEY, JSON.stringify(snapshot));
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+function restoreNewsDraftRecoveryStateIfNeeded() {
+    const draft = readNewsDraftRecoveryState();
+    if (!draft) return false;
+
+    try {
+        const pageId = String(draft.pageId || "").trim();
+        const pageName = String(draft.pageName || "").trim();
+        if (pageId) {
+            localStorage.setItem("fewfeed_selectedPageId", pageId);
+        }
+        if (pageName) {
+            localStorage.setItem("fewfeed_selectedPageName", pageName);
+        }
+
+        if (Array.isArray(draft.targetPageIds)) {
+            localStorage.setItem(
+                "fewfeed_targetPageIds",
+                JSON.stringify(draft.targetPageIds.map((value) => String(value || "").trim()).filter(Boolean)),
+            );
+        }
+
+        if (draft.adAccountId) {
+            localStorage.setItem("fewfeed_selectedAdAccountId", String(draft.adAccountId || "").trim());
+        }
+
+        const newsUrlInputEl = document.getElementById("newsUrlInput");
+        const newsPrimaryTextEl = document.getElementById("newsPrimaryText");
+        const newsPreviewCaptionEl = document.getElementById("newsPreviewCaption");
+        const newsManualScheduleInputEl = document.getElementById("newsManualScheduleInput");
+        const hiddenNewsDescription = document.getElementById("newsDescription");
+
+        if (newsUrlInputEl && typeof draft.linkUrl === "string") {
+            newsUrlInputEl.value = draft.linkUrl;
+        }
+        if (newsPrimaryTextEl && typeof draft.primaryText === "string") {
+            newsPrimaryTextEl.value = draft.primaryText;
+        }
+        if (newsDescriptionInput && typeof draft.description === "string") {
+            newsDescriptionInput.value = draft.description;
+        }
+        if (newsPreviewDesc && typeof draft.description === "string") {
+            newsPreviewDesc.textContent = draft.description;
+        }
+        if (hiddenNewsDescription && typeof draft.description === "string") {
+            hiddenNewsDescription.value = draft.description;
+        }
+        if (newsPreviewCaptionEl && typeof draft.caption === "string") {
+            newsPreviewCaptionEl.textContent = draft.caption;
+        }
+        if (newsManualScheduleInputEl && typeof draft.manualSchedule === "string") {
+            newsManualScheduleInputEl.value = draft.manualSchedule;
+        }
+        if (draft.ctaType) {
+            applyCtaType(draft.ctaType);
+        }
+        if (draft.imageDataUrl && typeof useUploadedNewsImages === "function") {
+            useUploadedNewsImages([
+                {
+                    dataUrl: draft.imageDataUrl,
+                    data: String(draft.imageDataUrl).includes(",")
+                        ? String(draft.imageDataUrl).split(",")[1] || ""
+                        : "",
+                    mimeType: String(draft.imageMimeType || "image/jpeg"),
+                    name: String(draft.imageName || "news-draft.jpg"),
+                    transformStrategy: String(draft.imageTransformStrategy || "fit"),
+                },
+            ]);
+        }
+        validateNewsMode();
+        clearNewsDraftRecoveryState();
+        window.showPublishToast?.("กู้ draft โพสต์ข่าวกลับมาแล้ว", "warning");
+        return true;
+    } catch (error) {
+        console.warn("[News] Failed to restore draft recovery state:", error);
+        clearNewsDraftRecoveryState();
+        return false;
+    }
+}
+
 function publishNewsViaExtensionDirect(payload = {}, timeoutMs = 70000) {
     const requestId = `news-direct-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -947,8 +1142,12 @@ if (newsPublishBtn) {
             /session has been invalidated|error validating access token|facebook session หมดอายุ|errorcode["']?\s*:\s*190/i.test(
                 String(value || ""),
             );
+        const isExtensionContextErrorMessage = (value) =>
+            /extension context invalidated|receiving end does not exist|message channel closed before a response was received|asynchronous response by returning true|message port closed/i.test(
+                String(value || "").toLowerCase(),
+            );
         const shouldAutoResetPubiloState = (value) =>
-            /session has been invalidated|error validating access token|facebook session หมดอายุ|invalid oauth access token|extension context invalidated/i.test(
+            /session has been invalidated|error validating access token|facebook session หมดอายุ|invalid oauth access token/i.test(
                 String(value || ""),
             );
         const attemptNewsSessionRecovery = async () => {
@@ -1213,12 +1412,22 @@ if (newsPublishBtn) {
         const captionText = newsPreviewCaptionEl?.textContent?.trim() || "S.LAZADA.CO.TH";
         const primaryText = newsPrimaryTextEl?.value?.trim() || "";
         let imageData = newsGeneratedImages[newsSelectedIndex];
-        
+
         if (!linkUrlValue || !descriptionText || !imageData) {
             alert("กรุณากรอกข้อมูลให้ครบ");
             resetNewsButtonIdle();
             return;
         }
+
+        persistNewsDraftRecoveryState({
+            pageId,
+            linkUrl: linkUrlValue,
+            primaryText,
+            description: descriptionText,
+            caption: captionText,
+            adAccountId,
+            imageDataUrl: imageData,
+        });
         
         if (typeof window.setPublishInFlightState === "function") {
             window.setPublishInFlightState("news", true);
@@ -1511,6 +1720,7 @@ if (newsPublishBtn) {
             }
 
             if (postId || data.queued) {
+                clearNewsDraftRecoveryState();
                 newsPublishBtn.textContent = "✓";
                 newsPublishBtn.classList.add("published");
                 newsPublishBtn.disabled = false;
@@ -1571,9 +1781,11 @@ if (newsPublishBtn) {
             const isPublishTimeout = isPublishTimeoutError(err);
             const errMessage = String(err?.message || err || "");
             const isSessionExpiredError = isSessionExpiredErrorMessage(errMessage);
+            const isExtensionContextError = isExtensionContextErrorMessage(errMessage);
             const willAutoResetPubiloState =
                 shouldAutoResetPubiloState(errMessage) &&
                 typeof window.autoResetPubiloBrowserState === "function";
+            let shouldReloadForExtensionRecovery = false;
             if (isPublishTimeout) {
                 window.showPublishToast?.("คำขอโพสต์นานกว่าปกติ โพสต์อาจสำเร็จไปแล้ว กรุณาตรวจที่หน้า Published ก่อนกดซ้ำ", "warning");
                 if (typeof window.showPubiloBlockingMessage === "function") {
@@ -1581,6 +1793,24 @@ if (newsPublishBtn) {
                 } else {
                     alert(String(errMessage || "คำขอโพสต์ใช้เวลานานกว่าปกติ"));
                 }
+            } else if (isExtensionContextError) {
+                persistNewsDraftRecoveryState({
+                    pageId,
+                    linkUrl: linkUrlValue,
+                    primaryText,
+                    description: descriptionText,
+                    caption: captionText,
+                    adAccountId,
+                    imageDataUrl: imageData,
+                });
+                const extensionMessage =
+                    "Extension หลุดการเชื่อมต่อกับหน้านี้\nระบบจะรีโหลดหน้าและกู้ draft โพสต์ข่าวกลับมาให้อัตโนมัติหลังปิด popup นี้\nจากนั้นค่อยกด Reload extension หากยังโพสต์ไม่ผ่าน";
+                if (typeof window.showPubiloBlockingMessage === "function") {
+                    await window.showPubiloBlockingMessage(extensionMessage);
+                } else {
+                    alert(extensionMessage);
+                }
+                shouldReloadForExtensionRecovery = true;
             } else if (isSessionExpiredError) {
                 const sessionMessage = willAutoResetPubiloState
                     ? "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง"
@@ -1616,6 +1846,12 @@ if (newsPublishBtn) {
             newsPublishBtn.disabled = false;
             newsPublishBtn.classList.remove("published");
             validateNewsMode();
+            if (shouldReloadForExtensionRecovery) {
+                setTimeout(() => {
+                    window.location.reload();
+                }, 80);
+                return;
+            }
         } finally {
             if (typeof window.setPublishInFlightState === "function") {
                 window.setPublishInFlightState("news", false);
@@ -1623,5 +1859,9 @@ if (newsPublishBtn) {
         }
     });
 }
+
+setTimeout(() => {
+    restoreNewsDraftRecoveryStateIfNeeded();
+}, 0);
 
 // ============================================

@@ -2069,7 +2069,7 @@ function setupPublishHandler(mode) {
             const isNetworkFetchError =
                 /failed to fetch|networkerror|network request failed|load failed/i.test(errMessage);
             const shouldAutoResetPubiloState =
-                /session has been invalidated|error validating access token|facebook session หมดอายุ|invalid oauth access token|extension context invalidated/i.test(
+                /session has been invalidated|error validating access token|facebook session หมดอายุ|invalid oauth access token/i.test(
                     errMessage,
                 );
             const willAutoResetPubiloState =
