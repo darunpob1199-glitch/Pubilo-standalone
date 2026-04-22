@@ -1018,10 +1018,19 @@ async function publishLinkCardViaFeed(params: {
     publishAsAdsPost?: boolean;
     scheduledTime?: number | null;
     allowMetadataDropRetry?: boolean;
+    forcePictureOnControlledPreview?: boolean;
 }): Promise<{ postId: string; createdAsDraft: boolean }> {
     const shouldLetFacebookScrapePreview = isControlledNewsPreviewUrl(params.linkUrl);
+    const shouldIncludePictureOnControlledPreview = Boolean(
+        shouldLetFacebookScrapePreview
+        && params.forcePictureOnControlledPreview
+        && params.pictureUrl,
+    );
     const hasLinkMetadata = Boolean(
-        !shouldLetFacebookScrapePreview && (
+        (
+            !shouldLetFacebookScrapePreview
+            || shouldIncludePictureOnControlledPreview
+        ) && (
             params.title ||
             params.caption ||
             params.description ||
@@ -1043,11 +1052,15 @@ async function publishLinkCardViaFeed(params: {
 
         if (params.message) body.set('message', params.message);
 
-        if (options.includeLinkMetadata && !shouldLetFacebookScrapePreview) {
-            if (params.title) body.set('name', params.title);
-            if (params.caption) body.set('caption', params.caption);
-            if (params.description) body.set('description', params.description);
-            if (params.pictureUrl) body.set('picture', params.pictureUrl);
+        if (options.includeLinkMetadata) {
+            if (!shouldLetFacebookScrapePreview) {
+                if (params.title) body.set('name', params.title);
+                if (params.caption) body.set('caption', params.caption);
+                if (params.description) body.set('description', params.description);
+            }
+            if (params.pictureUrl && (!shouldLetFacebookScrapePreview || shouldIncludePictureOnControlledPreview)) {
+                body.set('picture', params.pictureUrl);
+            }
         }
 
         if (options.includeCallToAction && params.callToActionType) {
@@ -2567,7 +2580,9 @@ app.post('/', async (c) => {
                         // Square card mode must use the controlled preview URL so
                         // Facebook consumes the transformed 1080x1080 OG image.
                         linkUrl: requiresSquareLinkCard ? publishLinkUrl : finalLink,
-                        hostedImageUrl: requiresSquareLinkCard ? undefined : (hostedImageUrl || undefined),
+                        // Keep the controlled preview URL, but still pass the uploaded
+                        // 1080x1080 asset so Facebook does not downgrade to a wide card.
+                        hostedImageUrl: hostedImageUrl || undefined,
                         message: finalMessage,
                         title: requiresSquareLinkCard ? undefined : (attachmentTitle || undefined),
                         caption: requiresSquareLinkCard ? undefined : (previewSiteName || undefined),
@@ -2694,6 +2709,7 @@ app.post('/', async (c) => {
                             callToActionType: normalizedCallToAction,
                             callToActionLinkUrl: finalLink || feedLinkUrl,
                             allowMetadataDropRetry: true,
+                            forcePictureOnControlledPreview: requiresSquareLinkCard,
                         } as const;
                         let feedResult = await publishLinkCardViaFeed({
                             ...feedRequestBase,

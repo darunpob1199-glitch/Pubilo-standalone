@@ -2674,12 +2674,18 @@ async function publishNewsDirect(request = {}) {
 
   const tryAdCreative = async (accessToken, adAccountId, publishToken, withCookieHeader) => {
     const headers = withCookieHeader ? headersWithCookie : headersNoCookie;
+    const controlledPreviewPictureUrl = hostedImageUrl || "";
+    const standardPictureUrl =
+      hostedImageUrl || (/^https?:/i.test(imageUrl) ? imageUrl : "");
+    const selectedPictureUrl = shouldForcePreviewCard
+      ? controlledPreviewPictureUrl
+      : standardPictureUrl;
     const creativePayload = {
       page_id: pageId,
       link_data: {
         link: richCardLinkUrl,
         message: primaryText || "",
-        ...(!shouldForcePreviewCard && (hostedImageUrl || (/^https?:/i.test(imageUrl) ? imageUrl : "")) ? { picture: hostedImageUrl || imageUrl } : {}),
+        ...(selectedPictureUrl ? { picture: selectedPictureUrl } : {}),
         ...(!shouldForcePreviewCard && linkName ? { name: linkName } : {}),
         ...(!shouldForcePreviewCard && caption ? { caption } : {}),
         ...(!shouldForcePreviewCard && description ? { description } : {}),
@@ -2756,6 +2762,12 @@ async function publishNewsDirect(request = {}) {
 
   const tryFeedLinkCard = async (token, withCookieHeader, linkCandidate) => {
     const headers = withCookieHeader ? headersWithCookie : headersNoCookie;
+    const controlledPreviewPictureUrl = hostedImageUrl || "";
+    const standardPictureUrl =
+      hostedImageUrl || (/^https?:/i.test(imageUrl) ? imageUrl : "");
+    const selectedPictureUrl = shouldForcePreviewCard
+      ? controlledPreviewPictureUrl
+      : standardPictureUrl;
     const execute = async ({
       includeCallToAction,
       includeAdsDraft,
@@ -2769,8 +2781,8 @@ async function publishNewsDirect(request = {}) {
       if (!shouldForcePreviewCard && linkName) body.set("name", linkName);
       if (!shouldForcePreviewCard && caption) body.set("caption", caption);
       if (!shouldForcePreviewCard && description) body.set("description", description);
-      if (!shouldForcePreviewCard && (hostedImageUrl || /^https?:/i.test(imageUrl))) {
-        body.set("picture", hostedImageUrl || imageUrl);
+      if (selectedPictureUrl) {
+        body.set("picture", selectedPictureUrl);
       }
       if (includeCallToAction && callToAction) {
         body.set("call_to_action", JSON.stringify({
