@@ -910,6 +910,25 @@ async function publishExistingUnpublishedPost(postId: string, pageToken: string,
     throw error;
 }
 
+async function publishExistingUnpublishedPostWithCandidates(
+    postId: string,
+    pageTokens: string[],
+    headers?: Record<string, string>,
+): Promise<string> {
+    let lastError: Error | null = null;
+
+    for (const candidateToken of buildAuthCandidates(pageTokens)) {
+        try {
+            await publishExistingUnpublishedPost(postId, candidateToken, headers);
+            return candidateToken;
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error || 'Failed to publish unpublished post'));
+        }
+    }
+
+    throw lastError || new Error('Failed to publish unpublished post');
+}
+
 async function hidePagePostFromTimeline(
     postId: string,
     token: string,
@@ -2548,7 +2567,6 @@ app.post('/', async (c) => {
                 }
                 return [finalLink || publishLinkUrl];
             })().filter(Boolean);
-            const pageTokenForPublish = pageTokenCandidates[0] || '';
             let adCreativeError: string | null = null;
             let adCreativeDebug: Record<string, unknown> = {
                 canUseAdCreativeFlow,
@@ -2594,8 +2612,13 @@ app.post('/', async (c) => {
                         allowAdMaterialization: !scheduleTimestamp,
                     });
 
-                    if (!scheduleTimestamp && pageTokenForPublish) {
-                        await publishExistingUnpublishedPost(creativeResult.postId, pageTokenForPublish, tokenRequestHeaders);
+                    let publishedPageToken = '';
+                    if (!scheduleTimestamp) {
+                        publishedPageToken = await publishExistingUnpublishedPostWithCandidates(
+                            creativeResult.postId,
+                            pageTokenCandidates,
+                            tokenRequestHeaders,
+                        );
                     }
 
                     let transientAdCleanup: { attempted: boolean; deleted: boolean; error: string } | null = null;
@@ -2626,7 +2649,7 @@ app.post('/', async (c) => {
                         bootstrapSeedCreated: !!creativeResult.bootstrapSeedCreated,
                         transientAdCleanup,
                     });
-                    const hideResult = await maybeHideAfterPublish(creativeResult.postId, pageTokenForPublish);
+                    const hideResult = await maybeHideAfterPublish(creativeResult.postId, publishedPageToken);
 
                     const warningMessages: string[] = [];
                     if (hideResult.attempted && !hideResult.hidden) {
@@ -2653,6 +2676,7 @@ app.post('/', async (c) => {
                             hasReusableSeed: !!creativeResult.hasReusableSeed,
                             scannedAccounts: creativeResult.scannedAccounts || [],
                             bootstrapSeedCreated: !!creativeResult.bootstrapSeedCreated,
+                            publishedPageTokenSource: publishedPageToken ? 'candidate' : '',
                             transientAdCleanup,
                             hide: hideResult,
                         },
