@@ -232,6 +232,7 @@ let newsGeneratedImages = [];
 let newsIsGenerating = false;
 let newsUploadMode = "device";
 let newsImageChoiceController = null;
+let newsImageTransformStrategy = "fit";
 
 function loadImageFromDataUrl(dataUrl) {
     return new Promise((resolve, reject) => {
@@ -467,6 +468,7 @@ async function normalizeNewsDeviceUploads(images) {
             dataUrl: nextDataUrl,
             data: String(nextDataUrl).split(",")[1] || image.data,
             mimeType: "image/jpeg",
+            transformStrategy: strategy,
         };
     }));
 
@@ -527,6 +529,7 @@ newsFileInput.addEventListener("change", async (e) => {
 function useUploadedNewsImages(images) {
     newsSelectedImages = [...images];
     newsGeneratedImages = images.map((img) => img.dataUrl);
+    newsImageTransformStrategy = String(images[0]?.transformStrategy || "fit").trim() || "fit";
     newsSelectedIndex = 0;
     newsModeImageReady = newsGeneratedImages.length > 0;
     validateNewsMode();
@@ -610,6 +613,7 @@ async function generateNewsImages() {
         }
 
         newsGeneratedImages = data.images;
+        newsImageTransformStrategy = "fit";
         renderNewsGeneratedGrid();
     } catch (err) {
         console.error('[News] Generate error:', err);

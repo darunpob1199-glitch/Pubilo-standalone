@@ -920,6 +920,7 @@ window.addEventListener("message", async (event) => {
         cookieData: event.data.cookieData,
         linkUrl: event.data.linkUrl,
         previewLinkUrl: event.data.previewLinkUrl,
+        hostedImageUrl: event.data.hostedImageUrl,
         imageUrl: event.data.imageUrl,
         primaryText: event.data.primaryText,
         linkName: event.data.linkName,
@@ -927,6 +928,8 @@ window.addEventListener("message", async (event) => {
         caption: event.data.caption,
         adAccountId: event.data.adAccountId,
         callToAction: event.data.callToAction,
+        imageTransformStrategy: event.data.imageTransformStrategy,
+        requireSquareLinkCard: event.data.requireSquareLinkCard,
       });
     } catch (error) {
       const errorMessage = String(error?.message || error || "publish_news_direct_failed");

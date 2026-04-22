@@ -49,9 +49,9 @@ mustInclude(
 )
 mustInclude(
   apiPublish,
-  'linkUrl: finalLink,',
+  'linkUrl: requiresSquareLinkCard ? publishLinkUrl : finalLink,',
   apiPublishPath,
-  'ad creative uses real destination link for correct domain display',
+  'ad creative uses preview link only for required square card mode',
   errors,
 )
 mustInclude(

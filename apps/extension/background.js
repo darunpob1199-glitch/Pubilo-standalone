@@ -2510,6 +2510,9 @@ async function publishNewsDirect(request = {}) {
   const previewLinkUrl = String(request.previewLinkUrl || "").trim();
   const hostedImageUrl = String(request.hostedImageUrl || "").trim();
   const imageUrl = String(request.imageUrl || "").trim();
+  const imageTransformStrategy = String(request.imageTransformStrategy || "").trim() || "fit";
+  const requireSquareLinkCard =
+    request.requireSquareLinkCard !== false && imageTransformStrategy !== "original";
   const primaryText = String(request.primaryText || "").trim();
   const linkName = String(request.linkName || "").trim();
   const description = String(request.description || "").trim();
@@ -2526,7 +2529,6 @@ async function publishNewsDirect(request = {}) {
   }
 
   const cardLinkUrl = previewLinkUrl || linkUrl;
-  const richCardLinkUrl = linkUrl || cardLinkUrl;
   const usesControlledPreview = (() => {
     try {
       const parsed = new URL(cardLinkUrl);
@@ -2535,6 +2537,8 @@ async function publishNewsDirect(request = {}) {
       return false;
     }
   })();
+  const shouldForcePreviewCard = Boolean(cardLinkUrl) && (usesControlledPreview || requireSquareLinkCard);
+  const richCardLinkUrl = shouldForcePreviewCard ? cardLinkUrl : (linkUrl || cardLinkUrl);
   const isGenericInvalidRequest = (value) => /invalid request|invalid parameter|unsupported request/i.test(String(value || ""));
   const isAdsDraftError = (value) => /unpublished_content_type|ads_post|is_published|published/i.test(String(value || ""));
   const isCallToActionError = (value) => /call_to_action|call to action|unpublished_content_type/i.test(String(value || ""));
@@ -2675,10 +2679,10 @@ async function publishNewsDirect(request = {}) {
       link_data: {
         link: richCardLinkUrl,
         message: primaryText || "",
-        ...((hostedImageUrl || (/^https?:/i.test(imageUrl) ? imageUrl : "")) ? { picture: hostedImageUrl || imageUrl } : {}),
-        ...(linkName ? { name: linkName } : {}),
-        ...(caption ? { caption } : {}),
-        ...(description ? { description } : {}),
+        ...(!shouldForcePreviewCard && (hostedImageUrl || (/^https?:/i.test(imageUrl) ? imageUrl : "")) ? { picture: hostedImageUrl || imageUrl } : {}),
+        ...(!shouldForcePreviewCard && linkName ? { name: linkName } : {}),
+        ...(!shouldForcePreviewCard && caption ? { caption } : {}),
+        ...(!shouldForcePreviewCard && description ? { description } : {}),
         ...(callToAction ? {
           call_to_action: {
             type: callToAction,
@@ -2741,8 +2745,8 @@ async function publishNewsDirect(request = {}) {
   };
 
   const feedLinkCandidates = (() => {
-    if (usesControlledPreview && previewLinkUrl) {
-      return [previewLinkUrl];
+    if (shouldForcePreviewCard && cardLinkUrl) {
+      return [cardLinkUrl];
     }
     if (previewLinkUrl && linkUrl && previewLinkUrl !== linkUrl) {
       return [previewLinkUrl, linkUrl];
@@ -2762,14 +2766,16 @@ async function publishNewsDirect(request = {}) {
       });
 
       if (primaryText) body.set("message", primaryText);
-      if (linkName) body.set("name", linkName);
-      if (caption) body.set("caption", caption);
-      if (description) body.set("description", description);
-      if (hostedImageUrl || /^https?:/i.test(imageUrl)) body.set("picture", hostedImageUrl || imageUrl);
+      if (!shouldForcePreviewCard && linkName) body.set("name", linkName);
+      if (!shouldForcePreviewCard && caption) body.set("caption", caption);
+      if (!shouldForcePreviewCard && description) body.set("description", description);
+      if (!shouldForcePreviewCard && (hostedImageUrl || /^https?:/i.test(imageUrl))) {
+        body.set("picture", hostedImageUrl || imageUrl);
+      }
       if (includeCallToAction && callToAction) {
         body.set("call_to_action", JSON.stringify({
           type: callToAction,
-          value: { link: richCardLinkUrl || linkCandidate },
+          value: { link: (shouldForcePreviewCard ? cardLinkUrl : richCardLinkUrl) || linkCandidate },
         }));
       }
 
@@ -3009,6 +3015,23 @@ async function publishNewsDirect(request = {}) {
         }
       }
     }
+  }
+
+  if (requireSquareLinkCard) {
+    return {
+      success: false,
+      error: lastError || "square_link_card_unavailable",
+      errorType: "SquareLinkCardUnavailable",
+      debug: {
+        phase: lastPhase || "square-link-card",
+        strategy: lastStrategy || "browser-side-square-required",
+        requireSquareLinkCard: true,
+        imageTransformStrategy,
+        usesControlledPreview,
+        previewLinkUrl: cardLinkUrl,
+        facebookError: lastFacebookError || null,
+      },
+    };
   }
 
   for (const token of pageTokenCandidates) {

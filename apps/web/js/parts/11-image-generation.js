@@ -1264,6 +1264,11 @@ if (newsPublishBtn) {
                             ""
                         )
                         : "";
+                const imageTransformStrategy =
+                    typeof newsImageTransformStrategy === "string" && newsImageTransformStrategy.trim()
+                        ? newsImageTransformStrategy.trim()
+                        : "fit";
+                const requireSquareLinkCard = imageTransformStrategy !== "original";
 
                 return {
                     pageId,
@@ -1284,6 +1289,8 @@ if (newsPublishBtn) {
                     adAccountId,
                     callToAction: ctaConfig.type,
                     callToActionLabel: ctaConfig.label,
+                    imageTransformStrategy,
+                    requireSquareLinkCard,
                     // Rich link card mode depends on the creative flow.
                     // The API only allows materialization for immediate posts
                     // and cleans up the transient ad object after story creation.

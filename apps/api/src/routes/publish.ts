@@ -1919,6 +1919,8 @@ app.post('/', async (c) => {
             historyScheduledTime,
             organizationId: organizationIdFromBody,
             hideOnPublish,
+            imageTransformStrategy,
+            requireSquareLinkCard,
         } = body;
 
         if (!pageId) {
@@ -2036,6 +2038,11 @@ app.post('/', async (c) => {
         const finalMessage = message || primaryText || '';
         const finalLink = normalizeOutboundLink(link || linkUrl || '');
         const finalImageUrl = imageUrl || '';
+        const normalizedImageTransformStrategy = typeof imageTransformStrategy === 'string'
+            ? imageTransformStrategy.trim().toLowerCase()
+            : '';
+        const requiresSquareLinkCard = parseBooleanFlag(requireSquareLinkCard)
+            || (!!normalizedImageTransformStrategy && normalizedImageTransformStrategy !== 'original');
         const isLinkAttachmentPost = !!finalLink && (postMode === 'news' || postMode === 'link');
         if (isLinkAttachmentPost) {
             try {
@@ -2066,7 +2073,8 @@ app.post('/', async (c) => {
             !!linkName ||
             !!description ||
             !!callToAction ||
-            !!callToActionLabel
+            !!callToActionLabel ||
+            requiresSquareLinkCard
         );
 
         const captionParts = [];
@@ -2542,6 +2550,8 @@ app.post('/', async (c) => {
                 adCreativeFlowEnabled,
                 canUseAdCreativeFlow,
                 pageTokenCandidateCount: pageTokenCandidates.length,
+                requiresSquareLinkCard,
+                imageTransformStrategy: normalizedImageTransformStrategy || 'none',
             });
 
             // Primary: ad creative produces rich cards with custom image, title, CTA button.
@@ -2554,16 +2564,14 @@ app.post('/', async (c) => {
                         accessToken: effectiveAccessToken,
                         cookieHeaders: tokenRequestHeaders,
                         adAccountId: resolvedAdAccountId,
-                        // Use the real destination URL directly so Facebook displays the
-                        // correct domain (e.g. LAZADA.CO.TH instead of PUBILO.COM).
-                        // Ad Creative API accepts image/title/description inline, so it
-                        // does not need to scrape a preview page for OG metadata.
-                        linkUrl: finalLink,
-                        hostedImageUrl: hostedImageUrl || undefined,
+                        // Square card mode must use the controlled preview URL so
+                        // Facebook consumes the transformed 1080x1080 OG image.
+                        linkUrl: requiresSquareLinkCard ? publishLinkUrl : finalLink,
+                        hostedImageUrl: requiresSquareLinkCard ? undefined : (hostedImageUrl || undefined),
                         message: finalMessage,
-                        title: attachmentTitle || undefined,
-                        caption: previewSiteName || undefined,
-                        description: attachmentDescription || undefined,
+                        title: requiresSquareLinkCard ? undefined : (attachmentTitle || undefined),
+                        caption: requiresSquareLinkCard ? undefined : (previewSiteName || undefined),
+                        description: requiresSquareLinkCard ? undefined : (attachmentDescription || undefined),
                         callToAction: normalizedCallToAction,
                         // Rich card publishing depends on obtaining object_story_id.
                         // Allow ad materialization for immediate posts, then clean up
@@ -2841,6 +2849,25 @@ app.post('/', async (c) => {
                         }
                     }
                 }
+            }
+
+            if (requiresSquareLinkCard) {
+                return c.json({
+                    success: false,
+                    error: `ไม่สามารถโพสต์แบบ 1080x1080 card link ได้: ${lastFeedError || adCreativeError || 'square_link_card_unavailable'}`,
+                    errorType: 'SquareLinkCardUnavailable',
+                    _debug: {
+                        flow: 'square-link-card-required',
+                        adCreativeError,
+                        adCreativeDebug,
+                        lastFeedError,
+                        lastFeedFacebookError,
+                        requiresSquareLinkCard: true,
+                        imageTransformStrategy: normalizedImageTransformStrategy || 'fit',
+                        previewUrl: publishLinkUrl,
+                        hostedImageUrl,
+                    },
+                }, 400);
             }
 
             // Last resort after all link-card attempts: downgrade to photo + caption (+ link in text).
