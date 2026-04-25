@@ -2068,10 +2068,7 @@ function setupPublishHandler(mode) {
             console.error("[FEWFEED] Error:", errMessage);
             const isNetworkFetchError =
                 /failed to fetch|networkerror|network request failed|load failed/i.test(errMessage);
-            const shouldAutoResetPubiloState =
-                /session has been invalidated|error validating access token|facebook session หมดอายุ|invalid oauth access token/i.test(
-                    errMessage,
-                );
+            const shouldAutoResetPubiloState = false;
             const willAutoResetPubiloState =
                 shouldAutoResetPubiloState &&
                 typeof autoResetPubiloBrowserState === "function";
@@ -2088,9 +2085,7 @@ function setupPublishHandler(mode) {
                 );
             } else if (isSessionExpiredError) {
                 await showPubiloBlockingMessage(
-                    willAutoResetPubiloState
-                        ? "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง"
-                        : "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง",
+                    "Facebook session/token ที่ใช้โพสต์ไม่ผ่าน\nระบบจะไม่ล้างเพจหรือ state ของ Pubilo\nกรุณา login Facebook ใหม่ แล้วกด Token/Cookie หรือ extension อีกครั้ง",
                 );
             } else {
                 await showPubiloBlockingMessage(

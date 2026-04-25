@@ -1146,10 +1146,7 @@ if (newsPublishBtn) {
             /extension context invalidated|receiving end does not exist|message channel closed before a response was received|asynchronous response by returning true|message port closed/i.test(
                 String(value || "").toLowerCase(),
             );
-        const shouldAutoResetPubiloState = (value) =>
-            /session has been invalidated|error validating access token|facebook session หมดอายุ|invalid oauth access token/i.test(
-                String(value || ""),
-            );
+        const shouldAutoResetPubiloState = () => false;
         const attemptNewsSessionRecovery = async () => {
             let recovered = false;
             const latestTokenFromLocal = () =>
@@ -1783,6 +1780,7 @@ if (newsPublishBtn) {
             const isSessionExpiredError = isSessionExpiredErrorMessage(errMessage);
             const isExtensionContextError = isExtensionContextErrorMessage(errMessage);
             const willAutoResetPubiloState =
+                !isExtensionContextError &&
                 shouldAutoResetPubiloState(errMessage) &&
                 typeof window.autoResetPubiloBrowserState === "function";
             let shouldReloadForExtensionRecovery = false;
@@ -1812,9 +1810,17 @@ if (newsPublishBtn) {
                 }
                 shouldReloadForExtensionRecovery = true;
             } else if (isSessionExpiredError) {
-                const sessionMessage = willAutoResetPubiloState
-                    ? "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nระบบจะรีเซ็ต state ของ Pubilo ให้อัตโนมัติหลังปิด popup นี้\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง"
-                    : "Facebook session หมดอายุ และระบบรีเฟรชอัตโนมัติไม่สำเร็จ\nกรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง";
+                persistNewsDraftRecoveryState({
+                    pageId,
+                    linkUrl: linkUrlValue,
+                    primaryText,
+                    description: descriptionText,
+                    caption: captionText,
+                    adAccountId,
+                    imageDataUrl: imageData,
+                });
+                const sessionMessage =
+                    "Facebook session/token ที่ใช้โพสต์ไม่ผ่าน\nระบบเก็บ draft ไว้และไม่ล้างเพจที่เลือก\nกรุณา login Facebook ใหม่ แล้วกด Token/Cookie หรือ extension อีกครั้ง";
                 if (typeof window.showPubiloBlockingMessage === "function") {
                     await window.showPubiloBlockingMessage(sessionMessage);
                 } else {
