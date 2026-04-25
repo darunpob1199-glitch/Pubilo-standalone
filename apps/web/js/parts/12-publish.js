@@ -4924,6 +4924,57 @@ function isAcceptableAdsTokenCandidate(token, pageTokenMap) {
     return true;
 }
 
+function getLatestAdsTokenForPublish(options = {}) {
+    const pageTokenMap =
+        options.pageTokenMap ||
+        localStorage.getItem(PAGE_TOKEN_MAP_KEY) ||
+        "{}";
+    const localAdsToken = String(
+        localStorage.getItem("fewfeed_accessToken") ||
+        localStorage.getItem("fewfeed_token") ||
+        "",
+    ).trim();
+    if (isAcceptableAdsTokenCandidate(localAdsToken, pageTokenMap)) {
+        if (fbToken !== localAdsToken) {
+            fbToken = localAdsToken;
+        }
+        return localAdsToken;
+    }
+
+    const memoryAdsToken = String(fbToken || "").trim();
+    if (isAcceptableAdsTokenCandidate(memoryAdsToken, pageTokenMap)) {
+        if (localAdsToken !== memoryAdsToken) {
+            localStorage.setItem("fewfeed_accessToken", memoryAdsToken);
+            localStorage.setItem("fewfeed_token", memoryAdsToken);
+        }
+        return memoryAdsToken;
+    }
+
+    if (localAdsToken && localAdsToken !== memoryAdsToken) {
+        fbToken = "";
+    }
+
+    return "";
+}
+
+function getLatestCookieForPublish() {
+    const localCookie = String(localStorage.getItem("fewfeed_cookie") || "").trim();
+    if (localCookie) {
+        if (fbCookie !== localCookie) {
+            fbCookie = localCookie;
+        }
+        return localCookie;
+    }
+
+    const memoryCookie = String(fbCookie || "").trim();
+    if (memoryCookie) {
+        localStorage.setItem("fewfeed_cookie", memoryCookie);
+        return memoryCookie;
+    }
+
+    return "";
+}
+
 function hasAnyExtensionSessionData(session = {}) {
     return !!(
         session.adsToken ||
