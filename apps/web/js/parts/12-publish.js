@@ -1898,8 +1898,7 @@ function setupPublishHandler(mode) {
         } catch (err) {
             const errMessage = String(err?.message || err || "");
             const isPublishTimeout = isPublishTimeoutError(err);
-            const isSessionExpiredError =
-                /session has been invalidated|error validating access token|facebook session หมดอายุ|errorcode["']?\s*:\s*190/i.test(errMessage);
+            const isSessionExpiredError = isFacebookSessionInvalidMessage(errMessage);
             const isExtensionContextError = isExtensionContextInvalidatedMessage(errMessage);
             if ((isSessionExpiredError || isExtensionContextError) && !publishSessionRefreshRetryByMode[mode]) {
                 publishSessionRefreshRetryByMode[mode] = true;
@@ -2084,9 +2083,16 @@ function setupPublishHandler(mode) {
                         : "Extension หลุดการเชื่อมต่อกับหน้านี้\nกรุณากด Reload extension แล้วรีเฟรชหน้าเว็บ 1 ครั้ง จากนั้นลองโพสต์อีกครั้ง",
                 );
             } else if (isSessionExpiredError) {
+                clearInvalidPublishSessionState(`publish-${mode}-session-invalid`, {
+                    pageId: publishSnapshot?.pageId,
+                    preservePageSelection: true,
+                });
                 await showPubiloBlockingMessage(
                     "Facebook session/token ที่ใช้โพสต์ไม่ผ่าน\nระบบจะไม่ล้างเพจหรือ state ของ Pubilo\nกรุณา login Facebook ใหม่ แล้วกด Token/Cookie หรือ extension อีกครั้ง",
                 );
+                runPageBootstrapSelfHeal(`publish-${mode}-session-invalid`, {
+                    force: true,
+                }).catch(() => false);
             } else {
                 await showPubiloBlockingMessage(
                     willAutoResetPubiloState
@@ -2623,6 +2629,95 @@ function clearLocalPubiloBrowserSessionState(reason = "") {
     if (reason) {
         console.log("[FEWFEED] Cleared local Pubilo browser session state:", reason);
     }
+}
+
+function isFacebookSessionInvalidMessage(message = "") {
+    const normalized = String(message || "").toLowerCase();
+    if (!normalized) return false;
+
+    return /session has been invalidated|error validating access token|errorcode["']?\s*:\s*190|code\s*190|invalid oauth access token|cannot parse access token|access token could not be decrypted/i.test(normalized) ||
+        normalized.includes("facebook session หมดอายุ") ||
+        normalized.includes("session/token ที่ใช้โพสต์ไม่ผ่าน") ||
+        normalized.includes("token ที่ใช้โพสต์ไม่ผ่าน") ||
+        normalized.includes("ใช้โพสต์ไม่ผ่าน") ||
+        normalized.includes("กรุณา login facebook ใหม่") ||
+        normalized.includes("login facebook ใหม่");
+}
+
+function clearInvalidPublishSessionState(reason = "", options = {}) {
+    const preservePageSelection = options.preservePageSelection !== false;
+    const currentPageId = String(
+        options.pageId ||
+        (typeof getCurrentPageId === "function" ? getCurrentPageId() : "") ||
+        localStorage.getItem("fewfeed_selectedPageId") ||
+        "",
+    ).trim();
+    const retainedCookie = String(localStorage.getItem("fewfeed_cookie") || fbCookie || "").trim();
+    const retainedUserId = String(localStorage.getItem("fewfeed_userId") || "").trim();
+    const retainedUserName = String(localStorage.getItem("fewfeed_userName") || "").trim();
+
+    [
+        "fewfeed_accessToken",
+        "fewfeed_token",
+        "fewfeed_postToken",
+        "fewfeed_selectedPageToken",
+        "fewfeed_fbDtsg",
+        "fewfeed_accessTokenValidatedAt",
+        "fewfeed_accessTokenValidationStatus",
+    ].forEach((key) => localStorage.removeItem(key));
+
+    try {
+        const ownerId = normalizePageCacheOwnerId();
+        const tokenMap = readScopedPageTokenMap(ownerId);
+        if (currentPageId && tokenMap && typeof tokenMap === "object") {
+            delete tokenMap[currentPageId];
+            writeScopedPageTokenMap(tokenMap, ownerId);
+        } else {
+            localStorage.removeItem(PAGE_TOKEN_MAP_KEY);
+        }
+    } catch (_) {
+        localStorage.removeItem(PAGE_TOKEN_MAP_KEY);
+    }
+
+    fbToken = "";
+    fbPostToken = "";
+    if (retainedCookie) {
+        fbCookie = retainedCookie;
+    }
+    lastSessionDrivenFetchKey = "";
+    publishSessionRefreshRetryByMode.link = false;
+    publishSessionRefreshRetryByMode.image = false;
+    publishSessionRefreshRetryByMode.reels = false;
+    publishSessionRefreshRetryByMode.text = false;
+    clearWorkspaceFacebookSessionSnapshot(reason || "publish-session-invalid");
+
+    const tokenInput = document.getElementById("adsTokenInput");
+    if (tokenInput) tokenInput.value = "";
+    const tokenTextarea = document.getElementById("adsTokenTextarea");
+    if (tokenTextarea) tokenTextarea.value = "";
+    const pageTokenInput = document.getElementById("pageTokenInputPanel");
+    if (pageTokenInput) pageTokenInput.value = "";
+
+    if (!preservePageSelection) {
+        clearPrimaryPageSelection();
+    }
+
+    showCookieStatus(
+        !!(retainedCookie || retainedUserId),
+        retainedUserId,
+        retainedUserName,
+        false,
+        !!retainedCookie,
+        false,
+    );
+    updatePageBootstrapHealthPanel();
+
+    console.warn("[FEWFEED] Cleared invalid publish session state:", {
+        reason,
+        pageId: currentPageId,
+        preservedCookie: !!retainedCookie,
+        preservedPageSelection,
+    });
 }
 
 function mergeLoadedPageTokens(pages, ownerId = "") {
@@ -4411,6 +4506,7 @@ function isInvalidFacebookSessionError(data) {
     if (errorMessage.includes("invalid oauth access token")) return true;
     if (errorMessage.includes("cannot parse access token")) return true;
     if (errorMessage.includes("access token could not be decrypted")) return true;
+    if (isFacebookSessionInvalidMessage(errorMessage)) return true;
     if (
         errorCode === 1 &&
         errorType === "oauthexception" &&
