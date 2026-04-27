@@ -19,11 +19,17 @@ const errors = []
 
 const webConfigPath = 'apps/web/js/config.js'
 const webPublishPath = 'apps/web/js/parts/12-publish.js'
+const webNewsPublishPath = 'apps/web/js/parts/11-image-generation.js'
 const apiPublishPath = 'apps/api/src/routes/publish.ts'
+const extensionBackgroundPath = 'apps/extension/background.js'
+const extensionContentPath = 'apps/extension/content.js'
 
 const webConfig = read(webConfigPath)
 const webPublish = read(webPublishPath)
+const webNewsPublish = read(webNewsPublishPath)
 const apiPublish = read(apiPublishPath)
+const extensionBackground = read(extensionBackgroundPath)
+const extensionContent = read(extensionContentPath)
 
 mustInclude(webConfig, "const allowApiParamOverride = !isProductionWebHost;", webConfigPath, 'production api override guard', errors)
 mustInclude(webConfig, "hostname === 'pubilo.com'", webConfigPath, 'pubilo.com production host check', errors)
@@ -49,9 +55,9 @@ mustInclude(
 )
 mustInclude(
   apiPublish,
-  'linkUrl: requiresSquareLinkCard ? publishLinkUrl : finalLink,',
+  'linkUrl: shouldUseControlledPreviewForLinkCard ? publishLinkUrl : finalLink,',
   apiPublishPath,
-  'ad creative uses preview link only for required square card mode',
+  'ad creative uses controlled preview link for rich card mode',
   errors,
 )
 mustInclude(
@@ -59,6 +65,55 @@ mustInclude(
   'allowAdMaterialization: !scheduleTimestamp,',
   apiPublishPath,
   'ad materialization immediate-only gate',
+  errors,
+)
+mustInclude(
+  apiPublish,
+  'const allowFeedMetadataOverrides = false;',
+  apiPublishPath,
+  'feed metadata override hard-disable',
+  errors,
+)
+mustInclude(
+  apiPublish,
+  'function isLinkMetadataOwnershipErrorMessage',
+  apiPublishPath,
+  'metadata ownership error classifier',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'directPayload.forcePhotoFallback = true;',
+  webNewsPublishPath,
+  'news extension direct fallback uses photo-only after exhausted API fallbacks',
+  errors,
+)
+mustInclude(
+  extensionBackground,
+  'const forcePhotoFallback = request.forcePhotoFallback === true;',
+  extensionBackgroundPath,
+  'extension photo-only fallback flag',
+  errors,
+)
+mustInclude(
+  extensionBackground,
+  'const allowFeedMetadataOverrides = false;',
+  extensionBackgroundPath,
+  'extension feed metadata override hard-disable',
+  errors,
+)
+mustInclude(
+  extensionBackground,
+  'const allowAdCreativeMetadataOverrides = false;',
+  extensionBackgroundPath,
+  'extension ad creative metadata override hard-disable',
+  errors,
+)
+mustInclude(
+  extensionContent,
+  'forcePhotoFallback: event.data.forcePhotoFallback,',
+  extensionContentPath,
+  'extension content forwards photo fallback flag',
   errors,
 )
 

@@ -1643,6 +1643,8 @@ if (newsPublishBtn) {
 
                 try {
                     const directPayload = await buildPublishRequest();
+                    const apiDebugFlow = String(data?._debug?.flow || "").toLowerCase();
+                    const apiAlreadyExhaustedFallbacks = apiDebugFlow.includes("link-card-failed-all-fallbacks");
                     const previewLinkUrl = String(data?._debug?.previewUrl || "").trim();
                     if (previewLinkUrl) {
                         directPayload.previewLinkUrl = previewLinkUrl;
@@ -1650,6 +1652,9 @@ if (newsPublishBtn) {
                     const hostedImageUrl = String(data?._debug?.hostedImageUrl || "").trim();
                     if (hostedImageUrl) {
                         directPayload.hostedImageUrl = hostedImageUrl;
+                    }
+                    if (apiAlreadyExhaustedFallbacks) {
+                        directPayload.forcePhotoFallback = true;
                     }
                     const directResult = await publishNewsViaExtensionDirect(directPayload, 70000);
                     if (directResult?.success && (directResult?.postId || directResult?.id)) {

@@ -2520,6 +2520,7 @@ async function publishNewsDirect(request = {}) {
   const requestedAdAccountId = String(request.adAccountId || "").trim();
   const callToAction = String(request.callToAction || "").trim();
   const cookieFromRequest = String(request.cookieData || request.cookie || "").trim();
+  const forcePhotoFallback = request.forcePhotoFallback === true;
 
   if (!pageId) {
     return { success: false, error: "Missing pageId", errorType: "MissingPageId" };
@@ -2680,6 +2681,7 @@ async function publishNewsDirect(request = {}) {
 
   const tryAdCreative = async (accessToken, adAccountId, publishToken, withCookieHeader) => {
     const headers = withCookieHeader ? headersWithCookie : headersNoCookie;
+    const allowAdCreativeMetadataOverrides = false;
     const controlledPreviewPictureUrl = hostedImageUrl || "";
     const standardPictureUrl =
       hostedImageUrl || (/^https?:/i.test(imageUrl) ? imageUrl : "");
@@ -2691,10 +2693,10 @@ async function publishNewsDirect(request = {}) {
       link_data: {
         link: richCardLinkUrl,
         message: primaryText || "",
-        ...(!shouldUseScrapedCardMetadata && selectedPictureUrl ? { picture: selectedPictureUrl } : {}),
-        ...(!shouldUseScrapedCardMetadata && linkName ? { name: linkName } : {}),
-        ...(!shouldUseScrapedCardMetadata && caption ? { caption } : {}),
-        ...(!shouldUseScrapedCardMetadata && description ? { description } : {}),
+        ...(allowAdCreativeMetadataOverrides && !shouldUseScrapedCardMetadata && selectedPictureUrl ? { picture: selectedPictureUrl } : {}),
+        ...(allowAdCreativeMetadataOverrides && !shouldUseScrapedCardMetadata && linkName ? { name: linkName } : {}),
+        ...(allowAdCreativeMetadataOverrides && !shouldUseScrapedCardMetadata && caption ? { caption } : {}),
+        ...(allowAdCreativeMetadataOverrides && !shouldUseScrapedCardMetadata && description ? { description } : {}),
         ...(callToAction ? {
           call_to_action: {
             type: callToAction,
@@ -2782,8 +2784,9 @@ async function publishNewsDirect(request = {}) {
       }
     })();
     const canSendLinkMetadataOverrides = !shouldUseScrapedCardMetadata && !linkCandidateUsesControlledPreview;
+    const allowFeedMetadataOverrides = false;
     const hasLinkMetadataOverrides = Boolean(
-      canSendLinkMetadataOverrides && (
+      allowFeedMetadataOverrides && canSendLinkMetadataOverrides && (
         linkName ||
         caption ||
         description ||
@@ -3017,107 +3020,112 @@ async function publishNewsDirect(request = {}) {
     throw lastError || { message: "direct_photo_failed" };
   };
 
-  for (const accessToken of accessTokenCandidates) {
-    let adAccountCandidates = [];
-    try {
-      const adAccountResult = await fetchFacebookAdAccounts(accessToken, cookie);
-      if (adAccountResult?.success && Array.isArray(adAccountResult.adAccounts)) {
-        const accessibleIds = [];
-        adAccountResult.adAccounts.forEach((account) => {
-          const normalizedId = String(account?.account_id || account?.id || "").trim();
-          if (!normalizedId || accessibleIds.includes(normalizedId)) return;
-          accessibleIds.push(normalizedId);
-        });
-        preferredAdAccountCandidates.forEach((candidateId) => {
-          if (candidateId && accessibleIds.includes(candidateId) && !adAccountCandidates.includes(candidateId)) {
-            adAccountCandidates.push(candidateId);
-          }
-        });
-        accessibleIds.forEach((candidateId) => {
-          if (candidateId && !adAccountCandidates.includes(candidateId)) {
-            adAccountCandidates.push(candidateId);
-          }
-        });
+  if (!forcePhotoFallback) {
+    for (const accessToken of accessTokenCandidates) {
+      let adAccountCandidates = [];
+      try {
+        const adAccountResult = await fetchFacebookAdAccounts(accessToken, cookie);
+        if (adAccountResult?.success && Array.isArray(adAccountResult.adAccounts)) {
+          const accessibleIds = [];
+          adAccountResult.adAccounts.forEach((account) => {
+            const normalizedId = String(account?.account_id || account?.id || "").trim();
+            if (!normalizedId || accessibleIds.includes(normalizedId)) return;
+            accessibleIds.push(normalizedId);
+          });
+          preferredAdAccountCandidates.forEach((candidateId) => {
+            if (candidateId && accessibleIds.includes(candidateId) && !adAccountCandidates.includes(candidateId)) {
+              adAccountCandidates.push(candidateId);
+            }
+          });
+          accessibleIds.forEach((candidateId) => {
+            if (candidateId && !adAccountCandidates.includes(candidateId)) {
+              adAccountCandidates.push(candidateId);
+            }
+          });
+        }
+      } catch (error) {
+        console.warn("[FEWFEED] publishNewsDirect ad account fetch failed:", error?.message || error);
       }
-    } catch (error) {
-      console.warn("[FEWFEED] publishNewsDirect ad account fetch failed:", error?.message || error);
+
+      for (const adAccountId of adAccountCandidates) {
+        for (const publishToken of pageTokenCandidates) {
+          for (const withCookieHeader of [false, true]) {
+            lastPhase = "adcreative";
+            lastStrategy = withCookieHeader ? "browser-side-adcreative-cookie" : "browser-side-adcreative";
+            if (Date.now() - startedAt > hardDeadlineMs) {
+              return {
+                success: false,
+                error: "direct_publish_deadline_exceeded",
+                errorType: "PublishNewsDirectTimeout",
+                debug: {
+                  phase: "adcreative",
+                  strategy: "browser-side-adcreative",
+                  elapsedMs: Date.now() - startedAt,
+                  forcePhotoFallback,
+                },
+              };
+            }
+            try {
+              return await tryAdCreative(accessToken, adAccountId, publishToken, withCookieHeader);
+            } catch (error) {
+              lastError = String(error?.message || error || "direct_adcreative_failed");
+              lastFacebookError = error || lastFacebookError;
+            }
+          }
+        }
+      }
     }
 
-    for (const adAccountId of adAccountCandidates) {
-      for (const publishToken of pageTokenCandidates) {
+    for (const token of pageTokenCandidates) {
+      for (const linkCandidate of feedLinkCandidates) {
         for (const withCookieHeader of [false, true]) {
-          lastPhase = "adcreative";
-          lastStrategy = withCookieHeader ? "browser-side-adcreative-cookie" : "browser-side-adcreative";
+          lastPhase = "feed-link-card";
+          lastStrategy = withCookieHeader ? "browser-side-feed-card-cookie" : "browser-side-feed-card";
           if (Date.now() - startedAt > hardDeadlineMs) {
             return {
               success: false,
               error: "direct_publish_deadline_exceeded",
               errorType: "PublishNewsDirectTimeout",
               debug: {
-                phase: "adcreative",
-                strategy: "browser-side-adcreative",
+                phase: "feed-link-card",
                 elapsedMs: Date.now() - startedAt,
+                forcePhotoFallback,
               },
             };
           }
           try {
-            return await tryAdCreative(accessToken, adAccountId, publishToken, withCookieHeader);
+            return await tryFeedLinkCard(token, withCookieHeader, linkCandidate);
           } catch (error) {
-            lastError = String(error?.message || error || "direct_adcreative_failed");
+            lastError = String(error?.message || error || "direct_feed_link_card_failed");
             lastFacebookError = error || lastFacebookError;
           }
         }
       }
     }
-  }
 
-  for (const token of pageTokenCandidates) {
-    for (const linkCandidate of feedLinkCandidates) {
-      for (const withCookieHeader of [false, true]) {
-        lastPhase = "feed-link-card";
-        lastStrategy = withCookieHeader ? "browser-side-feed-card-cookie" : "browser-side-feed-card";
-        if (Date.now() - startedAt > hardDeadlineMs) {
-          return {
-            success: false,
-            error: "direct_publish_deadline_exceeded",
-            errorType: "PublishNewsDirectTimeout",
-            debug: {
-              phase: "feed-link-card",
-              elapsedMs: Date.now() - startedAt,
-            },
-          };
-        }
-        try {
-          return await tryFeedLinkCard(token, withCookieHeader, linkCandidate);
-        } catch (error) {
-          lastError = String(error?.message || error || "direct_feed_link_card_failed");
-          lastFacebookError = error || lastFacebookError;
-        }
-      }
-    }
-  }
-
-  for (const token of pageTokenCandidates) {
-    for (const messageValue of messageCandidates) {
-      for (const withCookieHeader of [false, true]) {
-        lastPhase = "feed";
-        lastStrategy = withCookieHeader ? "browser-side-feed-cookie" : "browser-side-feed";
-        if (Date.now() - startedAt > hardDeadlineMs) {
-          return {
-            success: false,
-            error: "direct_publish_deadline_exceeded",
-            errorType: "PublishNewsDirectTimeout",
-            debug: {
-              phase: "feed",
-              elapsedMs: Date.now() - startedAt,
-            },
-          };
-        }
-        try {
-          return await tryFeed(token, messageValue, withCookieHeader);
-        } catch (error) {
-          lastError = String(error?.message || error || "direct_feed_failed");
-          lastFacebookError = error || lastFacebookError;
+    for (const token of pageTokenCandidates) {
+      for (const messageValue of messageCandidates) {
+        for (const withCookieHeader of [false, true]) {
+          lastPhase = "feed";
+          lastStrategy = withCookieHeader ? "browser-side-feed-cookie" : "browser-side-feed";
+          if (Date.now() - startedAt > hardDeadlineMs) {
+            return {
+              success: false,
+              error: "direct_publish_deadline_exceeded",
+              errorType: "PublishNewsDirectTimeout",
+              debug: {
+                phase: "feed",
+                elapsedMs: Date.now() - startedAt,
+                forcePhotoFallback,
+              },
+            };
+          }
+          try {
+            return await tryFeed(token, messageValue, withCookieHeader);
+          } catch (error) {
+            lastError = String(error?.message || error || "direct_feed_failed");
+            lastFacebookError = error || lastFacebookError;
+          }
         }
       }
     }
@@ -3162,6 +3170,7 @@ async function publishNewsDirect(request = {}) {
         tokenCandidateCount: pageTokenCandidates.length,
         hasCookie: !!cookie,
         hasLivePageToken: !!livePageToken,
+        forcePhotoFallback,
       },
   };
 }

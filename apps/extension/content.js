@@ -930,6 +930,7 @@ window.addEventListener("message", async (event) => {
         callToAction: event.data.callToAction,
         imageTransformStrategy: event.data.imageTransformStrategy,
         requireSquareLinkCard: event.data.requireSquareLinkCard,
+        forcePhotoFallback: event.data.forcePhotoFallback,
       });
     } catch (error) {
       const errorMessage = String(error?.message || error || "publish_news_direct_failed");
@@ -1033,4 +1034,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Mark that extension is installed
 document.documentElement.setAttribute("data-fewfeed-extension", "true");
 window.postMessage({ type: "FEWFEED_EXTENSION_READY" }, "*");
-console.log("[Pubilo Content] Extension v9.2.7 ready - robust message channel recovery");
+console.log("[Pubilo Content] Extension v9.2.14 ready - robust message channel recovery");

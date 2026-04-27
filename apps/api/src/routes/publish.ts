@@ -193,6 +193,13 @@ function isGenericInvalidRequestMessage(rawMessage: unknown): boolean {
     );
 }
 
+function isLinkMetadataOwnershipErrorMessage(rawMessage: unknown): boolean {
+    const message = String(rawMessage || '').toLowerCase();
+    if (!message) return false;
+    return message.includes('only owners of the url')
+        && /(picture|name|thumb|thumbnail|description)/.test(message);
+}
+
 function normalizeBase64Input(raw?: string): string {
     if (!raw || typeof raw !== 'string') return '';
 
@@ -1129,10 +1136,13 @@ async function publishLinkCardViaFeed(params: {
     allowMetadataDropRetry?: boolean;
 }): Promise<{ postId: string; createdAsDraft: boolean }> {
     const shouldLetFacebookScrapePreview = isControlledNewsPreviewUrl(params.linkUrl);
+    // Facebook now rejects metadata overrides for most external URLs unless the page owns the URL.
+    // Pubilo rich cards should come from our controlled /api/news-link OG page instead.
+    const allowFeedMetadataOverrides = false;
     // Controlled previews own the OG tags. Sending Graph API metadata overrides
     // for external targets makes Facebook reject with "Only owners of the URL...".
     const hasLinkMetadata = Boolean(
-        !shouldLetFacebookScrapePreview && (
+        allowFeedMetadataOverrides && !shouldLetFacebookScrapePreview && (
             params.title ||
             params.caption ||
             params.description ||
@@ -1220,8 +1230,7 @@ async function publishLinkCardViaFeed(params: {
     } catch (error) {
         const firstMessage = error instanceof Error ? error.message : String(error);
         const firstLower = firstMessage.toLowerCase();
-        const isOwnershipMetadataError = firstLower.includes('only owners of the url')
-            && firstLower.includes('picture, name, thumbnail or description');
+        let metadataRejected = hasLinkMetadata && isLinkMetadataOwnershipErrorMessage(firstMessage);
         const isGenericInvalidRequest = isGenericInvalidRequestMessage(firstMessage);
         const isCallToActionError = firstLower.includes('call_to_action')
             || firstLower.includes('call to action')
@@ -1229,7 +1238,7 @@ async function publishLinkCardViaFeed(params: {
             || isGenericInvalidRequest;
 
         // Retry 1: drop metadata overrides if Facebook rejects domain metadata ownership.
-        if (hasLinkMetadata && isOwnershipMetadataError) {
+        if (metadataRejected) {
             try {
                 return await execute({
                     includeLinkMetadata: false,
@@ -1244,6 +1253,7 @@ async function publishLinkCardViaFeed(params: {
         const retryMessage = error instanceof Error ? error.message : String(error);
         const retryLower = retryMessage.toLowerCase();
         const retryGenericInvalidRequest = isGenericInvalidRequestMessage(retryMessage);
+        metadataRejected = metadataRejected || (hasLinkMetadata && isLinkMetadataOwnershipErrorMessage(retryMessage));
         const retryCallToActionError = retryLower.includes('call_to_action')
             || retryLower.includes('call to action')
             || retryLower.includes('unpublished_content_type')
@@ -1253,7 +1263,7 @@ async function publishLinkCardViaFeed(params: {
         if (hasCallToAction && (isCallToActionError || retryCallToActionError)) {
             try {
                 return await execute({
-                    includeLinkMetadata: hasLinkMetadata,
+                    includeLinkMetadata: hasLinkMetadata && !metadataRejected,
                     includeCallToAction: false,
                     includeAdsDraft: true,
                 });
@@ -1271,7 +1281,7 @@ async function publishLinkCardViaFeed(params: {
         if (Boolean(params.publishAsAdsPost) && isAdsPostError) {
             try {
                 return await execute({
-                    includeLinkMetadata: hasLinkMetadata,
+                    includeLinkMetadata: hasLinkMetadata && !metadataRejected,
                     includeCallToAction: false,
                     includeAdsDraft: false,
                 });
@@ -2252,7 +2262,7 @@ app.post('/', async (c) => {
             })
             : '';
         const publishLinkUrl = isLinkAttachmentPost ? previewUrl : finalLink;
-        const richLinkPreviewOnly = isLinkAttachmentPost && requiresRichLinkCard;
+        const shouldUseControlledPreviewForLinkCard = isLinkAttachmentPost && requiresRichLinkCard && !!publishLinkUrl;
 
         const shouldQueueInSystem = !!scheduleTimestamp && !!scheduleInSystem && !internalRun;
         const currentBatchId = typeof batchId === 'string' && batchId.trim()
@@ -2642,7 +2652,7 @@ app.post('/', async (c) => {
                 effectiveAccessToken,
             ]);
             const feedLinkCandidates = (() => {
-                if (richLinkPreviewOnly && publishLinkUrl) {
+                if (shouldUseControlledPreviewForLinkCard && publishLinkUrl) {
                     return [publishLinkUrl];
                 }
                 if (publishLinkUrl && finalLink && publishLinkUrl !== finalLink) {
@@ -2680,16 +2690,16 @@ app.post('/', async (c) => {
                         accessToken: effectiveAccessToken,
                         cookieHeaders: tokenRequestHeaders,
                         adAccountId: resolvedAdAccountId,
-                        // Square card mode must use the controlled preview URL so
-                        // Facebook consumes the transformed 1080x1080 OG image.
-                        linkUrl: requiresSquareLinkCard ? publishLinkUrl : finalLink,
+                        // Rich cards use the controlled preview URL so Facebook consumes
+                        // Pubilo-owned OG tags instead of rejecting third-party metadata overrides.
+                        linkUrl: shouldUseControlledPreviewForLinkCard ? publishLinkUrl : finalLink,
                         // Controlled preview owns its OG image/metadata. Sending Graph
                         // metadata overrides for this URL triggers Facebook owner checks.
-                        hostedImageUrl: hostedImageUrl || undefined,
+                        hostedImageUrl: shouldUseControlledPreviewForLinkCard ? undefined : (hostedImageUrl || undefined),
                         message: finalMessage,
-                        title: requiresSquareLinkCard ? undefined : (attachmentTitle || undefined),
-                        caption: requiresSquareLinkCard ? undefined : (previewSiteName || undefined),
-                        description: requiresSquareLinkCard ? undefined : (attachmentDescription || undefined),
+                        title: shouldUseControlledPreviewForLinkCard ? undefined : (attachmentTitle || undefined),
+                        caption: shouldUseControlledPreviewForLinkCard ? undefined : (previewSiteName || undefined),
+                        description: shouldUseControlledPreviewForLinkCard ? undefined : (attachmentDescription || undefined),
                         callToAction: normalizedCallToAction,
                         // Rich card publishing depends on obtaining object_story_id.
                         // Allow ad materialization for immediate posts, then clean up
