@@ -392,8 +392,12 @@
             <div class="mode-container" id="newsModeContainer">
                 <div class="preview-panel">
                     <!-- Ad Preview Section Header -->
-                    <div class="ad-section-header">
-                        <h3 class="ad-section-title">Ad Preview</h3>
+                    <div class="ad-section-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                        <h3 class="ad-section-title" style="margin: 0;">Ad Preview</h3>
+                        <div class="preview-device-toggle" style="display: flex; background: #f1f5f9; border-radius: 8px; padding: 4px;">
+                            <button type="button" class="device-btn desktop-btn" data-device="desktop" onclick="toggleDeviceMode('desktop', 'newsModeContainer')">💻 Desktop</button>
+                            <button type="button" class="device-btn mobile-btn is-active" data-device="mobile" onclick="toggleDeviceMode('mobile', 'newsModeContainer')">📱 Mobile</button>
+                        </div>
                     </div>
                     <div class="card-preview">
                         <!-- FB Ad Header -->
@@ -506,8 +510,12 @@
                 <!-- Preview Panel - Center -->
                 <div class="preview-panel">
                     <!-- Ad Preview Section Header -->
-                    <div class="ad-section-header">
-                        <h3 class="ad-section-title">Ad Preview</h3>
+                    <div class="ad-section-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                        <h3 class="ad-section-title" style="margin: 0;">Ad Preview</h3>
+                        <div class="preview-device-toggle" style="display: flex; background: #f1f5f9; border-radius: 8px; padding: 4px;">
+                            <button type="button" class="device-btn desktop-btn" data-device="desktop" onclick="toggleDeviceMode('desktop', 'linkModeContainer')">💻 Desktop</button>
+                            <button type="button" class="device-btn mobile-btn is-active" data-device="mobile" onclick="toggleDeviceMode('mobile', 'linkModeContainer')">📱 Mobile</button>
+                        </div>
                     </div>
                     <!-- Card Preview -->
                     <div class="card-preview">

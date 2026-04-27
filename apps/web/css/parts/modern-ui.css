@@ -532,10 +532,45 @@ header.header {
     margin: 0 auto;
 }
 
+/* Device Toggle Pills */
+.preview-device-toggle {
+    display: flex;
+    background: #f1f5f9;
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+}
+
+.device-btn {
+    border: none;
+    background: transparent;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.device-btn:hover {
+    color: #1e293b;
+}
+
+.device-btn.is-active {
+    background: #ffffff;
+    color: #1e293b;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+
 /* Balance Panel Proportions */
 .preview-panel {
     flex: 1 !important; /* Allow preview to take remaining space elegantly */
     align-items: center !important; /* Center the preview card */
+}
+
+.card-preview.is-desktop {
+    max-width: 600px !important; /* Wider feed for desktop simulation */
 }
 
 .form-panel {

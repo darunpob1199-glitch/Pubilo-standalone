@@ -249,4 +249,26 @@
     } else {
         setTimeout(init, 100);
     }
+
+    // Expose toggleDeviceMode globally for the HTML onclick handlers
+    window.toggleDeviceMode = function(device, containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const previewCard = container.querySelector('.card-preview');
+        const desktopBtn = container.querySelector('.desktop-btn');
+        const mobileBtn = container.querySelector('.mobile-btn');
+
+        if (!previewCard || !desktopBtn || !mobileBtn) return;
+
+        if (device === 'desktop') {
+            previewCard.classList.add('is-desktop');
+            desktopBtn.classList.add('is-active');
+            mobileBtn.classList.remove('is-active');
+        } else {
+            previewCard.classList.remove('is-desktop');
+            mobileBtn.classList.add('is-active');
+            desktopBtn.classList.remove('is-active');
+        }
+    };
 })();

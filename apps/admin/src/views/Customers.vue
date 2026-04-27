@@ -53,11 +53,6 @@ function badgeClass(status: string) {
   return `badge ${status || 'pending'}`
 }
 
-function isExpired(dateStr: string) {
-  if (!dateStr) return true
-  return new Date(dateStr).getTime() < Date.now()
-}
-
 // Open grant plan dialog
 function openGrantDialog(customer: any) {
   grantTarget.value = customer
