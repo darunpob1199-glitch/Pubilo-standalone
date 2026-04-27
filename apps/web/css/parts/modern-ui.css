@@ -1075,45 +1075,204 @@ header.header {
     border-color: transparent !important;
 }
 
-/* --- DELETE POSTS WORKSPACE --- */
-#deletePostsPanel.delete-posts-panel {
-    gap: 0.9rem !important;
+/* --- DELETE POSTS WORKSPACE OVERHAUL --- */
+#deletePostsPanel {
+    background: transparent !important;
+    gap: 1.5rem !important;
+    padding: 0 0.5rem !important;
+}
+
+#deletePostsPanel .delete-posts-title {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#deletePostsPanel .delete-posts-title h2 {
+    font-size: 2.2rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.03em !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+}
+
+#deletePostsPanel .post-tool-eyebrow {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #8b5cf6;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+#deletePostsPanel .pending-summary-bar {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 1.25rem !important;
 }
 
 #deletePostsPanel .pending-stat {
-    min-height: 88px !important;
-    border-radius: 16px !important;
-    padding: 0.85rem 1rem !important;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04) !important;
+    background: #ffffff !important;
+    border-radius: 20px !important;
+    border: 1px solid #f1f5f9 !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02) !important;
+    padding: 1.5rem !important;
+    min-height: auto !important;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
-#deletePostsPanel .pending-filter-chip {
-    min-height: 38px !important;
-    border-radius: 999px !important;
-    padding: 0.54rem 0.9rem !important;
-    font-weight: 800 !important;
-}
-
-#deletePostsPanel .post-tool-control-card,
-#deletePostsPanel .post-tool-selection-bar,
-#deletePostsPanel .pending-table-container {
-    border-radius: 18px !important;
+#deletePostsPanel .pending-stat:hover {
+    transform: translateY(-4px) !important;
+    box-shadow: 0 12px 24px -1px rgba(15, 23, 42, 0.08) !important;
     border-color: #e2e8f0 !important;
 }
 
+#deletePostsPanel .post-tool-run-status.is-failure {
+    background: #fef2f2 !important;
+    border: 1px solid #fee2e2 !important;
+    border-radius: 16px !important;
+    padding: 1.5rem !important;
+}
+
+#deletePostsPanel .post-tool-run-status-badge {
+    border-radius: 999px !important;
+    padding: 0.4rem 0.8rem !important;
+    font-weight: 800 !important;
+    text-transform: uppercase;
+    font-size: 0.75rem !important;
+}
+
+#deletePostsPanel .post-tool-control-card {
+    background: #ffffff !important;
+    border-radius: 24px !important;
+    border: 1px solid #f1f5f9 !important;
+    box-shadow: 0 10px 40px -10px rgba(15, 23, 42, 0.04) !important;
+    padding: 1.8rem !important;
+}
+
+#deletePostsPanel .post-tool-control-head {
+    margin-bottom: 1.2rem !important;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#deletePostsPanel .post-tool-control-head strong {
+    font-size: 1.1rem !important;
+    font-weight: 800 !important;
+    color: #1e293b !important;
+}
+
+#deletePostsPanel .post-tool-control-head span {
+    font-size: 0.75rem !important;
+    font-weight: 700 !important;
+    color: #64748b !important;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: #f1f5f9;
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+
+#deletePostsPanel .pending-filter-input,
+#deletePostsPanel .pending-filter-select {
+    border-radius: 14px !important;
+    border: 1px solid #f1f5f9 !important;
+    background: #f8fafc !important;
+    padding: 0.9rem 1.2rem !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    transition: all 0.2s !important;
+}
+
+#deletePostsPanel .pending-filter-input:focus,
+#deletePostsPanel .pending-filter-select:focus {
+    background: #ffffff !important;
+    border-color: #8b5cf6 !important;
+    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1) !important;
+}
+
+#deletePostsPanel .pending-filter-chip {
+    border-radius: 12px !important;
+    padding: 0.6rem 1rem !important;
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    border: 1px solid transparent !important;
+    background: #f1f5f9 !important;
+    color: #64748b !important;
+}
+
+#deletePostsPanel .pending-filter-chip.is-active {
+    background: #8b5cf6 !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25) !important;
+}
+
 #deletePostsPanel .pending-table-container {
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.045) !important;
+    background: #ffffff !important;
+    border-radius: 24px !important;
+    border: 1px solid #f1f5f9 !important;
+    box-shadow: 0 10px 40px -10px rgba(15, 23, 42, 0.04) !important;
+    overflow: hidden !important;
+}
+
+#deletePostsPanel .pending-table th {
+    background: #f8fafc !important;
+    color: #64748b !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    font-size: 0.75rem !important;
+    padding: 1.2rem 1.5rem !important;
+    border-bottom: 2px solid #f1f5f9 !important;
+}
+
+#deletePostsPanel .pending-table td {
+    padding: 1.2rem 1.5rem !important;
+    border-bottom: 1px solid #f8fafc !important;
+    vertical-align: middle !important;
+}
+
+#deletePostsPanel .pending-table tbody tr {
+    transition: background 0.15s !important;
+}
+
+#deletePostsPanel .pending-table tbody tr:hover {
+    background: #fcfdff !important;
 }
 
 #deletePostsPanel .post-type-badge {
-    width: auto !important;
-    min-width: 70px !important;
-    height: auto !important;
-    padding: 0.38rem 0.68rem !important;
-    border-radius: 999px !important;
-    font-size: 0.78rem !important;
-    font-weight: 850 !important;
-    line-height: 1 !important;
+    border-radius: 8px !important;
+    padding: 0.4rem 0.7rem !important;
+    font-weight: 800 !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 0.02em !important;
+}
+
+#deletePostsPanel td img {
+    border-radius: 12px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+    aspect-ratio: 1/1 !important;
+    object-fit: cover !important;
+}
+
+#deletePostsPanel .tool-primary-btn-delete {
+    background: #ef4444 !important;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25) !important;
+    border-radius: 14px !important;
+    font-weight: 700 !important;
+    padding: 0.8rem 1.6rem !important;
+}
+
+#deletePostsPanel .tool-primary-btn-delete:hover {
+    background: #dc2626 !important;
+    transform: translateY(-1px) !important;
+}
+
+#deletePostsPanel .pending-refresh-btn {
+    border-radius: 14px !important;
+    font-weight: 700 !important;
+    border: 1px solid #e2e8f0 !important;
+    background: #ffffff !important;
 }
 
 /* --- EMPTY STATE --- */
