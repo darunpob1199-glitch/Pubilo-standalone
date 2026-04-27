@@ -1075,6 +1075,47 @@ header.header {
     border-color: transparent !important;
 }
 
+/* --- DELETE POSTS WORKSPACE --- */
+#deletePostsPanel.delete-posts-panel {
+    gap: 0.9rem !important;
+}
+
+#deletePostsPanel .pending-stat {
+    min-height: 88px !important;
+    border-radius: 16px !important;
+    padding: 0.85rem 1rem !important;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04) !important;
+}
+
+#deletePostsPanel .pending-filter-chip {
+    min-height: 38px !important;
+    border-radius: 999px !important;
+    padding: 0.54rem 0.9rem !important;
+    font-weight: 800 !important;
+}
+
+#deletePostsPanel .post-tool-control-card,
+#deletePostsPanel .post-tool-selection-bar,
+#deletePostsPanel .pending-table-container {
+    border-radius: 18px !important;
+    border-color: #e2e8f0 !important;
+}
+
+#deletePostsPanel .pending-table-container {
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.045) !important;
+}
+
+#deletePostsPanel .post-type-badge {
+    width: auto !important;
+    min-width: 70px !important;
+    height: auto !important;
+    padding: 0.38rem 0.68rem !important;
+    border-radius: 999px !important;
+    font-size: 0.78rem !important;
+    font-weight: 850 !important;
+    line-height: 1 !important;
+}
+
 /* --- EMPTY STATE --- */
 .empty-state-container {
     display: flex;

@@ -11,9 +11,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/styles.css?v=8.4" />
+    <link rel="stylesheet" href="/css/styles.css?v=8.5" />
     <link rel="stylesheet" href="/css/premium-theme.css?v=7.6" />
-    <link rel="stylesheet" href="/css/parts/modern-ui.css?v=1.3" />
+    <link rel="stylesheet" href="/css/parts/modern-ui.css?v=1.4" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="/css/parts/flatpickr-theme.css?v=1.0" />
 </head>
@@ -1071,9 +1071,12 @@
                 </div>
             </div>
 
-                <div class="pending-panel post-tool-panel" id="deletePostsPanel" style="display: none">
-                    <div class="pending-panel-header">
-                        <h2>Delete Posts</h2>
+                <div class="pending-panel post-tool-panel delete-posts-panel" id="deletePostsPanel" style="display: none">
+                    <div class="pending-panel-header delete-posts-header">
+                        <div class="delete-posts-title">
+                            <span class="post-tool-eyebrow">Tools</span>
+                            <h2>Delete Posts</h2>
+                        </div>
                         <div class="pending-panel-toolbar">
                             <button class="pending-refresh-btn" id="deletePostsRefreshBtn" type="button">โหลดโพสต์</button>
                             <button class="tool-primary-btn tool-primary-btn-delete" id="deletePostsRunBtn" type="button">ลบที่เลือก</button>
@@ -1090,41 +1093,53 @@
                         ลบโพสต์ออกจาก Facebook แบบ batch สำหรับเคลียร์เพจจำนวนมาก ปุ่มนี้ควรใช้หลังจากเช็ก filter และรายการที่เลือกแล้วเท่านั้น
                     </div>
                 <div class="pending-summary-bar" id="deletePostsSummaryBar"></div>
-                <div class="pending-filter-bar post-tool-filter-bar">
-                    <div class="pending-filter-search">
-                        <input class="pending-filter-input" id="deletePostsSearchInput" type="search" placeholder="ค้นหาข้อความหรือ post id" />
+                <div class="post-tool-control-card delete-filter-card">
+                    <div class="post-tool-control-head">
+                        <span>Filter</span>
+                        <strong>คัดรายการโพสต์</strong>
                     </div>
-                    <select class="pending-filter-select" id="deletePostsPageSelect"></select>
-                    <select class="pending-filter-select" id="deletePostsTypeFilter">
-                        <option value="all">ทุกประเภท</option>
-                        <option value="link">Link</option>
-                        <option value="text">Text</option>
-                        <option value="image">Image</option>
-                        <option value="reels">Reels</option>
-                    </select>
-                    <div class="pending-quick-filters" id="deletePostsDayFilters">
-                        <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
-                        <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
-                        <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
-                        <button type="button" class="pending-filter-chip" data-filter="thisMonth">เดือนนี้</button>
-                        <button type="button" class="pending-filter-chip" data-filter="thisYear">ปีนี้</button>
+                    <div class="pending-filter-bar post-tool-filter-bar">
+                        <div class="pending-filter-search">
+                            <input class="pending-filter-input" id="deletePostsSearchInput" type="search" placeholder="ค้นหาข้อความหรือ post id" />
+                        </div>
+                        <select class="pending-filter-select" id="deletePostsPageSelect"></select>
+                        <select class="pending-filter-select" id="deletePostsTypeFilter">
+                            <option value="all">ทุกประเภท</option>
+                            <option value="link">Link</option>
+                            <option value="text">Text</option>
+                            <option value="image">Image</option>
+                            <option value="reels">Reels</option>
+                        </select>
+                        <div class="pending-quick-filters" id="deletePostsDayFilters">
+                            <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
+                            <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
+                            <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
+                            <button type="button" class="pending-filter-chip" data-filter="thisMonth">เดือนนี้</button>
+                            <button type="button" class="pending-filter-chip" data-filter="thisYear">ปีนี้</button>
+                        </div>
+                        <div class="pending-filter-meta" id="deletePostsFilterMeta"></div>
                     </div>
-                    <div class="pending-filter-meta" id="deletePostsFilterMeta"></div>
                 </div>
-                <div class="pending-filter-bar post-tool-filter-bar">
-                    <div class="pending-filter-search" style="min-width: 300px;">
-                        <input class="pending-filter-input" id="deletePostsClearBeforeInput" type="datetime-local" placeholder="ลบโพสต์ก่อนวันเวลา" />
+                <div class="post-tool-control-card delete-batch-card">
+                    <div class="post-tool-control-head">
+                        <span>Batch</span>
+                        <strong>เลือกอัตโนมัติ</strong>
                     </div>
-                    <div class="pending-filter-search" style="max-width: 180px;">
-                        <input class="pending-filter-input" id="deletePostsBatchSizeInput" type="number" min="1" max="200" step="1" value="50" placeholder="ลบทีละกี่โพสต์" />
+                    <div class="pending-filter-bar post-tool-filter-bar">
+                        <div class="pending-filter-search delete-before-field">
+                            <input class="pending-filter-input" id="deletePostsClearBeforeInput" type="datetime-local" placeholder="ลบโพสต์ก่อนวันเวลา" />
+                        </div>
+                        <div class="pending-filter-search delete-batch-size-field">
+                            <input class="pending-filter-input" id="deletePostsBatchSizeInput" type="number" min="1" max="200" step="1" value="50" placeholder="จำนวน" />
+                        </div>
+                        <div class="pending-quick-filters" id="deletePostsBatchPresets">
+                            <button type="button" class="pending-filter-chip" data-batch-size="50">แนะนำ 50</button>
+                            <button type="button" class="pending-filter-chip" data-batch-size="80">เร็ว 80</button>
+                            <button type="button" class="pending-filter-chip" data-batch-size="120">เร็วมาก 120</button>
+                        </div>
+                        <button class="post-tool-secondary-btn" id="deletePostsAutoSelectBtn" type="button">เลือกตามวันเวลา + จำนวน</button>
+                        <div class="pending-filter-meta">โหมดแนะนำ: ใส่วันเวลา + จำนวน แล้วกดปุ่มเลือกอัตโนมัติ จากนั้นกดลบ</div>
                     </div>
-                    <div class="pending-quick-filters" id="deletePostsBatchPresets">
-                        <button type="button" class="pending-filter-chip" data-batch-size="50">แนะนำ 50</button>
-                        <button type="button" class="pending-filter-chip" data-batch-size="80">เร็ว 80</button>
-                        <button type="button" class="pending-filter-chip" data-batch-size="120">เร็วมาก 120</button>
-                    </div>
-                    <button class="post-tool-secondary-btn" id="deletePostsAutoSelectBtn" type="button">เลือกตามวันเวลา + จำนวน</button>
-                    <div class="pending-filter-meta">โหมดแนะนำ: ใส่วันเวลา + จำนวน แล้วกดปุ่มเลือกอัตโนมัติ จากนั้นกดลบ</div>
                 </div>
                 <div class="post-tool-selection-bar">
                     <div class="post-tool-selection-meta" id="deletePostsSelectionMeta">ยังไม่ได้เลือกโพสต์</div>
@@ -1133,7 +1148,7 @@
                         <button class="post-tool-secondary-btn" id="deletePostsClearSelectionBtn" type="button">ล้างที่เลือก</button>
                     </div>
                 </div>
-                    <div class="post-tool-body" style="grid-template-columns: minmax(0, 1fr);">
+                    <div class="post-tool-body delete-posts-body">
                         <div class="post-tool-main">
                             <div class="pending-table-container" id="deletePostsTableContainer">
                                 <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
@@ -2208,7 +2223,7 @@
     <script src="/js/parts/06-pending-posts.js?v=6.7"></script>
     <script src="/js/parts/07-earnings.js?v=6.10"></script>
     <script src="/js/parts/08-quotes.js?v=6.2"></script>
-    <script src="/js/parts/08-post-tools.js?v=1.42"></script>
+    <script src="/js/parts/08-post-tools.js?v=1.43"></script>
     <script src="/js/parts/09-navigation.js?v=7.8"></script>
     <script src="/js/parts/10-lazada.js?v=6.6"></script>
     <script src="/js/parts/11-image-generation.js?v=9.12"></script>

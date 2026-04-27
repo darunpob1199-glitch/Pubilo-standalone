@@ -747,16 +747,8 @@ function ensureDeletePageFilterPreviewElement() {
 
     preview = document.createElement("div");
     preview.id = "deletePostsPagePreview";
+    preview.className = "delete-posts-page-preview";
     preview.style.display = "none";
-    preview.style.alignItems = "center";
-    preview.style.gap = "8px";
-    preview.style.padding = "6px 10px";
-    preview.style.border = "1px solid #e5e7eb";
-    preview.style.borderRadius = "10px";
-    preview.style.background = "#ffffff";
-    preview.style.minHeight = "42px";
-    preview.style.maxWidth = "340px";
-    preview.style.flex = "0 1 auto";
 
     dom.pageSelect.insertAdjacentElement("afterend", preview);
     return preview;
@@ -780,15 +772,10 @@ function updateDeletePageFilterPreview() {
     const pictureUrl = resolvePostToolPagePicture(pageMeta.picture, selectedPageId);
     preview.style.display = "inline-flex";
     preview.innerHTML = `
-        <img src="${escapePostToolHtml(pictureUrl)}" alt="${escapePostToolHtml(displayName)}"
-             style="width:24px;height:24px;border-radius:50%;object-fit:cover;background:#f3f4f6;flex-shrink:0;" />
-        <div style="min-width:0;">
-            <div style="font-size:12px;font-weight:700;color:#111827;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                ${escapePostToolHtml(displayName)}
-            </div>
-            <div style="font-size:11px;color:#6b7280;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                ${escapePostToolHtml(selectedPageId)}
-            </div>
+        <img class="delete-posts-page-preview-avatar" src="${escapePostToolHtml(pictureUrl)}" alt="${escapePostToolHtml(displayName)}" />
+        <div class="delete-posts-page-preview-copy">
+            <div class="delete-posts-page-preview-name">${escapePostToolHtml(displayName)}</div>
+            <div class="delete-posts-page-preview-id">${escapePostToolHtml(selectedPageId)}</div>
         </div>
     `;
 }
