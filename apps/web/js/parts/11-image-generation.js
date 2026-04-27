@@ -1605,11 +1605,14 @@ if (newsPublishBtn) {
                     errorMessage.includes("only owners of the url") ||
                     errorMessage.includes("link-card-failed") ||
                     errorMessage.includes("square-link-card");
+                const apiAlreadyExhaustedFallbacks = debugFlow.includes("link-card-failed-all-fallbacks");
 
                 // Square card posts must be resolved by the API/OG preview URL. Sending
                 // this specific failure into the extension often repeats stale browser
                 // state and masks the real Graph API error with another fallback error.
-                if (isSquareCardFlow && isLinkCardStructureError) {
+                // Once the API has exhausted server-side feed/photo fallbacks, try the
+                // extension's browser-side photo fallback instead of ending on an alert.
+                if (isSquareCardFlow && isLinkCardStructureError && !apiAlreadyExhaustedFallbacks) {
                     return false;
                 }
 

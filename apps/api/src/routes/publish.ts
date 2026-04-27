@@ -234,25 +234,6 @@ function dataUrlToBlob(dataUrl: string): Blob {
     return new Blob([bytes], { type: mimeType });
 }
 
-async function fetchImageBlobFromUrl(url: string): Promise<Blob | null> {
-    const normalizedUrl = String(url || '').trim();
-    if (!normalizedUrl) return null;
-    try {
-        const response = await fetch(normalizedUrl, {
-            headers: {
-                'User-Agent': FACEBOOK_USER_AGENT,
-            },
-        });
-        if (!response.ok) return null;
-        const bytes = await response.arrayBuffer();
-        const mimeType = response.headers.get('content-type') || 'image/jpeg';
-        if (!bytes || bytes.byteLength === 0) return null;
-        return new Blob([bytes], { type: mimeType });
-    } catch {
-        return null;
-    }
-}
-
 async function uploadImageToHost(imageData: string, apiKey?: string): Promise<string> {
     if (!apiKey) return '';
 
@@ -414,6 +395,114 @@ async function publishPhotoCookieOnly(params: {
     const postId = String(data?.post_id || data?.id || '');
     if (!postId) throw new Error('Facebook did not return post id for cookie-only photo');
     return { postId };
+}
+
+async function publishPhotoWithTokenFallback(params: {
+    pageId: string;
+    pageToken: string;
+    headers?: Record<string, string>;
+    dataImageUrl?: string;
+    hostedImageUrl?: string;
+    caption?: string;
+    scheduledTime?: number | null;
+}): Promise<{ postId: string; strategy: string; facebookError?: any }> {
+    const attempts: Array<{
+        strategy: string;
+        body: URLSearchParams | FormData;
+        headers: Record<string, string>;
+    }> = [];
+    const baseHeaders = params.headers || {};
+
+    const appendSchedule = (body: URLSearchParams | FormData) => {
+        if (!params.scheduledTime) return;
+        body.append('scheduled_publish_time', String(params.scheduledTime));
+        body.append('published', 'false');
+    };
+
+    const dataImageUrl = String(params.dataImageUrl || '').trim();
+    const hostedImageUrl = String(params.hostedImageUrl || '').trim();
+    if (dataImageUrl.startsWith('data:')) {
+        const multipart = new FormData();
+        multipart.append('access_token', params.pageToken);
+        multipart.append('source', dataUrlToBlob(dataImageUrl), 'pubilo-link-fallback.jpg');
+        if (params.caption) multipart.append('caption', params.caption);
+        appendSchedule(multipart);
+        attempts.push({
+            strategy: 'multipart-source-data-url',
+            body: multipart,
+            headers: baseHeaders,
+        });
+    }
+
+    if (hostedImageUrl) {
+        const paramsBody = new URLSearchParams({
+            access_token: params.pageToken,
+            url: hostedImageUrl,
+        });
+        if (params.caption) paramsBody.set('caption', params.caption);
+        appendSchedule(paramsBody);
+        attempts.push({
+            strategy: 'url-hosted-image',
+            body: paramsBody,
+            headers: {
+                ...baseHeaders,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+        });
+    }
+
+    if (dataImageUrl.startsWith('http') && dataImageUrl !== hostedImageUrl) {
+        const paramsBody = new URLSearchParams({
+            access_token: params.pageToken,
+            url: dataImageUrl,
+        });
+        if (params.caption) paramsBody.set('caption', params.caption);
+        appendSchedule(paramsBody);
+        attempts.push({
+            strategy: 'url-original-image',
+            body: paramsBody,
+            headers: {
+                ...baseHeaders,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+        });
+    }
+
+    if (attempts.length === 0) {
+        throw new Error('No usable image source for photo fallback');
+    }
+
+    let lastErrorMessage = '';
+    let lastFacebookError: any = null;
+    for (const attempt of attempts) {
+        const response = await fetch(`${FB_API}/${params.pageId}/photos`, {
+            method: 'POST',
+            headers: attempt.headers,
+            body: attempt.body instanceof URLSearchParams ? attempt.body.toString() : attempt.body,
+        });
+        const data = await response.json() as any;
+        if (data?.error) {
+            lastFacebookError = data.error || lastFacebookError;
+            lastErrorMessage = data.error?.message || `photo_fallback_failed_${attempt.strategy}`;
+            continue;
+        }
+
+        const postId = String(data?.post_id || data?.id || '');
+        if (postId) {
+            return {
+                postId,
+                strategy: attempt.strategy,
+            };
+        }
+
+        lastErrorMessage = `Facebook did not return post id for photo fallback (${attempt.strategy})`;
+    }
+
+    const error = new Error(lastErrorMessage || 'photo_fallback_failed') as Error & {
+        facebookError?: any;
+    };
+    error.facebookError = lastFacebookError;
+    throw error;
 }
 
 async function fetchFreshPageTokenFromWorkspaceCredentials(
@@ -2550,6 +2639,7 @@ app.post('/', async (c) => {
                 ...recoveredPageTokensFromCandidates,
                 requestedPageToken,
                 storedPageToken,
+                effectiveAccessToken,
             ]);
             const feedLinkCandidates = (() => {
                 if (richLinkPreviewOnly && publishLinkUrl) {
@@ -2906,72 +2996,22 @@ app.post('/', async (c) => {
             for (const candidateToken of pageTokenCandidates) {
                 for (const candidateCaption of photoCaptionCandidates) {
                     try {
-                        let endpoint = `${FB_API}/${pageId}/photos`;
-                        let body: URLSearchParams | FormData;
-                        let headers: Record<string, string>;
-                        let shouldUseMultipart = false;
-                        let sourceBlob: Blob | null = null;
-
-                        if (finalImageUrl.startsWith('data:')) {
-                            shouldUseMultipart = true;
-                            sourceBlob = dataUrlToBlob(finalImageUrl);
-                        } else if (hostedImageUrl || finalImageUrl.startsWith('http')) {
-                            sourceBlob = await fetchImageBlobFromUrl(hostedImageUrl || finalImageUrl);
-                            if (sourceBlob) {
-                                shouldUseMultipart = true;
-                            }
-                        }
-
-                        if (shouldUseMultipart && sourceBlob) {
-                            const multipart = new FormData();
-                            multipart.append('access_token', candidateToken);
-                            multipart.append('source', sourceBlob, 'pubilo-link-fallback.jpg');
-                            if (candidateCaption) multipart.append('caption', candidateCaption);
-                            if (scheduleTimestamp) {
-                                multipart.append('scheduled_publish_time', String(scheduleTimestamp));
-                                multipart.append('published', 'false');
-                            }
-                            body = multipart;
-                            headers = tokenRequestHeaders;
-                        } else {
-                            const params = new URLSearchParams({
-                                access_token: candidateToken,
-                                url: hostedImageUrl || finalImageUrl,
-                            });
-                            if (candidateCaption) params.set('caption', candidateCaption);
-                            if (scheduleTimestamp) {
-                                params.set('scheduled_publish_time', String(scheduleTimestamp));
-                                params.set('published', 'false');
-                            }
-                            body = params;
-                            headers = {
-                                ...tokenRequestHeaders,
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                            };
-                        }
-
-                        const response = await fetch(endpoint, {
-                            method: 'POST',
-                            headers,
-                            body: body instanceof URLSearchParams ? body.toString() : body,
+                        const photoResult = await publishPhotoWithTokenFallback({
+                            pageId,
+                            pageToken: candidateToken,
+                            headers: tokenRequestHeaders,
+                            dataImageUrl: finalImageUrl,
+                            hostedImageUrl: hostedImageUrl || (finalImageUrl.startsWith('http') ? finalImageUrl : ''),
+                            caption: candidateCaption,
+                            scheduledTime: scheduleTimestamp || null,
                         });
-                        const data = await response.json() as any;
-                        if (data?.error) {
-                            photoFallbackLastFacebookError = data.error || photoFallbackLastFacebookError;
-                            photoFallbackLastError = data.error?.message || 'photo_fallback_failed';
-                            continue;
-                        }
-
-                        const fallbackPostId = String(data?.post_id || data?.id || '');
-                        if (!fallbackPostId) {
-                            photoFallbackLastError = 'Facebook did not return post id for photo fallback';
-                            continue;
-                        }
+                        const fallbackPostId = photoResult.postId;
 
                         const fallbackUrl = buildFacebookPostUrl(fallbackPostId, pageId);
                         await recordPublishedSuccess(fallbackPostId, fallbackUrl, {
                             flow: 'photo-fallback-after-link-failure',
                             originalFlowError: lastFeedError || adCreativeError || '',
+                            photoFallbackStrategy: photoResult.strategy,
                         });
                         const hideResult = await maybeHideAfterPublish(fallbackPostId, candidateToken);
 
@@ -3001,6 +3041,7 @@ app.post('/', async (c) => {
                                 requiresSquareLinkCard,
                                 imageTransformStrategy: normalizedImageTransformStrategy || 'fit',
                                 previewUrl: publishLinkUrl,
+                                photoFallbackStrategy: photoResult.strategy,
                                 usedCaptionMode: candidateCaption ? (candidateCaption.includes(finalLink) ? 'with-link' : 'without-link') : 'empty',
                                 hide: hideResult,
                             },
@@ -3008,6 +3049,9 @@ app.post('/', async (c) => {
                     } catch (photoFallbackError) {
                         const msg = photoFallbackError instanceof Error ? photoFallbackError.message : String(photoFallbackError);
                         photoFallbackLastError = msg;
+                        photoFallbackLastFacebookError = (
+                            photoFallbackError as Error & { facebookError?: any }
+                        )?.facebookError || photoFallbackLastFacebookError;
                     }
                 }
             }

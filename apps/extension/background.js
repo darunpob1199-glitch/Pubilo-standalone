@@ -2946,55 +2946,75 @@ async function publishNewsDirect(request = {}) {
   };
 
   const tryPhoto = async (token, messageValue, withCookieHeader) => {
-    if (!imageUrl) {
+    if (!imageUrl && !hostedImageUrl) {
       throw { message: "image_missing" };
     }
 
-    let body;
-    let headers;
+    const attempts = [];
     if (imageUrl.startsWith("data:")) {
       const form = new FormData();
       form.append("access_token", token);
       form.append("source", dataUrlToBlobForExtension(imageUrl), "pubilo-news-direct.jpg");
       if (messageValue) form.append("caption", messageValue);
-      body = form;
-      headers = withCookieHeader ? headersWithCookie : headersNoCookie;
-    } else {
+      attempts.push({
+        strategy: "multipart-source-data-url",
+        body: form,
+        headers: withCookieHeader ? headersWithCookie : headersNoCookie,
+      });
+    }
+
+    const hostedPhotoUrl = hostedImageUrl || (/^https?:/i.test(imageUrl) ? imageUrl : "");
+    if (hostedPhotoUrl) {
       const params = new URLSearchParams({
         access_token: token,
-        url: imageUrl,
+        url: hostedPhotoUrl,
       });
       if (messageValue) params.set("caption", messageValue);
-      body = params.toString();
-      headers = {
-        ...(withCookieHeader ? headersWithCookie : headersNoCookie),
-        "Content-Type": "application/x-www-form-urlencoded",
+      attempts.push({
+        strategy: hostedImageUrl ? "url-hosted-image" : "url-original-image",
+        body: params.toString(),
+        headers: {
+          ...(withCookieHeader ? headersWithCookie : headersNoCookie),
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      });
+    }
+
+    if (attempts.length === 0) {
+      throw { message: "image_missing" };
+    }
+
+    let lastError = null;
+    for (const attempt of attempts) {
+      const data = await graphFetchJsonWithTimeout(`https://graph.facebook.com/v21.0/${pageId}/photos`, {
+        method: "POST",
+        headers: attempt.headers,
+        body: attempt.body,
+      }, 7000);
+      if (data?.error) {
+        lastError = data.error;
+        continue;
+      }
+      const postId = String(data?.post_id || data?.id || "").trim();
+      if (!postId) {
+        lastError = { message: `Facebook did not return post id for direct photo post (${attempt.strategy})` };
+        continue;
+      }
+      return {
+        success: true,
+        postId,
+        url: `https://www.facebook.com/${postId}`,
+        warning: "โพสต์ผ่าน Extension direct photo fallback",
+        debug: {
+          phase: "photo",
+          strategy: "browser-side-photo",
+          photoStrategy: attempt.strategy,
+          withCookieHeader,
+        },
       };
     }
 
-    const data = await graphFetchJsonWithTimeout(`https://graph.facebook.com/v21.0/${pageId}/photos`, {
-      method: "POST",
-      headers,
-      body,
-    }, 7000);
-    if (data?.error) {
-      throw data.error;
-    }
-    const postId = String(data?.post_id || data?.id || "").trim();
-    if (!postId) {
-      throw { message: "Facebook did not return post id for direct photo post" };
-    }
-    return {
-      success: true,
-      postId,
-      url: `https://www.facebook.com/${postId}`,
-      warning: "โพสต์ผ่าน Extension direct photo fallback",
-      debug: {
-        phase: "photo",
-        strategy: "browser-side-photo",
-        withCookieHeader,
-      },
-    };
+    throw lastError || { message: "direct_photo_failed" };
   };
 
   for (const accessToken of accessTokenCandidates) {
