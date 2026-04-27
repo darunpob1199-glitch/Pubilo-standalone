@@ -22,6 +22,12 @@
     border-radius: 16px !important;
     box-shadow: 0 2px 8px rgba(0,0,0,0.02) !important;
     transition: all 0.2s ease !important;
+    display: grid !important;
+    grid-template-columns: 52px minmax(0, 1fr) 38px !important;
+    align-items: center !important;
+    gap: 0.75rem !important;
+    min-height: 112px !important;
+    padding: 1rem !important;
 }
 .page-selector:hover {
     background: #fafbfc !important;
@@ -35,24 +41,88 @@
 .preview-page-info h3 {
     color: #111827 !important;
     font-weight: 700 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    font-size: 1rem !important;
+    line-height: 1.15 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 .page-selector p,
 .preview-page-info p {
     color: #6b7280 !important;
     font-weight: 500 !important;
+    max-width: 100% !important;
+    margin: 0.25rem 0 0 !important;
+    font-size: 0.78rem !important;
+    line-height: 1.25 !important;
+    font-variant-numeric: tabular-nums !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+.page-selector .preview-avatar-img {
+    width: 52px !important;
+    height: 52px !important;
+    flex-shrink: 0 !important;
+}
+.page-selector .preview-page-info {
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+}
+.page-selector-target-summary {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.12rem !important;
+    margin-top: 0.5rem !important;
+    min-width: 0 !important;
 }
 .page-selector-target-label {
     color: #9ca3af !important;
+    font-size: 0.68rem !important;
+    line-height: 1.15 !important;
 }
 .page-selector-target-value {
     color: #4b5563 !important;
+    max-width: 100% !important;
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+.page-selector-meta {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    justify-self: end !important;
+    gap: 0.45rem !important;
+    min-width: 34px !important;
+}
+.page-selector-open-hint {
+    display: none !important;
 }
 .page-selector-target-count {
     background: #a855f7 !important;
     color: #ffffff !important;
+    min-width: 2rem !important;
+    height: 2rem !important;
+    padding: 0 0.5rem !important;
+    font-size: 0.82rem !important;
+    font-weight: 800 !important;
+    box-shadow: 0 8px 18px rgba(168, 85, 247, 0.28) !important;
 }
 .page-dropdown-icon {
     color: #9ca3af !important;
+    width: 16px !important;
+    height: 16px !important;
+    margin-left: 0 !important;
 }
 .page-selector-skeleton .sk-avatar,
 .page-selector-skeleton .sk-line {
@@ -234,6 +304,10 @@
     border-radius: 12px !important;
     padding: 0.65rem 0.7rem !important;
     transition: all 0.15s ease !important;
+    display: grid !important;
+    grid-template-columns: 46px minmax(0, 1fr) 32px !important;
+    align-items: center !important;
+    gap: 0.8rem !important;
 }
 .multi-page-item:hover {
     background: #f9fafb !important;
@@ -246,10 +320,22 @@
 .multi-page-item-copy h4 {
     color: #111827 !important;
     font-size: 0.88rem !important;
+    max-width: 100% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 .multi-page-item-copy p {
     color: #6b7280 !important;
     font-size: 0.75rem !important;
+    max-width: 100% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+.multi-page-item-copy,
+.page-dropdown-item-info {
+    min-width: 0 !important;
 }
 
 /* Page avatar ring */

@@ -715,18 +715,21 @@
             }
 
             .preview-avatar-img {
-                width: 40px;
-                height: 40px;
+                width: 52px;
+                height: 52px;
                 border-radius: 50%;
                 object-fit: cover;
                 background: #e5e5e5;
+                flex-shrink: 0;
             }
 
             .page-selector {
-                display: flex;
+                display: grid;
+                grid-template-columns: 52px minmax(0, 1fr) 38px;
                 align-items: center;
                 gap: 0.75rem;
-                padding: 0.95rem 0.95rem 0.95rem;
+                min-height: 112px;
+                padding: 1rem;
                 border-radius: 18px;
                 background:
                     linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 250, 251, 0.96) 100%);
@@ -759,9 +762,7 @@
             }
 
             .page-selector-open-hint {
-                font-size: 0.72rem;
-                font-weight: 700;
-                color: #6b7280;
+                display: none;
             }
 
             .page-selector-skeleton {
@@ -870,6 +871,12 @@
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
+                min-width: 0;
+            }
+
+            .page-dropdown-item-info {
+                min-width: 0;
+                flex: 1;
             }
 
             .page-dropdown-item-info p {
@@ -878,6 +885,7 @@
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
+                min-width: 0;
             }
 
             @media (max-width: 768px) {
@@ -904,26 +912,43 @@
             }
 
             .preview-page-info h3 {
-                font-size: 0.9375rem;
-                font-weight: 600;
-                color: #1a1a1a;
+                max-width: 100%;
+                margin: 0;
+                color: #111827;
+                font-size: 1rem;
+                font-weight: 800;
+                line-height: 1.15;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
             .preview-page-info p {
-                font-size: 0.75rem;
+                max-width: 100%;
+                margin: 0.25rem 0 0;
                 color: #6b7280;
+                font-size: 0.78rem;
+                font-weight: 600;
+                line-height: 1.25;
+                font-variant-numeric: tabular-nums;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
             .preview-page-info {
                 min-width: 0;
-                flex: 1;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
             }
 
             .page-selector-target-summary {
                 display: flex;
-                align-items: center;
-                gap: 0.4rem;
-                margin-top: 0.35rem;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.12rem;
+                margin-top: 0.5rem;
                 min-width: 0;
             }
 
@@ -937,9 +962,10 @@
             }
 
             .page-selector-target-value {
-                font-size: 0.8rem;
-                font-weight: 600;
-                color: #111827;
+                max-width: 100%;
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: #4b5563;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -947,22 +973,26 @@
 
             .page-selector-meta {
                 display: flex;
+                flex-direction: column;
                 align-items: center;
-                gap: 0.55rem;
+                justify-content: center;
+                gap: 0.45rem;
+                justify-self: end;
                 flex-shrink: 0;
+                min-width: 34px;
             }
 
             .page-selector-target-count {
-                min-width: 1.95rem;
-                height: 1.95rem;
+                min-width: 2rem;
+                height: 2rem;
                 border-radius: 999px;
                 background: #111827;
                 color: #fff;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 0.78rem;
-                font-weight: 700;
+                font-size: 0.82rem;
+                font-weight: 800;
                 padding: 0 0.5rem;
             }
 
