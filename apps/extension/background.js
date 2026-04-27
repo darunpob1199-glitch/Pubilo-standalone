@@ -2542,6 +2542,11 @@ async function publishNewsDirect(request = {}) {
   const isGenericInvalidRequest = (value) => /invalid request|invalid parameter|unsupported request/i.test(String(value || ""));
   const isAdsDraftError = (value) => /unpublished_content_type|ads_post|is_published|published/i.test(String(value || ""));
   const isCallToActionError = (value) => /call_to_action|call to action|unpublished_content_type/i.test(String(value || ""));
+  const isMetadataOwnershipError = (value) => {
+    const normalized = String(value || "").toLowerCase();
+    return normalized.includes("only owners of the url")
+      && /picture|name|thumbnail|description/.test(normalized);
+  };
 
   const stored = await chrome.storage.local.get([
     "fewfeed_accessToken",
@@ -2768,7 +2773,24 @@ async function publishNewsDirect(request = {}) {
     const selectedPictureUrl = shouldForcePreviewCard
       ? controlledPreviewPictureUrl
       : standardPictureUrl;
+    const linkCandidateUsesControlledPreview = (() => {
+      try {
+        return new URL(linkCandidate).pathname === "/api/news-link";
+      } catch (_) {
+        return false;
+      }
+    })();
+    const canSendLinkMetadataOverrides = !shouldForcePreviewCard && !linkCandidateUsesControlledPreview;
+    const hasLinkMetadataOverrides = Boolean(
+      canSendLinkMetadataOverrides && (
+        linkName ||
+        caption ||
+        description ||
+        selectedPictureUrl
+      )
+    );
     const execute = async ({
+      includeLinkMetadata,
       includeCallToAction,
       includeAdsDraft,
     }) => {
@@ -2778,10 +2800,10 @@ async function publishNewsDirect(request = {}) {
       });
 
       if (primaryText) body.set("message", primaryText);
-      if (!shouldForcePreviewCard && linkName) body.set("name", linkName);
-      if (!shouldForcePreviewCard && caption) body.set("caption", caption);
-      if (!shouldForcePreviewCard && description) body.set("description", description);
-      if (selectedPictureUrl) {
+      if (includeLinkMetadata && canSendLinkMetadataOverrides && linkName) body.set("name", linkName);
+      if (includeLinkMetadata && canSendLinkMetadataOverrides && caption) body.set("caption", caption);
+      if (includeLinkMetadata && canSendLinkMetadataOverrides && description) body.set("description", description);
+      if (includeLinkMetadata && canSendLinkMetadataOverrides && selectedPictureUrl) {
         body.set("picture", selectedPictureUrl);
       }
       if (includeCallToAction && callToAction) {
@@ -2821,27 +2843,51 @@ async function publishNewsDirect(request = {}) {
         success: true,
         postId,
         url: `https://www.facebook.com/${postId}`,
-        warning: "โพสต์ผ่าน Extension direct rich link feed mode",
+        warning: includeLinkMetadata
+          ? "โพสต์ผ่าน Extension direct rich link feed mode"
+          : "โพสต์ผ่าน Extension direct link feed mode",
         debug: {
           phase: "feed-link-card",
           strategy: shouldCreateDraft ? "browser-side-feed-draft-card" : "browser-side-feed-card",
           withCookieHeader,
           usesControlledPreview,
           linkCandidate,
+          includeLinkMetadata,
         },
       };
     };
 
     try {
       return await execute({
+        includeLinkMetadata: hasLinkMetadataOverrides,
         includeCallToAction: !!callToAction,
         includeAdsDraft: true,
       });
     } catch (error) {
       const firstMessage = String(error?.message || error || "");
-      if (callToAction && (isCallToActionError(firstMessage) || isGenericInvalidRequest(firstMessage))) {
+      if (hasLinkMetadataOverrides && (isMetadataOwnershipError(firstMessage) || isGenericInvalidRequest(firstMessage))) {
         try {
           return await execute({
+            includeLinkMetadata: false,
+            includeCallToAction: !!callToAction,
+            includeAdsDraft: true,
+          });
+        } catch (retryError) {
+          error = retryError;
+        }
+      }
+
+      const metadataRetryMessage = String(error?.message || error || "");
+      const shouldDropLinkMetadataForRetry = hasLinkMetadataOverrides && (
+        isMetadataOwnershipError(firstMessage) ||
+        isGenericInvalidRequest(firstMessage) ||
+        isMetadataOwnershipError(metadataRetryMessage) ||
+        isGenericInvalidRequest(metadataRetryMessage)
+      );
+      if (callToAction && (isCallToActionError(metadataRetryMessage) || isGenericInvalidRequest(metadataRetryMessage) || isCallToActionError(firstMessage) || isGenericInvalidRequest(firstMessage))) {
+        try {
+          return await execute({
+            includeLinkMetadata: hasLinkMetadataOverrides && !shouldDropLinkMetadataForRetry,
             includeCallToAction: false,
             includeAdsDraft: true,
           });
@@ -2853,6 +2899,7 @@ async function publishNewsDirect(request = {}) {
       const secondMessage = String(error?.message || error || "");
       if (isAdsDraftError(secondMessage) || isGenericInvalidRequest(secondMessage)) {
         return await execute({
+          includeLinkMetadata: false,
           includeCallToAction: false,
           includeAdsDraft: false,
         });
@@ -3027,23 +3074,6 @@ async function publishNewsDirect(request = {}) {
         }
       }
     }
-  }
-
-  if (requireSquareLinkCard) {
-    return {
-      success: false,
-      error: lastError || "square_link_card_unavailable",
-      errorType: "SquareLinkCardUnavailable",
-      debug: {
-        phase: lastPhase || "square-link-card",
-        strategy: lastStrategy || "browser-side-square-required",
-        requireSquareLinkCard: true,
-        imageTransformStrategy,
-        usesControlledPreview,
-        previewLinkUrl: cardLinkUrl,
-        facebookError: lastFacebookError || null,
-      },
-    };
   }
 
   for (const token of pageTokenCandidates) {

@@ -1589,12 +1589,17 @@ if (newsPublishBtn) {
 
             const shouldTryExtensionDirectFallback = (() => {
                 const errorMessage = String(data?.error || "").toLowerCase();
+                const errorType = String(data?.errorType || "").toLowerCase();
+                const debugFlow = String(data?._debug?.flow || "").toLowerCase();
                 const errorCode = Number(data?.errorCode || 0);
                 return (
                     (!response?.ok || !data?.success) &&
                     (
                         errorCode === 1 ||
+                        errorType === "squarelinkcardunavailable" ||
+                        debugFlow === "square-link-card-required" ||
                         errorMessage.includes("invalid request") ||
+                        errorMessage.includes("1080x1080 card link") ||
                         (
                             typeof isInvalidFacebookSessionError === "function" &&
                             isInvalidFacebookSessionError(data)

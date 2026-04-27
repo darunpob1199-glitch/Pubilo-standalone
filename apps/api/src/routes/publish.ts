@@ -1037,24 +1037,17 @@ async function publishLinkCardViaFeed(params: {
     publishAsAdsPost?: boolean;
     scheduledTime?: number | null;
     allowMetadataDropRetry?: boolean;
-    forcePictureOnControlledPreview?: boolean;
 }): Promise<{ postId: string; createdAsDraft: boolean }> {
     const shouldLetFacebookScrapePreview = isControlledNewsPreviewUrl(params.linkUrl);
-    const shouldIncludePictureOnControlledPreview = Boolean(
-        shouldLetFacebookScrapePreview
-        && params.forcePictureOnControlledPreview
-        && params.pictureUrl,
-    );
+    // Controlled previews own the OG tags. Sending Graph API metadata overrides
+    // for external targets makes Facebook reject with "Only owners of the URL...".
     const hasLinkMetadata = Boolean(
-        (
-            !shouldLetFacebookScrapePreview
-            || shouldIncludePictureOnControlledPreview
-        ) && (
+        !shouldLetFacebookScrapePreview && (
             params.title ||
             params.caption ||
             params.description ||
             params.pictureUrl
-        ),
+        )
     );
     const hasCallToAction = Boolean(params.callToActionType);
 
@@ -1077,7 +1070,7 @@ async function publishLinkCardViaFeed(params: {
                 if (params.caption) body.set('caption', params.caption);
                 if (params.description) body.set('description', params.description);
             }
-            if (params.pictureUrl && (!shouldLetFacebookScrapePreview || shouldIncludePictureOnControlledPreview)) {
+            if (params.pictureUrl && !shouldLetFacebookScrapePreview) {
                 body.set('picture', params.pictureUrl);
             }
         }
@@ -2733,7 +2726,6 @@ app.post('/', async (c) => {
                             callToActionType: normalizedCallToAction,
                             callToActionLinkUrl: finalLink || feedLinkUrl,
                             allowMetadataDropRetry: true,
-                            forcePictureOnControlledPreview: requiresSquareLinkCard,
                         } as const;
                         let feedResult = await publishLinkCardViaFeed({
                             ...feedRequestBase,
@@ -2891,25 +2883,6 @@ app.post('/', async (c) => {
                 }
             }
 
-            if (requiresSquareLinkCard) {
-                return c.json({
-                    success: false,
-                    error: `ไม่สามารถโพสต์แบบ 1080x1080 card link ได้: ${lastFeedError || adCreativeError || 'square_link_card_unavailable'}`,
-                    errorType: 'SquareLinkCardUnavailable',
-                    _debug: {
-                        flow: 'square-link-card-required',
-                        adCreativeError,
-                        adCreativeDebug,
-                        lastFeedError,
-                        lastFeedFacebookError,
-                        requiresSquareLinkCard: true,
-                        imageTransformStrategy: normalizedImageTransformStrategy || 'fit',
-                        previewUrl: publishLinkUrl,
-                        hostedImageUrl,
-                    },
-                }, 400);
-            }
-
             // Last resort after all link-card attempts: downgrade to photo + caption (+ link in text).
             // This preserves publish success even when Facebook rejects link-card payload with generic
             // Invalid request / Unsupported request errors.
@@ -3001,9 +2974,11 @@ app.post('/', async (c) => {
                         const hideResult = await maybeHideAfterPublish(fallbackPostId, candidateToken);
 
                         const warningMessages: string[] = [
-                            candidateCaption && candidateCaption.includes(finalLink)
-                                ? 'Facebook ปฏิเสธการสร้าง Link Card ระบบสลับเป็นโพสต์รูปภาพ+แคปชันให้อัตโนมัติ'
-                                : 'Facebook ปฏิเสธ Link Card/ลิงก์ ระบบสลับเป็นโพสต์รูปภาพแบบปลอดภัยให้อัตโนมัติ',
+                            requiresSquareLinkCard
+                                ? 'Facebook ปฏิเสธ 1080x1080 Link Card ระบบสลับเป็นโพสต์รูปภาพ+แคปชันให้อัตโนมัติ'
+                                : candidateCaption && candidateCaption.includes(finalLink)
+                                    ? 'Facebook ปฏิเสธการสร้าง Link Card ระบบสลับเป็นโพสต์รูปภาพ+แคปชันให้อัตโนมัติ'
+                                    : 'Facebook ปฏิเสธ Link Card/ลิงก์ ระบบสลับเป็นโพสต์รูปภาพแบบปลอดภัยให้อัตโนมัติ',
                         ];
                         if (hideResult.attempted && !hideResult.hidden) {
                             warningMessages.push(`ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}`);
@@ -3021,6 +2996,9 @@ app.post('/', async (c) => {
                                 flow: 'photo-fallback-after-link-failure',
                                 adCreativeError,
                                 feedError: lastFeedError,
+                                requiresSquareLinkCard,
+                                imageTransformStrategy: normalizedImageTransformStrategy || 'fit',
+                                previewUrl: publishLinkUrl,
                                 usedCaptionMode: candidateCaption ? (candidateCaption.includes(finalLink) ? 'with-link' : 'without-link') : 'empty',
                                 hide: hideResult,
                             },
@@ -3057,7 +3035,9 @@ app.post('/', async (c) => {
                                 url: fallbackUrl,
                                 timelineHidden: hideResult.hidden,
                                 warning: candidateCaption && candidateCaption.includes(finalLink)
-                                    ? 'Facebook ปฏิเสธ Link Card ระบบสลับเป็นโพสต์รูปภาพ+แคปชัน (cookie fallback)'
+                                    ? (requiresSquareLinkCard
+                                        ? 'Facebook ปฏิเสธ 1080x1080 Link Card ระบบสลับเป็นโพสต์รูปภาพ+แคปชัน (cookie fallback)'
+                                        : 'Facebook ปฏิเสธ Link Card ระบบสลับเป็นโพสต์รูปภาพ+แคปชัน (cookie fallback)')
                                     : 'Facebook ปฏิเสธ Link Card/ลิงก์ ระบบสลับเป็นโพสต์รูปภาพแบบปลอดภัย (cookie fallback)',
                                 needsScheduling: !!scheduleTimestamp,
                                 ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
@@ -3065,6 +3045,9 @@ app.post('/', async (c) => {
                                     flow: 'cookie-photo-fallback-after-link-failure',
                                     adCreativeError,
                                     feedError: lastFeedError,
+                                    requiresSquareLinkCard,
+                                    imageTransformStrategy: normalizedImageTransformStrategy || 'fit',
+                                    previewUrl: publishLinkUrl,
                                     cookieCandidateIndex: i + 1,
                                     usedCaptionMode: candidateCaption ? (candidateCaption.includes(finalLink) ? 'with-link' : 'without-link') : 'empty',
                                     hide: hideResult,
