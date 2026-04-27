@@ -89,6 +89,20 @@ mustInclude(
   errors,
 )
 mustInclude(
+  webNewsPublish,
+  'buildNewsExtensionSafePreviewUrl(directPayload, hostedImageUrl)',
+  webNewsPublishPath,
+  'news extension direct fallback builds controlled preview for legacy extensions',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'directPayload.callToAction = "";',
+  webNewsPublishPath,
+  'news extension direct fallback strips CTA for legacy extensions',
+  errors,
+)
+mustInclude(
   extensionBackground,
   'const forcePhotoFallback = request.forcePhotoFallback === true;',
   extensionBackgroundPath,

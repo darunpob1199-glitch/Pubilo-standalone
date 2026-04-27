@@ -1095,6 +1095,29 @@ function publishNewsViaExtensionDirect(payload = {}, timeoutMs = 70000) {
     });
 }
 
+function buildNewsExtensionSafePreviewUrl(payload = {}, hostedImageUrl = "") {
+    const targetUrl = String(payload.linkUrl || "").trim();
+    if (!targetUrl) return "";
+
+    try {
+        const previewUrl = new URL("/api/news-link", window.location.origin);
+        const title = String(payload.linkName || payload.description || "").trim();
+        const description = String(payload.description || payload.primaryText || "").trim();
+        const siteName = String(payload.caption || "").trim();
+        const imageUrl = String(hostedImageUrl || payload.hostedImageUrl || "").trim();
+        previewUrl.searchParams.set("target", targetUrl);
+        if (imageUrl) previewUrl.searchParams.set("image", imageUrl);
+        previewUrl.searchParams.set("title", title || "ดูรายละเอียดสินค้า");
+        previewUrl.searchParams.set("description", description || "แตะเพื่อดูรายละเอียดสินค้า");
+        if (siteName) previewUrl.searchParams.set("site", siteName);
+        previewUrl.searchParams.set("v", String(Date.now()));
+        return previewUrl.toString();
+    } catch (error) {
+        console.warn("[News] Failed to build safe extension preview URL:", error);
+        return "";
+    }
+}
+
 // News publish handler
 const newsPublishBtn = document.getElementById("newsPublishBtn");
 if (newsPublishBtn) {
@@ -1654,7 +1677,23 @@ if (newsPublishBtn) {
                         directPayload.hostedImageUrl = hostedImageUrl;
                     }
                     if (apiAlreadyExhaustedFallbacks) {
+                        const safePreviewUrl = previewLinkUrl || buildNewsExtensionSafePreviewUrl(directPayload, hostedImageUrl);
+                        if (safePreviewUrl) {
+                            directPayload.previewLinkUrl = safePreviewUrl;
+                        }
                         directPayload.forcePhotoFallback = true;
+                        directPayload.imageTransformStrategy = "fit";
+                        directPayload.requireSquareLinkCard = true;
+                        directPayload.callToAction = "";
+                        directPayload.callToActionLabel = "";
+                        directPayload.linkName = "";
+                        directPayload.caption = "";
+                        directPayload.description = "";
+                        const originalLinkUrl = String(directPayload.linkUrl || "").trim();
+                        const originalPrimaryText = String(directPayload.primaryText || "").trim();
+                        if (originalLinkUrl && !originalPrimaryText.includes(originalLinkUrl)) {
+                            directPayload.primaryText = [originalPrimaryText, originalLinkUrl].filter(Boolean).join("\n\n");
+                        }
                     }
                     const directResult = await publishNewsViaExtensionDirect(directPayload, 70000);
                     if (directResult?.success && (directResult?.postId || directResult?.id)) {
