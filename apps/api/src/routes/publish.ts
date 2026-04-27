@@ -189,6 +189,7 @@ function isGenericInvalidRequestMessage(rawMessage: unknown): boolean {
         || message.includes('invalid post request')
         || message.includes('invalid args')
         || message.includes('unsupported post request')
+        || message.includes('error loading application')
     );
 }
 
@@ -1786,15 +1787,16 @@ async function createStandaloneAdCreative(params: {
     cleanupAdId?: string;
     bootstrapSeedCreated?: boolean;
 }> {
+    const shouldLetFacebookScrapePreview = isControlledNewsPreviewUrl(params.linkUrl);
     const creativePayload: Record<string, any> = {
         page_id: params.pageId,
         link_data: {
             link: params.linkUrl,
             message: params.message || '',
-            ...(params.hostedImageUrl ? { picture: params.hostedImageUrl } : {}),
-            ...(params.title ? { name: params.title } : {}),
-            ...(params.caption ? { caption: params.caption } : {}),
-            ...(params.description ? { description: params.description } : {}),
+            ...(!shouldLetFacebookScrapePreview && params.hostedImageUrl ? { picture: params.hostedImageUrl } : {}),
+            ...(!shouldLetFacebookScrapePreview && params.title ? { name: params.title } : {}),
+            ...(!shouldLetFacebookScrapePreview && params.caption ? { caption: params.caption } : {}),
+            ...(!shouldLetFacebookScrapePreview && params.description ? { description: params.description } : {}),
             ...(params.callToAction ? {
                 call_to_action: {
                     type: params.callToAction,
@@ -2591,8 +2593,8 @@ app.post('/', async (c) => {
                         // Square card mode must use the controlled preview URL so
                         // Facebook consumes the transformed 1080x1080 OG image.
                         linkUrl: requiresSquareLinkCard ? publishLinkUrl : finalLink,
-                        // Keep the controlled preview URL, but still pass the uploaded
-                        // 1080x1080 asset so Facebook does not downgrade to a wide card.
+                        // Controlled preview owns its OG image/metadata. Sending Graph
+                        // metadata overrides for this URL triggers Facebook owner checks.
                         hostedImageUrl: hostedImageUrl || undefined,
                         message: finalMessage,
                         title: requiresSquareLinkCard ? undefined : (attachmentTitle || undefined),

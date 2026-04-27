@@ -2538,8 +2538,9 @@ async function publishNewsDirect(request = {}) {
     }
   })();
   const shouldForcePreviewCard = Boolean(cardLinkUrl) && (usesControlledPreview || requireSquareLinkCard);
+  const shouldUseScrapedCardMetadata = shouldForcePreviewCard || usesControlledPreview;
   const richCardLinkUrl = shouldForcePreviewCard ? cardLinkUrl : (linkUrl || cardLinkUrl);
-  const isGenericInvalidRequest = (value) => /invalid request|invalid parameter|unsupported request/i.test(String(value || ""));
+  const isGenericInvalidRequest = (value) => /invalid request|invalid parameter|unsupported request|error loading application/i.test(String(value || ""));
   const isAdsDraftError = (value) => /unpublished_content_type|ads_post|is_published|published/i.test(String(value || ""));
   const isCallToActionError = (value) => /call_to_action|call to action|unpublished_content_type/i.test(String(value || ""));
   const isMetadataOwnershipError = (value) => {
@@ -2690,10 +2691,10 @@ async function publishNewsDirect(request = {}) {
       link_data: {
         link: richCardLinkUrl,
         message: primaryText || "",
-        ...(selectedPictureUrl ? { picture: selectedPictureUrl } : {}),
-        ...(!shouldForcePreviewCard && linkName ? { name: linkName } : {}),
-        ...(!shouldForcePreviewCard && caption ? { caption } : {}),
-        ...(!shouldForcePreviewCard && description ? { description } : {}),
+        ...(!shouldUseScrapedCardMetadata && selectedPictureUrl ? { picture: selectedPictureUrl } : {}),
+        ...(!shouldUseScrapedCardMetadata && linkName ? { name: linkName } : {}),
+        ...(!shouldUseScrapedCardMetadata && caption ? { caption } : {}),
+        ...(!shouldUseScrapedCardMetadata && description ? { description } : {}),
         ...(callToAction ? {
           call_to_action: {
             type: callToAction,
@@ -2780,7 +2781,7 @@ async function publishNewsDirect(request = {}) {
         return false;
       }
     })();
-    const canSendLinkMetadataOverrides = !shouldForcePreviewCard && !linkCandidateUsesControlledPreview;
+    const canSendLinkMetadataOverrides = !shouldUseScrapedCardMetadata && !linkCandidateUsesControlledPreview;
     const hasLinkMetadataOverrides = Boolean(
       canSendLinkMetadataOverrides && (
         linkName ||

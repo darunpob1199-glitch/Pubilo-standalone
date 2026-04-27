@@ -1592,6 +1592,27 @@ if (newsPublishBtn) {
                 const errorType = String(data?.errorType || "").toLowerCase();
                 const debugFlow = String(data?._debug?.flow || "").toLowerCase();
                 const errorCode = Number(data?.errorCode || 0);
+                const imageTransformStrategy =
+                    typeof newsImageTransformStrategy === "string" && newsImageTransformStrategy.trim()
+                        ? newsImageTransformStrategy.trim()
+                        : "fit";
+                const isSquareCardFlow = imageTransformStrategy !== "original";
+                const isLinkCardStructureError =
+                    errorType === "squarelinkcardunavailable" ||
+                    debugFlow.includes("square-link-card") ||
+                    debugFlow.includes("link-card-failed") ||
+                    errorMessage.includes("1080x1080 card link") ||
+                    errorMessage.includes("only owners of the url") ||
+                    errorMessage.includes("link-card-failed") ||
+                    errorMessage.includes("square-link-card");
+
+                // Square card posts must be resolved by the API/OG preview URL. Sending
+                // this specific failure into the extension often repeats stale browser
+                // state and masks the real Graph API error with another fallback error.
+                if (isSquareCardFlow && isLinkCardStructureError) {
+                    return false;
+                }
+
                 return (
                     (!response?.ok || !data?.success) &&
                     (
