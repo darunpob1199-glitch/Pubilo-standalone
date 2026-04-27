@@ -1069,7 +1069,9 @@
 
             #linkModeContainer .card-preview,
             #newsModeContainer .card-preview {
-                width: fit-content;
+                width: 100%;
+                max-width: 480px;
+                margin: 0 auto;
             }
 
             #linkModeContainer .card-link-info,
