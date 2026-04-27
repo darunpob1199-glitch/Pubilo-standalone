@@ -88,18 +88,41 @@
         }
     }
 
-    /**
-     * Update caption display (user types any text they want)
-     */
     function updateCaptionPreview(inputId, captionId) {
         const input = document.getElementById(inputId);
         const caption = document.getElementById(captionId);
-        if (!input || !caption) return;
+        if (!caption) return;
 
-        caption.textContent = input.value || '';
-        // Also sync to hidden caption input
-        const hiddenCaption = document.getElementById('caption');
-        if (hiddenCaption) hiddenCaption.value = input.value || '';
+        let domain = '';
+        if (captionId === 'previewCaption') {
+            const linkUrl = document.getElementById('linkUrl');
+            if (linkUrl && linkUrl.value.trim()) {
+                try {
+                    let urlVal = linkUrl.value.trim();
+                    if (!urlVal.startsWith('http')) urlVal = 'http://' + urlVal;
+                    domain = new URL(urlVal).hostname.replace(/^www\./, '').toUpperCase();
+                } catch(e) {}
+            }
+        } else if (captionId === 'newsPreviewCaption') {
+            const newsUrlInput = document.getElementById('newsUrlInput');
+            if (newsUrlInput && newsUrlInput.value.trim()) {
+                try {
+                    let urlVal = newsUrlInput.value.trim();
+                    if (!urlVal.startsWith('http')) urlVal = 'http://' + urlVal;
+                    domain = new URL(urlVal).hostname.replace(/^www\./, '').toUpperCase();
+                } catch(e) {}
+            }
+        }
+        
+        // Use user-provided caption if available, otherwise fallback to domain
+        let finalCaption = (input && input.value) ? input.value : domain;
+        caption.textContent = finalCaption;
+
+        // Also sync to hidden caption input if this is the main linkName
+        if (inputId === 'linkName') {
+            const hiddenCaption = document.getElementById('caption');
+            if (hiddenCaption) hiddenCaption.value = finalCaption;
+        }
     }
 
     /**
@@ -185,6 +208,18 @@
         CAPTION_MAPPINGS.forEach(({ input, caption }) => {
             bindInput(input, () => updateCaptionPreview(input, caption));
         });
+        
+        // 2b. URL inputs → trigger domain extraction for caption
+        const linkUrlEl = document.getElementById('linkUrl');
+        if (linkUrlEl) {
+            linkUrlEl.addEventListener('input', debounce(() => updateCaptionPreview('linkName', 'previewCaption'), TYPING_DEBOUNCE_MS));
+            linkUrlEl.addEventListener('change', () => updateCaptionPreview('linkName', 'previewCaption'));
+        }
+        const newsUrlEl = document.getElementById('newsUrlInput');
+        if (newsUrlEl) {
+            newsUrlEl.addEventListener('input', debounce(() => updateCaptionPreview('linkName', 'newsPreviewCaption'), TYPING_DEBOUNCE_MS));
+            newsUrlEl.addEventListener('change', () => updateCaptionPreview('linkName', 'newsPreviewCaption'));
+        }
 
         // 3. พิกัด → description display
         DESC_MAPPINGS.forEach(({ input, desc }) => {

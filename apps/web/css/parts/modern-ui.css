@@ -660,16 +660,17 @@ header.header {
 }
 
 .card-link-caption {
-    font-size: 0.78rem !important;
+    font-size: 0.75rem !important;
     color: #65676B !important;
     text-transform: uppercase !important;
     font-weight: 400 !important;
-    letter-spacing: 0 !important;
-    margin-bottom: 2px !important;
+    letter-spacing: 0.02em !important;
+    margin-bottom: 3px !important;
+    display: block !important;
 }
 
 .card-link-title {
-    font-size: 0.9rem !important;
+    font-size: 1rem !important;
     color: #050505 !important;
     font-weight: 600 !important;
     line-height: 1.3 !important;
@@ -678,6 +679,10 @@ header.header {
     line-clamp: 2 !important;
     -webkit-box-orient: vertical !important;
     overflow: hidden !important;
+}
+
+.description-prefix {
+    display: none !important; /* Hide "พิกัด :" for authentic FB look */
 }
 
 .btn-learn-more {

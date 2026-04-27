@@ -1060,9 +1060,11 @@
 
             #linkModeContainer .card-image-area,
             #newsModeContainer .card-image-area {
-                aspect-ratio: 1 / 1;
                 width: auto;
-                height: calc(100% - 80px); /* Leave space for link info */
+                height: auto;
+                aspect-ratio: auto;
+                min-height: 200px;
+                display: flex;
             }
 
             #linkModeContainer .card-preview,

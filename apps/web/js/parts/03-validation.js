@@ -103,6 +103,23 @@ function validateNewsMode() {
     const newsPreviewDesc = document.getElementById("newsPreviewDescription");
     const newsPublishBtn = document.getElementById("newsPublishBtn");
     const newsFullImageView = document.getElementById("newsFullImageView");
+    const newsPreviewCaption = document.getElementById("newsPreviewCaption");
+
+    if (newsPreviewCaption && newsUrlInput) {
+        try {
+            let urlVal = newsUrlInput.value.trim();
+            if (urlVal) {
+                if (!urlVal.startsWith('http')) urlVal = 'http://' + urlVal;
+                let domain = new URL(urlVal).hostname.replace(/^www\./, '').toUpperCase();
+                newsPreviewCaption.textContent = domain;
+            } else {
+                newsPreviewCaption.textContent = "";
+            }
+        } catch(e) {
+            newsPreviewCaption.textContent = "";
+        }
+    }
+
     const hasVisibleNewsImageInDom = (() => {
         if (!newsFullImageView) return false;
         const displayStyle = window.getComputedStyle(newsFullImageView).display;
