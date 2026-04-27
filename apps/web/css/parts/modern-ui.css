@@ -129,15 +129,17 @@
     background: #f3f4f6 !important;
 }
 
-/* --- PAGE PICKER MODAL --- */
+/* --- PAGE PICKER SIDE DROPDOWN --- */
 .page-picker-modal {
-    position: fixed !important;
-    inset: 0 !important;
+    position: absolute !important;
+    top: calc(88px) !important;
+    left: 8px !important;
+    right: 8px !important;
     display: none !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 24px !important;
     z-index: 2000 !important;
+    padding: 0 !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
 }
 
 .page-picker-modal.visible {
@@ -145,37 +147,35 @@
 }
 
 .page-picker-backdrop {
-    position: absolute !important;
+    position: fixed !important;
     inset: 0 !important;
-    background: rgba(15, 23, 42, 0.42) !important;
-    backdrop-filter: blur(12px) !important;
+    background: transparent !important; /* Invisible overlay to catch outside clicks */
+    backdrop-filter: none !important;
 }
 
 .page-picker-modal .page-dropdown {
     position: relative !important;
-    top: auto !important;
-    left: auto !important;
-    right: auto !important;
-    width: min(430px, calc(100vw - 32px)) !important;
-    max-height: min(78vh, 720px) !important;
+    width: 100% !important;
+    max-height: calc(100vh - 200px) !important;
     height: auto !important;
-    border-radius: 24px !important;
-    background: #ffffff !important;
+    border-radius: 16px !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(12px) !important;
     border: 1px solid #e5e7eb !important;
-    box-shadow: 0 30px 80px rgba(15,23,42,0.22) !important;
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12) !important;
     z-index: 1 !important;
     display: none;
     flex-direction: column;
     overflow: hidden;
-    animation: scaleInDropdown 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: slideDownDropdown 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .page-picker-modal .page-dropdown.visible {
     display: flex !important;
 }
 
-@keyframes scaleInDropdown {
-    from { opacity: 0; transform: translateY(10px) scale(0.98); }
+@keyframes slideDownDropdown {
+    from { opacity: 0; transform: translateY(-10px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
