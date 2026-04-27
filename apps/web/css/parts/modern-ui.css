@@ -132,11 +132,11 @@
 /* --- PAGE PICKER SIDE DROPDOWN --- */
 .page-picker-modal {
     position: absolute !important;
-    top: calc(88px) !important;
-    left: 8px !important;
-    right: 8px !important;
+    top: 96px !important; /* Flush with bottom of selector */
+    left: 0 !important;
+    right: 0 !important;
     display: none !important;
-    z-index: 2000 !important;
+    z-index: 2100 !important;
     padding: 0 !important;
     align-items: flex-start !important;
     justify-content: center !important;
@@ -156,13 +156,16 @@
 .page-picker-modal .page-dropdown {
     position: relative !important;
     width: 100% !important;
-    max-height: calc(100vh - 200px) !important;
+    max-height: calc(100vh - 120px) !important;
     height: auto !important;
-    border-radius: 16px !important;
-    background: rgba(255, 255, 255, 0.95) !important;
-    backdrop-filter: blur(12px) !important;
-    border: 1px solid #e5e7eb !important;
-    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12) !important;
+    border-radius: 0 0 16px 16px !important; /* Connected flush bottom */
+    background: rgba(255, 255, 255, 0.98) !important;
+    backdrop-filter: blur(16px) !important;
+    border-left: 1px solid #e5e7eb !important;
+    border-right: 1px solid #e5e7eb !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    border-top: 1px solid #f1f5f9 !important;
+    box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.15) !important;
     z-index: 1 !important;
     display: none;
     flex-direction: column;
