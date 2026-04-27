@@ -3932,13 +3932,13 @@ function ensureAdAccountUiElements() {
         adAccountGroup.id = "adAccountGroup";
         adAccountGroup.innerHTML = `
             <div class="ad-account-label-row">
-                <label class="form-label" for="adAccountSelect" style="margin-bottom: 0;">บัญชียิงแอด</label>
+                <label class="form-label" for="adAccountSelect" style="margin-bottom: 0;">🏢 บัญชียิงแอด</label>
                 <button type="button" class="ad-account-refresh-btn" id="refreshAdAccountsBtn">รีเฟรช</button>
             </div>
             <select class="form-select" id="adAccountSelect">
                 <option value="">เลือกอัตโนมัติ (ให้ระบบเลือกเอง)</option>
             </select>
-            <small id="adAccountStatusText" style="color: #888; margin-top: 4px; display: block;">
+            <small id="adAccountStatusText" style="color: #64748b; margin-top: 6px; display: block; font-size: 0.8rem;">
                 ยังไม่ได้โหลดบัญชียิงแอด
             </small>
         `;
@@ -3991,13 +3991,13 @@ function ensureNewsAdAccountUiElements() {
         newsGroup.id = "newsAdAccountGroup";
         newsGroup.innerHTML = `
             <div class="ad-account-label-row">
-                <label class="form-label" for="newsAdAccountSelect" style="margin-bottom: 0;">บัญชียิงแอด</label>
+                <label class="form-label" for="newsAdAccountSelect" style="margin-bottom: 0;">🏢 บัญชียิงแอด</label>
                 <button type="button" class="ad-account-refresh-btn" id="newsRefreshAdAccountsBtn">รีเฟรช</button>
             </div>
             <select class="form-select" id="newsAdAccountSelect">
                 <option value="">เลือกอัตโนมัติ (ให้ระบบเลือกเอง)</option>
             </select>
-            <small id="newsAdAccountStatusText" style="color: #888; margin-top: 4px; display: block;">
+            <small id="newsAdAccountStatusText" style="color: #64748b; margin-top: 6px; display: block; font-size: 0.8rem;">
                 ยังไม่ได้โหลดบัญชียิงแอด
             </small>
         `;

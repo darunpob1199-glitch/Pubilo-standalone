@@ -452,40 +452,43 @@
 
                         <div class="form-group">
                             <div style="display: flex; align-items: center; justify-content: space-between;">
-                                <label class="form-label" style="margin-bottom: 0;">Primary Text</label>
+                                <label class="form-label" style="margin-bottom: 0;">📝 ข้อความ (Primary Text)</label>
                                 <span class="char-counter" id="newsCharCounter">0/220</span>
                             </div>
                             <textarea class="form-textarea" id="newsPrimaryText"
-                                placeholder="เขียนข้อความหลักที่จะแสดงเหนือการ์ดลิงก์ข่าว..." maxlength="220"></textarea>
+                                placeholder="เขียนข้อความหลักที่จะแสดงเหนือการ์ดโฆษณา..." maxlength="220" style="min-height: 120px;"></textarea>
+                            <small class="form-hint" style="color: #64748b; margin-top: 8px; display: block; font-size: 0.8rem;">💡 Tips: ใช้ emoji 🤩 ย่อหน้าเว้นวรรคให้สวยงาม!</small>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Website URL</label>
+                            <label class="form-label">🔗 เว็บไซต์ (Website URL)</label>
                             <input type="text" class="form-input" id="newsUrlInput" placeholder="https://...">
-                            <small id="newsLazadaStatus" style="color: #888; margin-top: 4px; display: block;"></small>
+                            <small id="newsLazadaStatus" style="color: #64748b; margin-top: 6px; display: block; font-size: 0.8rem;"></small>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Call to Action</label>
+                            <label class="form-label">🖱️ ปุ่ม (Call to Action)</label>
                             <select class="form-select" id="newsCtaTypeSelect">
-                                <option value="SHOP_NOW" selected>Shop Now</option>
-                                <option value="LEARN_MORE">Learn More</option>
-                                <option value="SIGN_UP">Sign Up</option>
-                                <option value="BOOK_NOW">Book Now</option>
+                                <option value="SHOP_NOW" selected>Shop Now (ช้อปเลย)</option>
+                                <option value="LEARN_MORE">Learn More (เรียนรู้เพิ่มเติม)</option>
+                                <option value="SIGN_UP">Sign Up (สมัครเลย)</option>
+                                <option value="BOOK_NOW">Book Now (จองเลย)</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">พิกัด</label>
+                            <label class="form-label">📍 พิกัด (Description)</label>
                             <input type="text" class="form-input" id="newsDescriptionInput"
-                                placeholder="เช่น Telegram Premium ราคาพิเศษ">
+                                placeholder="เช่น แจกโค้ดฟรีจำนวนจำกัด ...">
                         </div>
                         <div class="form-group">
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
-                                <label class="form-label" for="newsManualScheduleInput" style="margin-bottom: 0;">Schedule</label>
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;">
+                                <label class="form-label" for="newsManualScheduleInput" style="margin-bottom: 0;">⏰ ตั้งเวลาโพสต์ (Schedule)</label>
                                 <button type="button" id="newsManualScheduleClearBtn" class="schedule-clear-btn">ล้างเวลา</button>
                             </div>
                             <input type="datetime-local" class="form-input" id="newsManualScheduleInput" step="60">
-                            <small id="newsManualScheduleHint" style="color: #888; margin-top: 4px; display: block;">
-                                ถ้ากรอกไว้ ระบบจะใช้เวลานี้ก่อน auto schedule ใน Settings
-                            </small>
+                            <div style="margin-top: 8px; padding: 10px; background: rgba(139, 92, 246, 0.05); border: 1px solid rgba(139, 92, 246, 0.15); border-radius: 8px;">
+                                <small id="newsManualScheduleHint" style="color: #64748b; display: block; font-size: 0.78rem;">
+                                    📌 ถ้ากรอกไว้ ระบบจะใช้เวลานี้แทนระบบ Auto Schedule
+                                </small>
+                            </div>
                         </div>
                         <div style="margin-top: auto; padding-top: 1rem;">
                             <button class="btn-publish disabled" id="newsPublishBtn" disabled>Schedule Post</button>
@@ -584,36 +587,37 @@
                     <div class="card" style="display: flex; flex-direction: column;">
                         <div class="form-group">
                             <div style="display: flex; align-items: center; justify-content: space-between;">
-                                <label class="form-label" style="margin-bottom: 0;">Primary Text</label>
+                                <label class="form-label" style="margin-bottom: 0;">📝 ข้อความ (Primary Text)</label>
                                 <span class="char-counter" id="linkCharCounter">0/220</span>
                             </div>
                             <textarea class="form-textarea" id="primaryText"
-                                placeholder="Write something about your post..." maxlength="220"></textarea>
+                                placeholder="เขียนข้อความหลักที่จะแสดงเหนือการ์ดโฆษณา..." maxlength="220" style="min-height: 120px;"></textarea>
+                            <small class="form-hint" style="color: #64748b; margin-top: 8px; display: block; font-size: 0.8rem;">💡 Tips: ใช้ emoji 🤩 ย่อหน้าเว้นวรรคให้สวยงาม!</small>
                         </div>
                         <!-- Link-only fields (hidden in Image mode) -->
                         <div id="linkOnlyFields">
 
                             <div class="form-group">
-                                <label class="form-label">Website URL</label>
+                                <label class="form-label">🔗 เว็บไซต์ (Website URL)</label>
                                 <input type="text" class="form-input" id="linkUrl" placeholder="https://..." />
-                                <small id="lazadaStatus" style="color: #888; margin-top: 4px; display: block;"></small>
+                                <small id="lazadaStatus" style="color: #64748b; margin-top: 6px; display: block; font-size: 0.8rem;"></small>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Call to Action</label>
+                                <label class="form-label">🖱️ ปุ่ม (Call to Action)</label>
                                 <select class="form-select" id="cardButton">
-                                    <option value="SHOP_NOW" selected>Shop Now</option>
-                                    <option value="LEARN_MORE">Learn More</option>
-                                    <option value="SIGN_UP">Sign Up</option>
-                                    <option value="BOOK_NOW">Book Now</option>
+                                    <option value="SHOP_NOW" selected>Shop Now (ช้อปเลย)</option>
+                                    <option value="LEARN_MORE">Learn More (เรียนรู้เพิ่มเติม)</option>
+                                    <option value="SIGN_UP">Sign Up (สมัครเลย)</option>
+                                    <option value="BOOK_NOW">Book Now (จองเลย)</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">พิกัด</label>
+                                <label class="form-label">📍 พิกัด (Description)</label>
                                 <input type="text" class="form-input" id="linkDescriptionInput"
-                                    placeholder="เช่น Telegram Premium ราคาพิเศษ" />
+                                    placeholder="เช่น แจกโค้ดฟรีจำนวนจำกัด ..." />
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Caption <small style="font-weight:400;color:#9ca3af;">(ข้อความเหนือพิกัด)</small></label>
+                                <label class="form-label">🌐 Caption <small style="font-weight:400;color:#9ca3af;">(โดเมนเหนือพิกัด)</small></label>
                                 <input type="text" class="form-input" id="linkName"
                                     placeholder="เช่น S.LAZADA.CO.TH, SHOPEE.CO.TH" value="" />
                             </div>
@@ -622,14 +626,16 @@
                             <input type="hidden" id="description" value="" />
                         </div>
                         <div class="form-group">
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
-                                <label class="form-label" for="linkManualScheduleInput" style="margin-bottom: 0;">Schedule</label>
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;">
+                                <label class="form-label" for="linkManualScheduleInput" style="margin-bottom: 0;">⏰ ตั้งเวลาโพสต์ (Schedule)</label>
                                 <button type="button" id="linkManualScheduleClearBtn" class="schedule-clear-btn">ล้างเวลา</button>
                             </div>
                             <input type="datetime-local" class="form-input" id="linkManualScheduleInput" step="60" />
-                            <small id="linkManualScheduleHint" style="color: #888; margin-top: 4px; display: block;">
-                                ถ้ากรอกไว้ ระบบจะใช้เวลานี้ก่อน auto schedule ใน Settings
-                            </small>
+                            <div style="margin-top: 8px; padding: 10px; background: rgba(139, 92, 246, 0.05); border: 1px solid rgba(139, 92, 246, 0.15); border-radius: 8px;">
+                                <small id="linkManualScheduleHint" style="color: #64748b; display: block; font-size: 0.78rem;">
+                                    📌 ถ้ากรอกไว้ ระบบจะใช้เวลานี้แทนระบบ Auto Schedule
+                                </small>
+                            </div>
                         </div>
                         <div style="margin-top: auto; padding-top: 1rem;">
                             <button class="btn-publish" id="publishBtn">Schedule Post</button>
