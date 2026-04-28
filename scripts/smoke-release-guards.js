@@ -20,6 +20,7 @@ const errors = []
 const webConfigPath = 'apps/web/js/config.js'
 const webPublishPath = 'apps/web/js/parts/12-publish.js'
 const webNewsPublishPath = 'apps/web/js/parts/11-image-generation.js'
+const webWorkerPath = 'apps/web/_worker.js'
 const apiPublishPath = 'apps/api/src/routes/publish.ts'
 const extensionBackgroundPath = 'apps/extension/background.js'
 const extensionContentPath = 'apps/extension/content.js'
@@ -27,6 +28,7 @@ const extensionContentPath = 'apps/extension/content.js'
 const webConfig = read(webConfigPath)
 const webPublish = read(webPublishPath)
 const webNewsPublish = read(webNewsPublishPath)
+const webWorker = read(webWorkerPath)
 const apiPublish = read(apiPublishPath)
 const extensionBackground = read(extensionBackgroundPath)
 const extensionContent = read(extensionContentPath)
@@ -39,6 +41,11 @@ mustInclude(webConfig, 'if (apiParam && allowApiParamOverride)', webConfigPath, 
 mustInclude(webConfig, 'Ignored ?api override on production host', webConfigPath, 'api override warning branch', errors)
 
 mustInclude(webPublish, 'allowAdCreativePublish: true', webPublishPath, 'client-side ad creative opt-in for card links', errors)
+
+mustInclude(webWorker, 'function rewriteLocalHtmlAssetVersions', webWorkerPath, 'local dev html asset cache busting', errors)
+mustInclude(webWorker, 'parsed.searchParams.set("dev", devVersion);', webWorkerPath, 'local dev asset version query', errors)
+mustInclude(webWorker, 'isLocalDevHost(url.hostname) && contentType.includes("text/html")', webWorkerPath, 'local dev html rewrite gate', errors)
+mustInclude(webWorker, 'withNoStoreHeaders(assetResponse.headers)', webWorkerPath, 'worker-level no-store headers for static assets', errors)
 
 mustInclude(
   apiPublish,

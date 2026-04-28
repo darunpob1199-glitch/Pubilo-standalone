@@ -1,5 +1,54 @@
 const FB_API = "https://graph.facebook.com/v21.0";
 const MAX_SHARE_OPERATIONS = 100;
+const NO_STORE_HEADERS = {
+  "cache-control": "no-store, no-cache, must-revalidate",
+  "pragma": "no-cache",
+  "expires": "0",
+};
+
+function isLocalDevHost(hostname) {
+  return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(String(hostname || "").toLowerCase());
+}
+
+function isCacheSensitiveAssetPath(pathname) {
+  return (
+    pathname === "/" ||
+    pathname === "/index.html" ||
+    pathname.endsWith(".html") ||
+    pathname.startsWith("/js/") ||
+    pathname.startsWith("/css/") ||
+    pathname === "/_worker.js"
+  );
+}
+
+function withNoStoreHeaders(headers) {
+  const nextHeaders = new Headers(headers);
+  Object.entries(NO_STORE_HEADERS).forEach(([key, value]) => {
+    nextHeaders.set(key, value);
+  });
+  return nextHeaders;
+}
+
+function appendDevCacheBust(rawUrl, devVersion) {
+  if (!rawUrl || !devVersion) return rawUrl;
+  if (!(rawUrl.startsWith("/js/") || rawUrl.startsWith("/css/"))) return rawUrl;
+
+  try {
+    const parsed = new URL(rawUrl, "https://pubilo.local");
+    parsed.searchParams.set("dev", devVersion);
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    const joiner = rawUrl.includes("?") ? "&" : "?";
+    return `${rawUrl}${joiner}dev=${encodeURIComponent(devVersion)}`;
+  }
+}
+
+function rewriteLocalHtmlAssetVersions(html, devVersion) {
+  return String(html || "").replace(
+    /\b(src|href)=["'](\/(?:js|css)\/[^"']+)["']/g,
+    (match, attr, rawUrl) => `${attr}="${appendDevCacheBust(rawUrl, devVersion)}"`,
+  );
+}
 
 function resolveApiOrigin(hostname) {
   const normalized = String(hostname || "").toLowerCase();
@@ -383,6 +432,34 @@ export default {
       return handleSharePosts(request);
     }
 
-    return env.ASSETS.fetch(request);
+    const assetResponse = await env.ASSETS.fetch(request);
+    const contentType = assetResponse.headers.get("content-type") || "";
+    const shouldRewriteForDev = isLocalDevHost(url.hostname) && contentType.includes("text/html");
+    const shouldForceNoStore =
+      isLocalDevHost(url.hostname) ||
+      isCacheSensitiveAssetPath(url.pathname) ||
+      contentType.includes("text/html") ||
+      contentType.includes("javascript") ||
+      contentType.includes("text/css");
+
+    if (shouldRewriteForDev) {
+      const html = await assetResponse.text();
+      const devVersion = String(Date.now());
+      return new Response(rewriteLocalHtmlAssetVersions(html, devVersion), {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers: withNoStoreHeaders(assetResponse.headers),
+      });
+    }
+
+    if (shouldForceNoStore) {
+      return new Response(assetResponse.body, {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers: withNoStoreHeaders(assetResponse.headers),
+      });
+    }
+
+    return assetResponse;
   },
 };
