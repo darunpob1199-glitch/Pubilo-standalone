@@ -759,6 +759,18 @@ function buildNewsPreviewUrl(baseUrl: string, params: {
     return previewUrl.toString();
 }
 
+function getPublicNewsPreviewOrigin(appOrigin: string): string {
+    try {
+        const parsed = new URL(appOrigin);
+        if (['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(parsed.hostname)) {
+            return 'https://pubilo.com';
+        }
+    } catch {
+        // Keep the original origin if parsing fails; callers still validate the URL.
+    }
+    return appOrigin;
+}
+
 function isControlledNewsPreviewUrl(rawUrl?: string): boolean {
     const normalized = String(rawUrl || '').trim();
     if (!normalized) return false;
@@ -1951,15 +1963,19 @@ async function createStandaloneAdCreative(params: {
     bootstrapSeedCreated?: boolean;
 }> {
     const shouldLetFacebookScrapePreview = isControlledNewsPreviewUrl(params.linkUrl);
+    // Facebook rejects picture/name/description overrides for most third-party URLs
+    // unless the page owns the target domain. Keep rich metadata in our controlled
+    // preview URL and let Facebook scrape external links by itself.
+    const allowAdCreativeMetadataOverrides = false;
     const creativePayload: Record<string, any> = {
         page_id: params.pageId,
         link_data: {
             link: params.linkUrl,
             message: params.message || '',
-            ...(!shouldLetFacebookScrapePreview && params.hostedImageUrl ? { picture: params.hostedImageUrl } : {}),
-            ...(!shouldLetFacebookScrapePreview && params.title ? { name: params.title } : {}),
-            ...(!shouldLetFacebookScrapePreview && params.caption ? { caption: params.caption } : {}),
-            ...(!shouldLetFacebookScrapePreview && params.description ? { description: params.description } : {}),
+            ...(allowAdCreativeMetadataOverrides && !shouldLetFacebookScrapePreview && params.hostedImageUrl ? { picture: params.hostedImageUrl } : {}),
+            ...(allowAdCreativeMetadataOverrides && !shouldLetFacebookScrapePreview && params.title ? { name: params.title } : {}),
+            ...(allowAdCreativeMetadataOverrides && !shouldLetFacebookScrapePreview && params.caption ? { caption: params.caption } : {}),
+            ...(allowAdCreativeMetadataOverrides && !shouldLetFacebookScrapePreview && params.description ? { description: params.description } : {}),
             ...(params.callToAction ? {
                 call_to_action: {
                     type: params.callToAction,
@@ -2301,7 +2317,7 @@ app.post('/', async (c) => {
         const attachmentCaption = (caption || '').trim();
         const attachmentDescription = (description || '').trim();
         const previewSiteName = deriveSiteName(caption, finalLink);
-        const previewUrlBase = getAppOrigin(c.env, c.req.url);
+        const previewUrlBase = getPublicNewsPreviewOrigin(getAppOrigin(c.env, c.req.url));
         const previewRecordId = isLinkAttachmentPost
             ? await createNewsLinkPreview(c.env, {
                 targetUrl: finalLink,

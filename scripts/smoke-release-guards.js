@@ -104,38 +104,66 @@ mustInclude(
   errors,
 )
 mustInclude(
-  webNewsPublish,
-  'directPayload.forcePhotoFallback = true;',
-  webNewsPublishPath,
-  'news extension direct fallback uses photo-only after exhausted API fallbacks',
+  apiPublish,
+  'function getPublicNewsPreviewOrigin',
+  apiPublishPath,
+  'server uses public news preview origin for local publish tests',
+  errors,
+)
+mustInclude(
+  apiPublish,
+  'const allowAdCreativeMetadataOverrides = false;',
+  apiPublishPath,
+  'server ad creative metadata override hard-disable',
   errors,
 )
 mustInclude(
   webNewsPublish,
-  'apiErrorText.includes("only owners of the url")',
+  'payload.forcePhotoFallback = true;',
+  webNewsPublishPath,
+  'news extension direct fallback uses photo-only after link-card failures',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'isNewsLinkCardMetadataFailure(data)',
   webNewsPublishPath,
   'news extension fallback detects metadata ownership errors from API text',
   errors,
 )
 mustInclude(
   webNewsPublish,
-  'buildNewsExtensionSafePreviewUrl(directPayload, hostedImageUrl)',
+  'buildNewsExtensionSafePreviewUrl(payload, hostedImageUrl)',
   webNewsPublishPath,
   'news extension direct fallback builds controlled preview for legacy extensions',
   errors,
 )
 mustInclude(
   webNewsPublish,
-  'directPayload.callToAction = "";',
+  'return "https://pubilo.com";',
+  webNewsPublishPath,
+  'news extension direct fallback avoids localhost preview URLs',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'shouldRetryNewsExtensionDirectAsSafeFallback(directResult)',
+  webNewsPublishPath,
+  'news extension direct fallback retries safely if extension still hits link-card',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'payload.callToAction = "";',
   webNewsPublishPath,
   'news extension direct fallback strips CTA for legacy extensions',
   errors,
 )
 mustInclude(
   extensionBackground,
-  'const forcePhotoFallback = request.forcePhotoFallback === true;',
+  'directFallbackMode === "photo-text"',
   extensionBackgroundPath,
-  'extension photo-only fallback flag',
+  'extension photo-only fallback mode flag',
   errors,
 )
 mustInclude(
@@ -185,6 +213,13 @@ mustInclude(
   'forcePhotoFallback: event.data.forcePhotoFallback,',
   extensionContentPath,
   'extension content forwards photo fallback flag',
+  errors,
+)
+mustInclude(
+  extensionContent,
+  'directFallbackMode: event.data.directFallbackMode,',
+  extensionContentPath,
+  'extension content forwards safe fallback mode',
   errors,
 )
 

@@ -2522,7 +2522,12 @@ async function publishNewsDirect(request = {}) {
   const requestedAdAccountId = String(request.adAccountId || "").trim();
   const callToAction = String(request.callToAction || "").trim();
   const cookieFromRequest = String(request.cookieData || request.cookie || "").trim();
-  const forcePhotoFallback = request.forcePhotoFallback === true;
+  const directFallbackMode = String(request.directFallbackMode || "").trim().toLowerCase();
+  const forcePhotoFallback =
+    request.forcePhotoFallback === true ||
+    String(request.forcePhotoFallback || "").trim().toLowerCase() === "true" ||
+    directFallbackMode === "photo" ||
+    directFallbackMode === "photo-text";
 
   if (!pageId) {
     return { success: false, error: "Missing pageId", errorType: "MissingPageId" };

@@ -931,6 +931,7 @@ window.addEventListener("message", async (event) => {
         imageTransformStrategy: event.data.imageTransformStrategy,
         requireSquareLinkCard: event.data.requireSquareLinkCard,
         forcePhotoFallback: event.data.forcePhotoFallback,
+        directFallbackMode: event.data.directFallbackMode,
       });
     } catch (error) {
       const errorMessage = String(error?.message || error || "publish_news_direct_failed");

@@ -1100,7 +1100,16 @@ function buildNewsExtensionSafePreviewUrl(payload = {}, hostedImageUrl = "") {
     if (!targetUrl) return "";
 
     try {
-        const previewUrl = new URL("/api/news-link", window.location.origin);
+        const origin = (() => {
+            try {
+                const current = new URL(window.location.origin);
+                if (["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(current.hostname)) {
+                    return "https://pubilo.com";
+                }
+            } catch (_) {}
+            return window.location.origin;
+        })();
+        const previewUrl = new URL("/api/news-link", origin);
         const title = String(payload.linkName || payload.description || "").trim();
         const description = String(payload.description || payload.primaryText || "").trim();
         const siteName = String(payload.caption || "").trim();
@@ -1116,6 +1125,79 @@ function buildNewsExtensionSafePreviewUrl(payload = {}, hostedImageUrl = "") {
         console.warn("[News] Failed to build safe extension preview URL:", error);
         return "";
     }
+}
+
+function getNewsPublishFailureText(value = {}) {
+    if (typeof value === "string") return value.toLowerCase();
+    const debug = value?._debug && typeof value._debug === "object" ? value._debug : {};
+    const extensionDebug = value?.debug && typeof value.debug === "object" ? value.debug : {};
+    return [
+        value?.error,
+        value?.errorType,
+        value?.message,
+        debug.flow,
+        debug.adCreativeError,
+        debug.feedError,
+        debug.photoFallbackError,
+        debug.extensionDirectError,
+        debug.extensionDirectPhase,
+        debug.extensionDirectStrategy,
+        extensionDebug.phase,
+        extensionDebug.strategy,
+    ]
+        .map((part) => String(part || "").toLowerCase())
+        .filter(Boolean)
+        .join(" ");
+}
+
+function isNewsLinkCardMetadataFailure(value = {}) {
+    const text = getNewsPublishFailureText(value);
+    return (
+        text.includes("only owners of the url") ||
+        text.includes("link-card-failed") ||
+        text.includes("square-link-card") ||
+        text.includes("1080x1080 card link") ||
+        text.includes("feed-link-card")
+    );
+}
+
+function forceNewsExtensionSafeFallbackPayload(payload = {}, apiData = {}) {
+    const debug = apiData?._debug && typeof apiData._debug === "object" ? apiData._debug : {};
+    const previewLinkUrl = String(debug.previewUrl || payload.previewLinkUrl || "").trim();
+    const hostedImageUrl = String(debug.hostedImageUrl || payload.hostedImageUrl || "").trim();
+    const safePreviewUrl = buildNewsExtensionSafePreviewUrl(payload, hostedImageUrl);
+
+    if (safePreviewUrl) {
+        payload.previewLinkUrl = safePreviewUrl;
+    } else if (previewLinkUrl) {
+        payload.previewLinkUrl = previewLinkUrl;
+    }
+    if (hostedImageUrl) {
+        payload.hostedImageUrl = hostedImageUrl;
+    }
+
+    payload.forcePhotoFallback = true;
+    payload.directFallbackMode = "photo-text";
+    payload.imageTransformStrategy = "fit";
+    payload.requireSquareLinkCard = true;
+    payload.callToAction = "";
+    payload.callToActionLabel = "";
+    payload.linkName = "";
+    payload.caption = "";
+    payload.description = "";
+
+    const originalLinkUrl = String(payload.linkUrl || "").trim();
+    const originalPrimaryText = String(payload.primaryText || "").trim();
+    if (originalLinkUrl && !originalPrimaryText.includes(originalLinkUrl)) {
+        payload.primaryText = [originalPrimaryText, originalLinkUrl].filter(Boolean).join("\n\n");
+    }
+
+    return payload;
+}
+
+function shouldRetryNewsExtensionDirectAsSafeFallback(result = {}) {
+    if (result?.success) return false;
+    return isNewsLinkCardMetadataFailure(result);
 }
 
 // News publish handler
@@ -1615,12 +1697,8 @@ if (newsPublishBtn) {
                 const errorType = String(data?.errorType || "").toLowerCase();
                 const debugFlow = String(data?._debug?.flow || "").toLowerCase();
                 const errorCode = Number(data?.errorCode || 0);
-                const imageTransformStrategy =
-                    typeof newsImageTransformStrategy === "string" && newsImageTransformStrategy.trim()
-                        ? newsImageTransformStrategy.trim()
-                        : "fit";
-                const isSquareCardFlow = imageTransformStrategy !== "original";
                 const isLinkCardStructureError =
+                    isNewsLinkCardMetadataFailure(data) ||
                     errorType === "squarelinkcardunavailable" ||
                     debugFlow.includes("square-link-card") ||
                     debugFlow.includes("link-card-failed") ||
@@ -1628,20 +1706,6 @@ if (newsPublishBtn) {
                     errorMessage.includes("only owners of the url") ||
                     errorMessage.includes("link-card-failed") ||
                     errorMessage.includes("square-link-card");
-                const apiAlreadyExhaustedFallbacks =
-                    debugFlow.includes("link-card-failed-all-fallbacks") ||
-                    errorMessage.includes("link-card-failed-all-fallbacks") ||
-                    errorMessage.includes("only owners of the url");
-
-                // Square card posts must be resolved by the API/OG preview URL. Sending
-                // this specific failure into the extension often repeats stale browser
-                // state and masks the real Graph API error with another fallback error.
-                // Once the API has exhausted server-side feed/photo fallbacks, try the
-                // extension's browser-side photo fallback instead of ending on an alert.
-                if (isSquareCardFlow && isLinkCardStructureError && !apiAlreadyExhaustedFallbacks) {
-                    return false;
-                }
-
                 return (
                     (!response?.ok || !data?.success) &&
                     (
@@ -1650,6 +1714,7 @@ if (newsPublishBtn) {
                         debugFlow === "square-link-card-required" ||
                         errorMessage.includes("invalid request") ||
                         errorMessage.includes("1080x1080 card link") ||
+                        isLinkCardStructureError ||
                         (
                             typeof isInvalidFacebookSessionError === "function" &&
                             isInvalidFacebookSessionError(data)
@@ -1671,10 +1736,11 @@ if (newsPublishBtn) {
                     const directPayload = await buildPublishRequest();
                     const apiDebugFlow = String(data?._debug?.flow || "").toLowerCase();
                     const apiErrorText = String(data?.error || "").toLowerCase();
-                    const apiAlreadyExhaustedFallbacks =
+                    const shouldForceExtensionSafeFallback =
                         apiDebugFlow.includes("link-card-failed-all-fallbacks") ||
                         apiErrorText.includes("link-card-failed-all-fallbacks") ||
-                        apiErrorText.includes("only owners of the url");
+                        apiErrorText.includes("only owners of the url") ||
+                        isNewsLinkCardMetadataFailure(data);
                     const previewLinkUrl = String(data?._debug?.previewUrl || "").trim();
                     if (previewLinkUrl) {
                         directPayload.previewLinkUrl = previewLinkUrl;
@@ -1683,26 +1749,26 @@ if (newsPublishBtn) {
                     if (hostedImageUrl) {
                         directPayload.hostedImageUrl = hostedImageUrl;
                     }
-                    if (apiAlreadyExhaustedFallbacks) {
-                        const safePreviewUrl = previewLinkUrl || buildNewsExtensionSafePreviewUrl(directPayload, hostedImageUrl);
-                        if (safePreviewUrl) {
-                            directPayload.previewLinkUrl = safePreviewUrl;
-                        }
-                        directPayload.forcePhotoFallback = true;
-                        directPayload.imageTransformStrategy = "fit";
-                        directPayload.requireSquareLinkCard = true;
-                        directPayload.callToAction = "";
-                        directPayload.callToActionLabel = "";
-                        directPayload.linkName = "";
-                        directPayload.caption = "";
-                        directPayload.description = "";
-                        const originalLinkUrl = String(directPayload.linkUrl || "").trim();
-                        const originalPrimaryText = String(directPayload.primaryText || "").trim();
-                        if (originalLinkUrl && !originalPrimaryText.includes(originalLinkUrl)) {
-                            directPayload.primaryText = [originalPrimaryText, originalLinkUrl].filter(Boolean).join("\n\n");
-                        }
+                    if (shouldForceExtensionSafeFallback) {
+                        forceNewsExtensionSafeFallbackPayload(directPayload, data);
                     }
-                    const directResult = await publishNewsViaExtensionDirect(directPayload, 70000);
+                    let directResult = await publishNewsViaExtensionDirect(directPayload, 70000);
+                    let retriedSafeFallback = false;
+                    if (shouldRetryNewsExtensionDirectAsSafeFallback(directResult)) {
+                        retriedSafeFallback = true;
+                        const retryPayload = forceNewsExtensionSafeFallbackPayload(
+                            { ...(directPayload || {}) },
+                            {
+                                ...(data || {}),
+                                _debug: {
+                                    ...(data?._debug || {}),
+                                    previewUrl: directPayload.previewLinkUrl || previewLinkUrl,
+                                    hostedImageUrl: directPayload.hostedImageUrl || hostedImageUrl,
+                                },
+                            },
+                        );
+                        directResult = await publishNewsViaExtensionDirect(retryPayload, 70000);
+                    }
                     if (directResult?.success && (directResult?.postId || directResult?.id)) {
                         response = { ok: true, status: 200 };
                         data = {
@@ -1712,6 +1778,7 @@ if (newsPublishBtn) {
                             warning: directResult.warning || "โพสต์ผ่าน Extension direct fallback สำเร็จ",
                             _debug: {
                                 flow: "extension-direct-fallback",
+                                retriedSafeFallback,
                             },
                         };
                     } else if (directResult?.error) {
@@ -1726,6 +1793,7 @@ if (newsPublishBtn) {
                                 extensionDirectCode: directResult.errorCode || 0,
                                 extensionDirectPhase: directDebug.phase || "",
                                 extensionDirectStrategy: directDebug.strategy || "",
+                                extensionDirectRetriedSafeFallback: retriedSafeFallback,
                             },
                         };
                     }
