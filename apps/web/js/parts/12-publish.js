@@ -2185,6 +2185,7 @@ const pageSelector = document.getElementById("pageSelector");
 const pageDropdown = document.getElementById("pageDropdown");
 const pagePickerModal = document.getElementById("pagePickerModal");
 const pagePickerCloseBtn = document.getElementById("pagePickerCloseBtn");
+const pagePickerClearBtn = document.getElementById("pagePickerClearBtn");
 const multiPageTriggerValue = document.getElementById("pageSelectorTargetSummary");
 const multiPageCountBadge = document.getElementById("pageSelectorTargetCount");
 const multiPageSelectedMeta = document.getElementById("multiPageSelectedMeta");
@@ -3273,9 +3274,6 @@ function renderMultiPageListItems() {
         const item = document.createElement("div");
         item.className = `page-dropdown-item multi-page-item${isPrimary ? " selected is-primary" : ""}${isSelected ? " is-selected" : ""}`;
         item.dataset.pageId = normalizedPageId;
-        item.addEventListener("click", () => {
-            handleMultiPageItemSelection(normalizedPageId);
-        });
 
         const avatar = document.createElement("img");
         avatar.className = "multi-page-item-media";
@@ -3322,11 +3320,6 @@ function renderMultiPageListItems() {
                 : isSelected
                     ? `เอา ${displayName} ออก`
                     : `เลือก ${displayName}`;
-        action.addEventListener("click", (event) => {
-            event.stopPropagation();
-            handleMultiPageItemSelection(normalizedPageId);
-        });
-
         item.appendChild(avatar);
         item.appendChild(copy);
         item.appendChild(action);
@@ -3366,6 +3359,24 @@ window.clearSelectedTargetPages = function clearSelectedTargetPages() {
     persistTargetPageIds();
     renderMultiPageTargetPicker();
 };
+
+if (multiPageList && multiPageList.dataset.routePickerBound !== "true") {
+    multiPageList.dataset.routePickerBound = "true";
+    multiPageList.addEventListener("click", (event) => {
+        const item = event.target.closest(".multi-page-item");
+        if (!item || !multiPageList.contains(item)) return;
+        event.preventDefault();
+        handleMultiPageItemSelection(item.dataset.pageId);
+    });
+}
+
+if (pagePickerClearBtn) {
+    pagePickerClearBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        clearPrimaryPageSelection({ keepPickerOpen: true });
+    });
+}
 
 // Toggle page picker modal
 if (pageSelector && pageDropdown) {

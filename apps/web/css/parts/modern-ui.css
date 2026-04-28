@@ -208,7 +208,28 @@
 .page-picker-head-actions {
     display: flex !important;
     align-items: center !important;
-    gap: 12px !important;
+    gap: 8px !important;
+}
+
+.page-picker-clear {
+    min-height: 36px !important;
+    padding: 0 12px !important;
+    border-radius: 999px !important;
+    border: 1px solid #e9d5ff !important;
+    background: #faf5ff !important;
+    color: #7e22ce !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    font-size: 0.78rem !important;
+    font-weight: 800 !important;
+}
+
+.page-picker-clear:hover {
+    border-color: #c084fc !important;
+    background: #f3e8ff !important;
 }
 
 .page-picker-close {
