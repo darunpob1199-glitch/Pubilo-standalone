@@ -1702,6 +1702,8 @@ function renderSharePostResults() {
                         ? `${methodLabel} • ${row.sharedPostId || "shared"}`
                         : (row.error || "แชร์ไม่สำเร็จ");
                     
+                    const postUrl = row.facebookUrl || (row.sharedPostId ? `https://www.facebook.com/${row.sharedPostId}` : "");
+                    
                     return `
                         <div class="share-result-item is-${isOk ? "success" : "failed"}">
                             <div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: ${isOk ? '#22c55e' : '#ef4444'}; color: #fff;">
@@ -1711,13 +1713,19 @@ function renderSharePostResults() {
                                 }
                             </div>
                             <div style="flex: 1; min-width: 0;">
-                                <div style="display: flex; gap: 8px; align-items: baseline;">
+                                <div style="display: flex; gap: 8px; align-items: baseline; justify-content: space-between;">
                                     <strong style="color: #1e293b; font-size: 0.95rem;">${escapePostToolHtml(pageLabel)}</strong>
+                                    ${isOk && postUrl ? `
+                                        <a href="${postUrl}" target="_blank" rel="noopener noreferrer" class="share-result-view-btn" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; background: #f0fdf4; color: #16a34a; font-size: 0.75rem; font-weight: 700; text-decoration: none; border: 1px solid #bbf7d0; transition: all 0.2s;">
+                                            <span>ดูโพสต์</span>
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                        </a>
+                                    ` : ""}
                                 </div>
-                                <small style="color: #64748b; font-size: 0.8rem; display: flex; gap: 6px; align-items: center;">
+                                <small style="color: #64748b; font-size: 0.8rem; display: flex; gap: 6px; align-items: center; margin-top: 4px;">
                                     <span style="color: ${isOk ? '#16a34a' : '#dc2626'}; font-weight: 700;">${isOk ? '✓ สำเร็จ' : '✗ ไม่สำเร็จ'}</span>
                                     <span>•</span>
-                                    ${escapePostToolHtml(detail)}
+                                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapePostToolHtml(detail)}</span>
                                 </small>
                             </div>
                         </div>
@@ -3057,6 +3065,7 @@ async function runSharePostToolAction(selectedPosts, pageId) {
     } finally {
         state.actionInFlight = false;
         renderPostToolTable(toolKey);
+        renderSharePostResults();
     }
 }
 
