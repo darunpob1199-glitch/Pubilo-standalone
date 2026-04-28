@@ -372,6 +372,70 @@ async function publishViaFeedCookieOnly(params: {
     return { postId };
 }
 
+async function publishTextOnlyWithToken(params: {
+    pageId: string;
+    pageToken: string;
+    headers?: Record<string, string>;
+    message: string;
+    scheduledTime?: number | null;
+}): Promise<{ postId: string }> {
+    const body = new URLSearchParams({
+        access_token: params.pageToken,
+        message: params.message,
+    });
+    if (params.scheduledTime) {
+        body.set('published', 'false');
+        body.set('scheduled_publish_time', String(params.scheduledTime));
+    }
+
+    const response = await fetch(`${FB_API}/${params.pageId}/feed`, {
+        method: 'POST',
+        headers: {
+            ...(params.headers || {}),
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+    });
+    const data = await response.json() as any;
+    if (data?.error) {
+        throw new Error(data.error.message || 'Text-only feed fallback failed');
+    }
+    const postId = String(data?.id || data?.post_id || '');
+    if (!postId) throw new Error('Facebook did not return post id for text-only fallback');
+    return { postId };
+}
+
+async function publishTextOnlyCookieOnly(params: {
+    pageId: string;
+    cookieHeaders: Record<string, string>;
+    message: string;
+    scheduledTime?: number | null;
+}): Promise<{ postId: string }> {
+    const body = new URLSearchParams({
+        message: params.message,
+    });
+    if (params.scheduledTime) {
+        body.set('published', 'false');
+        body.set('scheduled_publish_time', String(params.scheduledTime));
+    }
+
+    const response = await fetch(`${FB_API}/${params.pageId}/feed`, {
+        method: 'POST',
+        headers: {
+            ...params.cookieHeaders,
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+    });
+    const data = await response.json() as any;
+    if (data?.error) {
+        throw new Error(data.error.message || 'Cookie-only text fallback failed');
+    }
+    const postId = String(data?.id || data?.post_id || '');
+    if (!postId) throw new Error('Facebook did not return post id for cookie-only text fallback');
+    return { postId };
+}
+
 async function publishPhotoCookieOnly(params: {
     pageId: string;
     cookieHeaders: Record<string, string>;
@@ -3114,6 +3178,102 @@ app.post('/', async (c) => {
                             photoFallbackLastError = msg || photoFallbackLastError;
                         }
                     }
+                }
+            }
+
+            const textOnlyFallbackMessage = Array.from(
+                new Set(
+                    [
+                        finalCaption,
+                        [finalMessage, finalLink].map((value) => String(value || '').trim()).filter(Boolean).join('\n\n'),
+                        finalLink,
+                    ]
+                        .map((value) => String(value || '').trim())
+                        .filter(Boolean),
+                ),
+            )[0] || '';
+
+            if (textOnlyFallbackMessage) {
+                let textOnlyLastError = '';
+                for (const candidateToken of pageTokenCandidates) {
+                    try {
+                        const textOnly = await publishTextOnlyWithToken({
+                            pageId,
+                            pageToken: candidateToken,
+                            headers: tokenRequestHeaders,
+                            message: textOnlyFallbackMessage,
+                            scheduledTime: scheduleTimestamp || null,
+                        });
+                        const fallbackUrl = buildFacebookPostUrl(textOnly.postId, pageId);
+                        await recordPublishedSuccess(textOnly.postId, fallbackUrl, {
+                            flow: 'text-only-fallback-after-link-failure',
+                            originalFlowError: lastFeedError || adCreativeError || '',
+                            photoFallbackError: String(photoFallbackLastError || '').trim(),
+                        });
+                        const hideResult = await maybeHideAfterPublish(textOnly.postId, candidateToken);
+                        return c.json({
+                            success: true,
+                            postId: textOnly.postId,
+                            url: fallbackUrl,
+                            timelineHidden: hideResult.hidden,
+                            warning: 'Facebook ปฏิเสธ Link Card/รูปภาพ ระบบสลับเป็นโพสต์ข้อความพร้อมลิงก์ให้อัตโนมัติ',
+                            needsScheduling: !!scheduleTimestamp,
+                            ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                            _debug: {
+                                flow: 'text-only-fallback-after-link-failure',
+                                adCreativeError,
+                                feedError: lastFeedError,
+                                photoFallbackError: String(photoFallbackLastError || '').trim(),
+                                hide: hideResult,
+                            },
+                        });
+                    } catch (textOnlyError) {
+                        textOnlyLastError = textOnlyError instanceof Error ? textOnlyError.message : String(textOnlyError);
+                    }
+                }
+
+                if (cookieHeaderCandidates.length > 0) {
+                    for (let i = 0; i < cookieHeaderCandidates.length; i += 1) {
+                        try {
+                            const cookieText = await publishTextOnlyCookieOnly({
+                                pageId,
+                                cookieHeaders: cookieHeaderCandidates[i],
+                                message: textOnlyFallbackMessage,
+                                scheduledTime: scheduleTimestamp || null,
+                            });
+                            const fallbackUrl = buildFacebookPostUrl(cookieText.postId, pageId);
+                            await recordPublishedSuccess(cookieText.postId, fallbackUrl, {
+                                flow: 'cookie-text-only-fallback-after-link-failure',
+                                originalFlowError: lastFeedError || adCreativeError || '',
+                                photoFallbackError: String(photoFallbackLastError || '').trim(),
+                            });
+                            const hideResult = await maybeHideAfterPublish(cookieText.postId, pageTokenCandidates[0] || '');
+                            return c.json({
+                                success: true,
+                                postId: cookieText.postId,
+                                url: fallbackUrl,
+                                timelineHidden: hideResult.hidden,
+                                warning: 'Facebook ปฏิเสธ Link Card/รูปภาพ ระบบสลับเป็นโพสต์ข้อความพร้อมลิงก์ (cookie fallback)',
+                                needsScheduling: !!scheduleTimestamp,
+                                ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                                _debug: {
+                                    flow: 'cookie-text-only-fallback-after-link-failure',
+                                    adCreativeError,
+                                    feedError: lastFeedError,
+                                    photoFallbackError: String(photoFallbackLastError || '').trim(),
+                                    textOnlyLastError,
+                                    cookieCandidateIndex: i + 1,
+                                    hide: hideResult,
+                                },
+                            });
+                        } catch (cookieTextError) {
+                            textOnlyLastError = cookieTextError instanceof Error ? cookieTextError.message : String(cookieTextError);
+                        }
+                    }
+                }
+
+                if (textOnlyLastError && !photoFallbackLastError) {
+                    photoFallbackLastError = textOnlyLastError;
                 }
             }
 

@@ -82,10 +82,31 @@ mustInclude(
   errors,
 )
 mustInclude(
+  apiPublish,
+  'async function publishTextOnlyWithToken',
+  apiPublishPath,
+  'server text-only fallback after rejected link cards',
+  errors,
+)
+mustInclude(
+  apiPublish,
+  "flow: 'text-only-fallback-after-link-failure'",
+  apiPublishPath,
+  'server records text-only fallback flow',
+  errors,
+)
+mustInclude(
   webNewsPublish,
   'directPayload.forcePhotoFallback = true;',
   webNewsPublishPath,
   'news extension direct fallback uses photo-only after exhausted API fallbacks',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'apiErrorText.includes("only owners of the url")',
+  webNewsPublishPath,
+  'news extension fallback detects metadata ownership errors from API text',
   errors,
 )
 mustInclude(
@@ -121,6 +142,27 @@ mustInclude(
   'const allowAdCreativeMetadataOverrides = false;',
   extensionBackgroundPath,
   'extension ad creative metadata override hard-disable',
+  errors,
+)
+mustInclude(
+  extensionBackground,
+  'let skipRemainingLinkCardAttempts = false;',
+  extensionBackgroundPath,
+  'extension skips repeated link-card attempts after metadata ownership errors',
+  errors,
+)
+mustInclude(
+  extensionBackground,
+  'const tryTextOnly = async (token, messageValue, withCookieHeader) => {',
+  extensionBackgroundPath,
+  'extension text-only fallback after rejected link cards',
+  errors,
+)
+mustInclude(
+  extensionBackground,
+  'browser-side-text-only',
+  extensionBackgroundPath,
+  'extension reports text-only fallback strategy',
   errors,
 )
 mustInclude(

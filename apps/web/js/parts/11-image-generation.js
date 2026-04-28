@@ -1628,7 +1628,10 @@ if (newsPublishBtn) {
                     errorMessage.includes("only owners of the url") ||
                     errorMessage.includes("link-card-failed") ||
                     errorMessage.includes("square-link-card");
-                const apiAlreadyExhaustedFallbacks = debugFlow.includes("link-card-failed-all-fallbacks");
+                const apiAlreadyExhaustedFallbacks =
+                    debugFlow.includes("link-card-failed-all-fallbacks") ||
+                    errorMessage.includes("link-card-failed-all-fallbacks") ||
+                    errorMessage.includes("only owners of the url");
 
                 // Square card posts must be resolved by the API/OG preview URL. Sending
                 // this specific failure into the extension often repeats stale browser
@@ -1667,7 +1670,11 @@ if (newsPublishBtn) {
                 try {
                     const directPayload = await buildPublishRequest();
                     const apiDebugFlow = String(data?._debug?.flow || "").toLowerCase();
-                    const apiAlreadyExhaustedFallbacks = apiDebugFlow.includes("link-card-failed-all-fallbacks");
+                    const apiErrorText = String(data?.error || "").toLowerCase();
+                    const apiAlreadyExhaustedFallbacks =
+                        apiDebugFlow.includes("link-card-failed-all-fallbacks") ||
+                        apiErrorText.includes("link-card-failed-all-fallbacks") ||
+                        apiErrorText.includes("only owners of the url");
                     const previewLinkUrl = String(data?._debug?.previewUrl || "").trim();
                     if (previewLinkUrl) {
                         directPayload.previewLinkUrl = previewLinkUrl;

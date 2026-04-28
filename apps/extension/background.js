@@ -2948,6 +2948,45 @@ async function publishNewsDirect(request = {}) {
     };
   };
 
+  const tryTextOnly = async (token, messageValue, withCookieHeader) => {
+    const normalizedMessage = String(messageValue || "").trim();
+    if (!normalizedMessage) {
+      throw { message: "text_only_message_missing" };
+    }
+
+    const body = new URLSearchParams({
+      access_token: token,
+      message: normalizedMessage,
+    });
+
+    const data = await graphFetchJsonWithTimeout(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
+      method: "POST",
+      headers: {
+        ...(withCookieHeader ? headersWithCookie : headersNoCookie),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    }, 7000);
+    if (data?.error) {
+      throw data.error;
+    }
+    const postId = String(data?.id || data?.post_id || "").trim();
+    if (!postId) {
+      throw { message: "Facebook did not return post id for direct text-only post" };
+    }
+    return {
+      success: true,
+      postId,
+      url: `https://www.facebook.com/${postId}`,
+      warning: "โพสต์ผ่าน Extension direct text fallback",
+      debug: {
+        phase: "text-only",
+        strategy: "browser-side-text-only",
+        withCookieHeader,
+      },
+    };
+  };
+
   const tryPhoto = async (token, messageValue, withCookieHeader) => {
     if (!imageUrl && !hostedImageUrl) {
       throw { message: "image_missing" };
@@ -3076,9 +3115,12 @@ async function publishNewsDirect(request = {}) {
       }
     }
 
+    let skipRemainingLinkCardAttempts = false;
+    feedCardLoop:
     for (const token of pageTokenCandidates) {
       for (const linkCandidate of feedLinkCandidates) {
         for (const withCookieHeader of [false, true]) {
+          if (skipRemainingLinkCardAttempts) break feedCardLoop;
           lastPhase = "feed-link-card";
           lastStrategy = withCookieHeader ? "browser-side-feed-card-cookie" : "browser-side-feed-card";
           if (Date.now() - startedAt > hardDeadlineMs) {
@@ -3098,33 +3140,41 @@ async function publishNewsDirect(request = {}) {
           } catch (error) {
             lastError = String(error?.message || error || "direct_feed_link_card_failed");
             lastFacebookError = error || lastFacebookError;
+            if (
+              isMetadataOwnershipError(lastError) ||
+              (Number(error?.code || 0) === 100 && isMetadataOwnershipError(lastError))
+            ) {
+              skipRemainingLinkCardAttempts = true;
+            }
           }
         }
       }
     }
 
-    for (const token of pageTokenCandidates) {
-      for (const messageValue of messageCandidates) {
-        for (const withCookieHeader of [false, true]) {
-          lastPhase = "feed";
-          lastStrategy = withCookieHeader ? "browser-side-feed-cookie" : "browser-side-feed";
-          if (Date.now() - startedAt > hardDeadlineMs) {
-            return {
-              success: false,
-              error: "direct_publish_deadline_exceeded",
-              errorType: "PublishNewsDirectTimeout",
-              debug: {
-                phase: "feed",
-                elapsedMs: Date.now() - startedAt,
-                forcePhotoFallback,
-              },
-            };
-          }
-          try {
-            return await tryFeed(token, messageValue, withCookieHeader);
-          } catch (error) {
-            lastError = String(error?.message || error || "direct_feed_failed");
-            lastFacebookError = error || lastFacebookError;
+    if (!skipRemainingLinkCardAttempts) {
+      for (const token of pageTokenCandidates) {
+        for (const messageValue of messageCandidates) {
+          for (const withCookieHeader of [false, true]) {
+            lastPhase = "feed";
+            lastStrategy = withCookieHeader ? "browser-side-feed-cookie" : "browser-side-feed";
+            if (Date.now() - startedAt > hardDeadlineMs) {
+              return {
+                success: false,
+                error: "direct_publish_deadline_exceeded",
+                errorType: "PublishNewsDirectTimeout",
+                debug: {
+                  phase: "feed",
+                  elapsedMs: Date.now() - startedAt,
+                  forcePhotoFallback,
+                },
+              };
+            }
+            try {
+              return await tryFeed(token, messageValue, withCookieHeader);
+            } catch (error) {
+              lastError = String(error?.message || error || "direct_feed_failed");
+              lastFacebookError = error || lastFacebookError;
+            }
           }
         }
       }
@@ -3151,6 +3201,37 @@ async function publishNewsDirect(request = {}) {
           return await tryPhoto(token, messageValue, withCookieHeader);
         } catch (error) {
           lastError = String(error?.message || error || "direct_photo_failed");
+          lastFacebookError = error || lastFacebookError;
+        }
+      }
+    }
+  }
+
+  const textOnlyCandidates = buildUniqueTokenCandidates([
+    primaryText && linkUrl ? `${primaryText}\n\n${linkUrl}` : "",
+    primaryText,
+    linkUrl,
+  ]);
+  for (const token of pageTokenCandidates) {
+    for (const messageValue of textOnlyCandidates) {
+      for (const withCookieHeader of [false, true]) {
+        lastPhase = "text-only";
+        lastStrategy = withCookieHeader ? "browser-side-text-only-cookie" : "browser-side-text-only";
+        if (Date.now() - startedAt > hardDeadlineMs) {
+          return {
+            success: false,
+            error: "direct_publish_deadline_exceeded",
+            errorType: "PublishNewsDirectTimeout",
+            debug: {
+              phase: "text-only",
+              elapsedMs: Date.now() - startedAt,
+            },
+          };
+        }
+        try {
+          return await tryTextOnly(token, messageValue, withCookieHeader);
+        } catch (error) {
+          lastError = String(error?.message || error || "direct_text_only_failed");
           lastFacebookError = error || lastFacebookError;
         }
       }
