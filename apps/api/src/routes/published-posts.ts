@@ -24,6 +24,8 @@ type PublishedQueryInput = {
     accessToken?: string;
     cookieData?: string;
     strictLive?: boolean;
+    allowHistoryFallback?: boolean;
+    excludeDeleted?: boolean;
 };
 
 type WorkspaceCredentialCandidate = {
@@ -925,6 +927,103 @@ function filterHistoryLogsByLiveIdSet(params: {
             if (!canonicalHistoryIds.length) return false;
             return canonicalHistoryIds.some((candidateId) => liveIds.has(candidateId));
         });
+}
+
+async function fetchDeletedPostIdSet(env: Env, input: PublishedQueryInput, pageIdCandidates: Array<string> = []): Promise<Set<string>> {
+    const deletedIds = new Set<string>();
+    const workspaceId = String(input.workspaceId || '').trim();
+    const pageId = String(input.pageId || '').trim();
+    if (!workspaceId) return deletedIds;
+
+    try {
+        const tableCheck = await env.DB.prepare(`
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table' AND name IN ('post_action_jobs', 'post_action_items')
+        `).all<{ name?: string }>();
+        const tableNames = new Set((tableCheck.results || []).map((row) => String(row.name || '').trim()));
+        if (!tableNames.has('post_action_jobs') || !tableNames.has('post_action_items')) {
+            return deletedIds;
+        }
+
+        const rows = await env.DB.prepare(`
+            SELECT i.post_id
+            FROM post_action_items i
+            JOIN post_action_jobs j ON j.id = i.job_id
+            WHERE j.organization_id = ?
+              AND (? = '' OR j.page_id = ?)
+              AND j.action = 'delete'
+              AND i.status = 'success'
+        `).bind(workspaceId, pageId, pageId).all<{ post_id?: string | null }>();
+
+        const ownerCandidates = buildPageIdCandidates(pageId, ...pageIdCandidates);
+        for (const row of rows.results || []) {
+            const rawPostId = String(row.post_id || '').trim();
+            if (!rawPostId) continue;
+            deletedIds.add(rawPostId);
+            parseFacebookPostIdParts(rawPostId).objectId && deletedIds.add(parseFacebookPostIdParts(rawPostId).objectId);
+            buildCanonicalFacebookPostIdCandidates(rawPostId, ownerCandidates, pageId)
+                .forEach((candidateId) => deletedIds.add(candidateId));
+        }
+    } catch (error) {
+        console.warn('[published-posts] deleted post filter lookup failed:', error);
+    }
+
+    return deletedIds;
+}
+
+function getPublishedRowPostIdCandidates(row: Record<string, any>, input: PublishedQueryInput, pageIdCandidates: Array<string> = []): string[] {
+    const rawCandidates = [
+        row.facebook_post_id,
+        row.source_ref,
+        String(row.id || '').startsWith('fb:') ? String(row.id || '').replace(/^fb:/, '') : '',
+    ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+    const ownerCandidates = buildPageIdCandidates(
+        input.pageId,
+        ...(Array.isArray(pageIdCandidates) ? pageIdCandidates : []),
+        String(row.page_id || '').trim(),
+    );
+    const ids = new Set<string>();
+
+    rawCandidates.forEach((rawPostId) => {
+        ids.add(rawPostId);
+        const parsed = parseFacebookPostIdParts(rawPostId);
+        if (parsed.objectId) ids.add(parsed.objectId);
+        buildCanonicalFacebookPostIdCandidates(rawPostId, ownerCandidates, input.pageId || row.page_id)
+            .forEach((candidateId) => ids.add(candidateId));
+    });
+
+    return Array.from(ids);
+}
+
+async function filterDeletedPublishedResult(env: Env, input: PublishedQueryInput, result: any): Promise<any> {
+    if (!input.excludeDeleted || !result?.success || !Array.isArray(result.logs) || result.logs.length === 0) {
+        return result;
+    }
+
+    const pageIdCandidates = buildPageIdCandidates(
+        input.pageId,
+        ...(Array.isArray(result.meta?.pageIdCandidates) ? result.meta.pageIdCandidates : []),
+        String(result.meta?.pageIdUsed || '').trim(),
+    );
+    const deletedIds = await fetchDeletedPostIdSet(env, input, pageIdCandidates);
+    if (deletedIds.size === 0) return result;
+
+    const logs = result.logs.filter((row: Record<string, any>) => (
+        !getPublishedRowPostIdCandidates(row, input, pageIdCandidates)
+            .some((candidateId) => deletedIds.has(candidateId))
+    ));
+
+    return {
+        ...result,
+        logs,
+        meta: {
+            ...(result.meta || {}),
+            deletedFiltered: result.logs.length - logs.length,
+        },
+    };
 }
 
 function isDefinitelyMissingFacebookPostError(error: any): boolean {
@@ -1867,6 +1966,9 @@ async function handleListRequest(env: Env, input: PublishedQueryInput) {
         if (facebookResult.success) {
             return facebookResult;
         }
+        if (input.allowHistoryFallback === false) {
+            return facebookResult;
+        }
         if (input.strictLive) {
             const errorCategory = String((facebookResult as any).errorCategory || '').trim().toLowerCase();
             const fallbackReason = String((facebookResult as any).error || '').trim().toLowerCase();
@@ -1998,11 +2100,14 @@ app.get('/', async (c) => {
         accessToken: String(c.req.query('accessToken') || '').trim(),
         cookieData: String(c.req.query('cookieData') || '').trim(),
         strictLive: String(c.req.query('strictLive') || '').trim() === 'true',
+        allowHistoryFallback: String(c.req.query('allowHistoryFallback') || 'true').trim() !== 'false',
+        excludeDeleted: String(c.req.query('excludeDeleted') || '').trim() === 'true',
     };
 
     try {
         const result = await handleListRequest(c.env, input);
-        return c.json(result, result.success ? 200 : 400);
+        const filteredResult = await filterDeletedPublishedResult(c.env, input, result);
+        return c.json(filteredResult, filteredResult.success ? 200 : 400);
     } catch (error) {
         return c.json({ success: false, error: String(error) }, 500);
     }
@@ -2021,11 +2126,14 @@ app.post('/', async (c) => {
         accessToken: String(body.accessToken || '').trim(),
         cookieData: String(body.cookieData || '').trim(),
         strictLive: Boolean((body as Record<string, any>).strictLive),
+        allowHistoryFallback: (body as Record<string, any>).allowHistoryFallback !== false,
+        excludeDeleted: Boolean((body as Record<string, any>).excludeDeleted),
     };
 
     try {
         const result = await handleListRequest(c.env, input);
-        return c.json(result, result.success ? 200 : 400);
+        const filteredResult = await filterDeletedPublishedResult(c.env, input, result);
+        return c.json(filteredResult, filteredResult.success ? 200 : 400);
     } catch (error) {
         return c.json({ success: false, error: String(error) }, 500);
     }

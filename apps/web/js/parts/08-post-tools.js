@@ -2271,16 +2271,28 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false, skip
         const auth = getPostToolAuth(pageId);
         let fetchSource = "merged";
         let strictLive = false;
+        let allowHistoryFallback = true;
+        let excludeDeleted = false;
         if (toolKey === "delete") {
             // Delete list must stay strict live-only to avoid showing already-deleted
             // rows from local history fallback.
             fetchSource = pageId ? "facebook" : "history";
             strictLive = !!pageId;
+            excludeDeleted = true;
+        } else if (toolKey === "share") {
+            // Share list must only contain posts that still exist on the source page.
+            // Merging local publish history can reintroduce posts deleted from Facebook.
+            fetchSource = pageId ? "facebook" : "history";
+            strictLive = !!pageId;
+            allowHistoryFallback = !pageId;
+            excludeDeleted = true;
         }
 
         console.log(`[PostTools:${toolKey}] Loading posts for page:`, pageId, {
             source: fetchSource,
             strictLive,
+            allowHistoryFallback,
+            excludeDeleted,
             hasPostToken: !!auth.postToken,
             hasAccessToken: !!auth.accessToken,
             hasCookie: !!auth.cookieData,
@@ -2302,6 +2314,8 @@ async function loadPostToolPosts(toolKey, { silent = false, append = false, skip
                 accessToken: auth.accessToken,
                 cookieData: auth.cookieData,
                 strictLive,
+                allowHistoryFallback,
+                excludeDeleted,
             }),
         });
         const data = await response.json();
