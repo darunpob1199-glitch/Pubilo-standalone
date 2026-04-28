@@ -2127,6 +2127,8 @@ app.post('/', async (c) => {
             hideOnPublish,
             imageTransformStrategy,
             requireSquareLinkCard,
+            forcePhotoFallback,
+            directFallbackMode,
         } = body;
 
         if (!pageId) {
@@ -2247,6 +2249,11 @@ app.post('/', async (c) => {
         const normalizedImageTransformStrategy = typeof imageTransformStrategy === 'string'
             ? imageTransformStrategy.trim().toLowerCase()
             : '';
+        const normalizedDirectFallbackMode = String(directFallbackMode || '').trim().toLowerCase();
+        const forceSafePhotoFallback =
+            parseBooleanFlag(forcePhotoFallback)
+            || normalizedDirectFallbackMode === 'photo'
+            || normalizedDirectFallbackMode === 'photo-text';
         const requiresSquareLinkCard = parseBooleanFlag(requireSquareLinkCard)
             || (!!normalizedImageTransformStrategy && normalizedImageTransformStrategy !== 'original');
         const isLinkAttachmentPost = !!finalLink && (postMode === 'news' || postMode === 'link');
@@ -2694,7 +2701,7 @@ app.post('/', async (c) => {
         const adCreativeRequestedByClient = rawClientAdCreativeFlag == null
             ? false
             : parseBooleanFlag(rawClientAdCreativeFlag);
-        const adCreativeFlowEnabled = adCreativeAllowedByEnv && adCreativeRequestedByClient;
+        const adCreativeFlowEnabled = adCreativeAllowedByEnv && adCreativeRequestedByClient && !forceSafePhotoFallback;
 
         if (adCreativeFlowEnabled && isLinkAttachmentPost && effectiveAccessToken) {
             try {
@@ -2878,7 +2885,7 @@ app.post('/', async (c) => {
             }
 
             // Fallback: feed with target URL. Try each page token candidate until one works.
-            if (pageTokenCandidates.length === 0) {
+            if (!forceSafePhotoFallback && pageTokenCandidates.length === 0) {
                 return c.json({
                     success: false,
                     error: adCreativeError
@@ -2893,137 +2900,139 @@ app.post('/', async (c) => {
                 }, 400);
             }
 
-            let lastFeedError = '';
+            let lastFeedError = forceSafePhotoFallback ? 'force_photo_fallback_requested' : '';
             let lastFeedFacebookError: any = null;
             let sawAuthRelatedFeedError = false;
             let sawSessionInvalidatedFeedError = false;
             let sawNonAuthFeedError = false;
-            for (const candidateToken of pageTokenCandidates) {
-                let candidateLastError = '';
-                for (let linkIndex = 0; linkIndex < feedLinkCandidates.length; linkIndex += 1) {
-                    const feedLinkUrl = feedLinkCandidates[linkIndex];
-                    try {
-                        const feedRequestBase = {
-                            pageId,
-                            pageToken: candidateToken,
-                            headers: tokenRequestHeaders,
-                            message: finalMessage,
-                            linkUrl: feedLinkUrl,
-                            title: attachmentTitle || undefined,
-                            caption: attachmentCaption || previewSiteName || undefined,
-                            description: attachmentDescription || undefined,
-                            pictureUrl: hostedImageUrl || undefined,
-                            callToActionType: normalizedCallToAction,
-                            callToActionLinkUrl: finalLink || feedLinkUrl,
-                            allowMetadataDropRetry: true,
-                        } as const;
-                        let feedResult = await publishLinkCardViaFeed({
-                            ...feedRequestBase,
-                            publishAsAdsPost: !scheduleTimestamp,
-                            scheduledTime: scheduleTimestamp || undefined,
-                        });
-                        let usedDraftPublishFallback = false;
-                        if (feedResult.createdAsDraft && !scheduleTimestamp) {
-                            try {
-                                await publishExistingUnpublishedPost(feedResult.postId, candidateToken, tokenRequestHeaders);
-                            } catch (publishDraftError) {
-                                const draftPublishErrorMessage = publishDraftError instanceof Error
-                                    ? publishDraftError.message
-                                    : String(publishDraftError);
-                                const draftPublishFacebookError = (publishDraftError as { facebookError?: any })?.facebookError || null;
-                                const shouldRetryAsDirectPublished = isGenericInvalidRequestMessage(draftPublishErrorMessage)
-                                    || draftPublishErrorMessage.toLowerCase().includes('unpublished')
-                                    || draftPublishErrorMessage.toLowerCase().includes('is_published')
-                                    || draftPublishErrorMessage.toLowerCase().includes('published')
-                                    || Number(draftPublishFacebookError?.code || 0) === 100;
+            if (!forceSafePhotoFallback) {
+                for (const candidateToken of pageTokenCandidates) {
+                    let candidateLastError = '';
+                    for (let linkIndex = 0; linkIndex < feedLinkCandidates.length; linkIndex += 1) {
+                        const feedLinkUrl = feedLinkCandidates[linkIndex];
+                        try {
+                            const feedRequestBase = {
+                                pageId,
+                                pageToken: candidateToken,
+                                headers: tokenRequestHeaders,
+                                message: finalMessage,
+                                linkUrl: feedLinkUrl,
+                                title: attachmentTitle || undefined,
+                                caption: attachmentCaption || previewSiteName || undefined,
+                                description: attachmentDescription || undefined,
+                                pictureUrl: hostedImageUrl || undefined,
+                                callToActionType: normalizedCallToAction,
+                                callToActionLinkUrl: finalLink || feedLinkUrl,
+                                allowMetadataDropRetry: true,
+                            } as const;
+                            let feedResult = await publishLinkCardViaFeed({
+                                ...feedRequestBase,
+                                publishAsAdsPost: !scheduleTimestamp,
+                                scheduledTime: scheduleTimestamp || undefined,
+                            });
+                            let usedDraftPublishFallback = false;
+                            if (feedResult.createdAsDraft && !scheduleTimestamp) {
+                                try {
+                                    await publishExistingUnpublishedPost(feedResult.postId, candidateToken, tokenRequestHeaders);
+                                } catch (publishDraftError) {
+                                    const draftPublishErrorMessage = publishDraftError instanceof Error
+                                        ? publishDraftError.message
+                                        : String(publishDraftError);
+                                    const draftPublishFacebookError = (publishDraftError as { facebookError?: any })?.facebookError || null;
+                                    const shouldRetryAsDirectPublished = isGenericInvalidRequestMessage(draftPublishErrorMessage)
+                                        || draftPublishErrorMessage.toLowerCase().includes('unpublished')
+                                        || draftPublishErrorMessage.toLowerCase().includes('is_published')
+                                        || draftPublishErrorMessage.toLowerCase().includes('published')
+                                        || Number(draftPublishFacebookError?.code || 0) === 100;
 
-                                if (!shouldRetryAsDirectPublished) {
-                                    throw publishDraftError;
+                                    if (!shouldRetryAsDirectPublished) {
+                                        throw publishDraftError;
+                                    }
+
+                                    console.warn(
+                                        '[publish] Draft publish failed, retrying with direct published feed post:',
+                                        draftPublishErrorMessage,
+                                    );
+                                    feedResult = await publishLinkCardViaFeed({
+                                        ...feedRequestBase,
+                                        publishAsAdsPost: false,
+                                    });
+                                    usedDraftPublishFallback = true;
                                 }
+                            }
 
+                            const feedUrl = buildFacebookPostUrl(feedResult.postId, pageId);
+                            await recordPublishedSuccess(feedResult.postId, feedUrl, {
+                                flow: adCreativeError ? 'feed-fallback' : 'feed-link',
+                            });
+                            const hideResult = await maybeHideAfterPublish(feedResult.postId, candidateToken);
+                            const warningMessages: string[] = [];
+                            if (hideResult.attempted && !hideResult.hidden) {
+                                warningMessages.push(`ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}`);
+                            }
+                            if (adCreativeError) {
+                                warningMessages.push('Ad creative ไม่สำเร็จ ระบบสลับไปโพสต์ผ่าน feed แทน');
+                            }
+                            if (linkIndex > 0 && publishLinkUrl && publishLinkUrl !== finalLink) {
+                                warningMessages.push('Preview link ใช้งานไม่ได้ ระบบสลับไปใช้ลิงก์จริงให้อัตโนมัติ');
+                            }
+                            if (usedDraftPublishFallback) {
+                                warningMessages.push('Facebook ไม่ยอม publish แบบ draft ระบบสลับไปโพสต์ตรงให้อัตโนมัติ');
+                            }
+
+                            return c.json({
+                                success: true,
+                                postId: feedResult.postId,
+                                url: feedUrl,
+                                timelineHidden: hideResult.hidden,
+                                ...(warningMessages.length > 0 ? { warning: warningMessages.join(' | ') } : {}),
+                                needsScheduling: !!scheduleTimestamp,
+                                ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
+                                _debug: {
+                                    flow: adCreativeError ? 'feed-fallback' : 'feed-link',
+                                    adCreativeError,
+                                    hide: hideResult,
+                                    feedLinkUrl,
+                                    feedLinkAttempt: linkIndex + 1,
+                                    usedDraftPublishFallback,
+                                },
+                            });
+                        } catch (feedError) {
+                            candidateLastError = feedError instanceof Error ? feedError.message : String(feedError);
+                            const feedFacebookError = (feedError as { facebookError?: any })?.facebookError || null;
+                            lastFeedFacebookError = feedFacebookError || lastFeedFacebookError;
+                            const normalizedFeedMessage = String(candidateLastError || '');
+                            const authRelatedFeedError = isSessionInvalidatedFacebookError(feedFacebookError)
+                                || isAuthRelatedErrorMessage(normalizedFeedMessage)
+                                || /changed.*password|security reasons/i.test(normalizedFeedMessage);
+                            if (authRelatedFeedError) {
+                                sawAuthRelatedFeedError = true;
+                            } else {
+                                sawNonAuthFeedError = true;
+                            }
+                            if (
+                                isSessionInvalidatedFacebookError(feedFacebookError)
+                                || /session has been invalidated|error validating access token|access token has expired|access token is invalid/i.test(
+                                    normalizedFeedMessage.toLowerCase(),
+                                )
+                            ) {
+                                sawSessionInvalidatedFeedError = true;
+                            }
+                            if (linkIndex + 1 < feedLinkCandidates.length) {
                                 console.warn(
-                                    '[publish] Draft publish failed, retrying with direct published feed post:',
-                                    draftPublishErrorMessage,
+                                    `[publish] feed link attempt failed, retrying with fallback link (${linkIndex + 1}/${feedLinkCandidates.length}):`,
+                                    candidateLastError,
                                 );
-                                feedResult = await publishLinkCardViaFeed({
-                                    ...feedRequestBase,
-                                    publishAsAdsPost: false,
-                                });
-                                usedDraftPublishFallback = true;
                             }
                         }
-
-                        const feedUrl = buildFacebookPostUrl(feedResult.postId, pageId);
-                        await recordPublishedSuccess(feedResult.postId, feedUrl, {
-                            flow: adCreativeError ? 'feed-fallback' : 'feed-link',
-                        });
-                        const hideResult = await maybeHideAfterPublish(feedResult.postId, candidateToken);
-                        const warningMessages: string[] = [];
-                        if (hideResult.attempted && !hideResult.hidden) {
-                            warningMessages.push(`ซ่อนโพสต์ไม่สำเร็จ: ${hideResult.error}`);
-                        }
-                        if (adCreativeError) {
-                            warningMessages.push('Ad creative ไม่สำเร็จ ระบบสลับไปโพสต์ผ่าน feed แทน');
-                        }
-                        if (linkIndex > 0 && publishLinkUrl && publishLinkUrl !== finalLink) {
-                            warningMessages.push('Preview link ใช้งานไม่ได้ ระบบสลับไปใช้ลิงก์จริงให้อัตโนมัติ');
-                        }
-                        if (usedDraftPublishFallback) {
-                            warningMessages.push('Facebook ไม่ยอม publish แบบ draft ระบบสลับไปโพสต์ตรงให้อัตโนมัติ');
-                        }
-
-                        return c.json({
-                            success: true,
-                            postId: feedResult.postId,
-                            url: feedUrl,
-                            timelineHidden: hideResult.hidden,
-                            ...(warningMessages.length > 0 ? { warning: warningMessages.join(' | ') } : {}),
-                            needsScheduling: !!scheduleTimestamp,
-                            ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
-                            _debug: {
-                                flow: adCreativeError ? 'feed-fallback' : 'feed-link',
-                                adCreativeError,
-                                hide: hideResult,
-                                feedLinkUrl,
-                                feedLinkAttempt: linkIndex + 1,
-                                usedDraftPublishFallback,
-                            },
-                        });
-                    } catch (feedError) {
-                        candidateLastError = feedError instanceof Error ? feedError.message : String(feedError);
-                        const feedFacebookError = (feedError as { facebookError?: any })?.facebookError || null;
-                        lastFeedFacebookError = feedFacebookError || lastFeedFacebookError;
-                        const normalizedFeedMessage = String(candidateLastError || '');
-                        const authRelatedFeedError = isSessionInvalidatedFacebookError(feedFacebookError)
-                            || isAuthRelatedErrorMessage(normalizedFeedMessage)
-                            || /changed.*password|security reasons/i.test(normalizedFeedMessage);
-                        if (authRelatedFeedError) {
-                            sawAuthRelatedFeedError = true;
-                        } else {
-                            sawNonAuthFeedError = true;
-                        }
-                        if (
-                            isSessionInvalidatedFacebookError(feedFacebookError)
-                            || /session has been invalidated|error validating access token|access token has expired|access token is invalid/i.test(
-                                normalizedFeedMessage.toLowerCase(),
-                            )
-                        ) {
-                            sawSessionInvalidatedFeedError = true;
-                        }
-                        if (linkIndex + 1 < feedLinkCandidates.length) {
-                            console.warn(
-                                `[publish] feed link attempt failed, retrying with fallback link (${linkIndex + 1}/${feedLinkCandidates.length}):`,
-                                candidateLastError,
-                            );
-                        }
                     }
+                    lastFeedError = candidateLastError;
+                    console.warn(`[publish] feed candidate failed (${pageTokenCandidates.indexOf(candidateToken) + 1}/${pageTokenCandidates.length}):`, lastFeedError);
                 }
-                lastFeedError = candidateLastError;
-                console.warn(`[publish] feed candidate failed (${pageTokenCandidates.indexOf(candidateToken) + 1}/${pageTokenCandidates.length}):`, lastFeedError);
             }
 
             // Last resort: cookie-only feed post (no access_token at all, just Cookie header).
-            if (cookieHeaderCandidates.length > 0) {
+            if (!forceSafePhotoFallback && cookieHeaderCandidates.length > 0) {
                 for (let i = 0; i < cookieHeaderCandidates.length; i += 1) {
                     for (let linkIndex = 0; linkIndex < feedLinkCandidates.length; linkIndex += 1) {
                         const fallbackLinkUrl = feedLinkCandidates[linkIndex];
@@ -3134,6 +3143,7 @@ app.post('/', async (c) => {
                             ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
                             _debug: {
                                 flow: 'photo-fallback-after-link-failure',
+                                forcePhotoFallback: forceSafePhotoFallback,
                                 adCreativeError,
                                 feedError: lastFeedError,
                                 requiresSquareLinkCard,
@@ -3187,6 +3197,7 @@ app.post('/', async (c) => {
                                 ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
                                 _debug: {
                                     flow: 'cookie-photo-fallback-after-link-failure',
+                                    forcePhotoFallback: forceSafePhotoFallback,
                                     adCreativeError,
                                     feedError: lastFeedError,
                                     requiresSquareLinkCard,
@@ -3245,6 +3256,7 @@ app.post('/', async (c) => {
                             ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
                             _debug: {
                                 flow: 'text-only-fallback-after-link-failure',
+                                forcePhotoFallback: forceSafePhotoFallback,
                                 adCreativeError,
                                 feedError: lastFeedError,
                                 photoFallbackError: String(photoFallbackLastError || '').trim(),
@@ -3282,6 +3294,7 @@ app.post('/', async (c) => {
                                 ...(scheduleTimestamp ? { scheduledTime: scheduleTimestamp } : {}),
                                 _debug: {
                                     flow: 'cookie-text-only-fallback-after-link-failure',
+                                    forcePhotoFallback: forceSafePhotoFallback,
                                     adCreativeError,
                                     feedError: lastFeedError,
                                     photoFallbackError: String(photoFallbackLastError || '').trim(),
@@ -3359,6 +3372,7 @@ app.post('/', async (c) => {
                 ...(!isSessionInvalidated && resolvedErrorSubcode ? { errorSubcode: resolvedErrorSubcode } : {}),
                 _debug: {
                     flow: 'link-card-failed-all-fallbacks',
+                    forcePhotoFallback: forceSafePhotoFallback,
                     adCreativeError,
                     feedError: lastFeedError,
                     photoFallbackError: normalizedPhotoFallbackError,

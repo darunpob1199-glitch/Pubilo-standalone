@@ -51,6 +51,7 @@ mustInclude(webPublish, 'const pagePickerClearBtn = document.getElementById("pag
 mustInclude(webPublish, 'toggleTargetPage(normalizedPageId);', webPublishPath, 'multi-page picker toggles target pages', errors)
 mustInclude(webIndex, 'id="pagePickerClearBtn"', webIndexPath, 'page picker clear button markup', errors)
 mustInclude(webIndex, '/js/parts/12-publish.js?v=11.33', webIndexPath, 'publish script cache-busted version', errors)
+mustInclude(webIndex, '/js/parts/11-image-generation.js?v=9.17', webIndexPath, 'news publish script cache-busted version', errors)
 mustInclude(webIndex, '/css/styles.css?v=8.6', webIndexPath, 'styles cache-busted version', errors)
 mustInclude(webIndex, '/css/parts/modern-ui.css?v=1.6', webIndexPath, 'modern ui cache-busted version', errors)
 
@@ -68,9 +69,9 @@ mustInclude(
 )
 mustInclude(
   apiPublish,
-  'const adCreativeFlowEnabled = adCreativeAllowedByEnv && adCreativeRequestedByClient;',
+  'const adCreativeFlowEnabled = adCreativeAllowedByEnv && adCreativeRequestedByClient && !forceSafePhotoFallback;',
   apiPublishPath,
-  'ad creative dual gate',
+  'ad creative dual gate with force-photo bypass',
   errors,
 )
 mustInclude(
@@ -124,6 +125,20 @@ mustInclude(
 )
 mustInclude(
   apiPublish,
+  'const forceSafePhotoFallback =',
+  apiPublishPath,
+  'server force-photo fallback flag resolver',
+  errors,
+)
+mustInclude(
+  apiPublish,
+  'if (!forceSafePhotoFallback) {',
+  apiPublishPath,
+  'server skips link-card feed attempts when force-photo fallback is requested',
+  errors,
+)
+mustInclude(
+  apiPublish,
   'function getPublicNewsPreviewOrigin',
   apiPublishPath,
   'server uses public news preview origin for local publish tests',
@@ -141,6 +156,20 @@ mustInclude(
   'payload.forcePhotoFallback = true;',
   webNewsPublishPath,
   'news extension direct fallback uses photo-only after link-card failures',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'shouldRetryApiAsPhotoFallback',
+  webNewsPublishPath,
+  'news publish retries API as photo fallback before extension fallback',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'forcePhotoFallback: true,',
+  webNewsPublishPath,
+  'news API retry can force photo fallback',
   errors,
 )
 mustInclude(

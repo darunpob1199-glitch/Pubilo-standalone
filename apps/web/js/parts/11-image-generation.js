@@ -1556,7 +1556,7 @@ if (newsPublishBtn) {
             };
             console.log("[News] Schedule source:", scheduleSource, scheduledTime?.toISOString?.() || null);
             
-            const buildPublishRequest = async () => {
+            const buildPublishRequest = async (overrides = {}) => {
                 const latestAdsToken = fbToken || localStorage.getItem("fewfeed_accessToken") || localStorage.getItem("fewfeed_token");
                 const latestCookie = fbCookie || localStorage.getItem("fewfeed_cookie");
                 const latestPageToken = typeof getFreshPageTokenFromExtension === "function"
@@ -1610,11 +1610,12 @@ if (newsPublishBtn) {
                     scheduledTime: scheduledTime
                         ? Math.floor(scheduledTime.getTime() / 1000)
                         : null,
+                    ...overrides,
                 };
             };
 
-            const sendPublishRequest = async () => {
-                const payload = await buildPublishRequest();
+            const sendPublishRequest = async (overrides = {}) => {
+                const payload = await buildPublishRequest(overrides);
                 const normalizedApiBase = String(window.API_BASE || "https://api.pubilo.com").replace(/\/+$/, "");
 
                 const runAttempt = async (url, useNativeDirect = false) => {
@@ -1692,6 +1693,35 @@ if (newsPublishBtn) {
                 }
             }
 
+            const shouldRetryApiAsPhotoFallback = (() => {
+                if (response?.ok && data?.success) return false;
+                if (data?._debug?.forcePhotoFallback === true) return false;
+                const debugFlow = String(data?._debug?.flow || "").toLowerCase();
+                const errorText = String(data?.error || "").toLowerCase();
+                return (
+                    isNewsLinkCardMetadataFailure(data) ||
+                    debugFlow.includes("link-card-failed") ||
+                    errorText.includes("link-card-failed") ||
+                    errorText.includes("only owners of the url") ||
+                    errorText.includes("invalid request")
+                );
+            })();
+
+            if (shouldRetryApiAsPhotoFallback) {
+                window.showPublishToast?.(
+                    "Facebook ปฏิเสธ Link Card กำลังสลับเป็นโพสต์รูปภาพ+แคปชันให้อัตโนมัติ...",
+                    "warning",
+                );
+                ({ response, data } = await sendPublishRequest({
+                    forcePhotoFallback: true,
+                    directFallbackMode: "photo-text",
+                    allowAdCreativePublish: false,
+                    callToAction: "",
+                    callToActionLabel: "",
+                    requireSquareLinkCard: false,
+                }));
+            }
+
             const shouldTryExtensionDirectFallback = (() => {
                 const errorMessage = String(data?.error || "").toLowerCase();
                 const errorType = String(data?.errorType || "").toLowerCase();
@@ -1737,6 +1767,7 @@ if (newsPublishBtn) {
                     const apiDebugFlow = String(data?._debug?.flow || "").toLowerCase();
                     const apiErrorText = String(data?.error || "").toLowerCase();
                     const shouldForceExtensionSafeFallback =
+                        data?._debug?.forcePhotoFallback === true ||
                         apiDebugFlow.includes("link-card-failed-all-fallbacks") ||
                         apiErrorText.includes("link-card-failed-all-fallbacks") ||
                         apiErrorText.includes("only owners of the url") ||
