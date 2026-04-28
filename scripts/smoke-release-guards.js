@@ -34,6 +34,7 @@ const extensionContent = read(extensionContentPath)
 mustInclude(webConfig, "const allowApiParamOverride = !isProductionWebHost;", webConfigPath, 'production api override guard', errors)
 mustInclude(webConfig, "hostname === 'pubilo.com'", webConfigPath, 'pubilo.com production host check', errors)
 mustInclude(webConfig, "hostname === 'pubilo-web-prod.pages.dev'", webConfigPath, 'pages production host check', errors)
+mustInclude(webConfig, "'127.0.0.1': 'http://127.0.0.1:8787'", webConfigPath, 'local dev api base mapping', errors)
 mustInclude(webConfig, 'if (apiParam && allowApiParamOverride)', webConfigPath, 'api override allow condition', errors)
 mustInclude(webConfig, 'Ignored ?api override on production host', webConfigPath, 'api override warning branch', errors)
 
@@ -96,6 +97,13 @@ mustInclude(
   errors,
 )
 mustInclude(
+  apiPublish,
+  'richLinkImageUnavailable',
+  apiPublishPath,
+  'server skips rich-card attempts when local image hosting is unavailable',
+  errors,
+)
+mustInclude(
   webNewsPublish,
   'directPayload.forcePhotoFallback = true;',
   webNewsPublishPath,
@@ -128,6 +136,13 @@ mustInclude(
   'const forcePhotoFallback = request.forcePhotoFallback === true;',
   extensionBackgroundPath,
   'extension photo-only fallback flag',
+  errors,
+)
+mustInclude(
+  extensionBackground,
+  '"http://127.0.0.1:4173/*"',
+  extensionBackgroundPath,
+  'extension injects into local pages dev host',
   errors,
 )
 mustInclude(

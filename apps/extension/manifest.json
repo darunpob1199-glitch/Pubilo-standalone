@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pubilo Token Helper",
-  "version": "9.2.15",
+  "version": "9.2.16",
   "description": "ดึง Ads Token + Cookie จาก Facebook อัตโนมัติ (Post Token ใส่ใน Page Settings)",
   "permissions": [
     "cookies",
@@ -18,6 +18,8 @@
     "https://business.facebook.com/*",
     "http://localhost:3000/*",
     "http://localhost:3005/*",
+    "http://localhost:4173/*",
+    "http://127.0.0.1:4173/*",
     "https://pubilo.com/*",
     "https://www.pubilo.com/*",
     "https://pubilo-web-dev.pages.dev/*",
@@ -37,6 +39,8 @@
       "matches": [
         "http://localhost:3000/*",
         "http://localhost:3005/*",
+        "http://localhost:4173/*",
+        "http://127.0.0.1:4173/*",
         "https://pubilo.com/*",
         "https://www.pubilo.com/*",
         "https://pubilo-web-dev.pages.dev/*",

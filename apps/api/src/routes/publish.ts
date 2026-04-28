@@ -2293,12 +2293,9 @@ app.post('/', async (c) => {
             }
         }
 
-        if (requiresRichLinkCard && finalImageUrl && !hostedImageUrl) {
-            return c.json({
-                success: false,
-                error: 'ไม่สามารถเตรียมรูปสำหรับ Rich Link Card ได้ (ระบบจะไม่ fallback เป็นลิงก์ธรรมดา)',
-                errorType: 'RichLinkImageUnavailable',
-            }, 400);
+        const richLinkImageUnavailable = requiresRichLinkCard && !!finalImageUrl && !hostedImageUrl;
+        if (richLinkImageUnavailable) {
+            console.warn('[publish] Rich Link Card image hosting unavailable; skipping rich-card attempts and using publish fallbacks');
         }
         const attachmentTitle = (linkName || (description ? `พิกัด : ${description}` : '') || '').trim();
         const attachmentCaption = (caption || '').trim();
@@ -2326,7 +2323,10 @@ app.post('/', async (c) => {
             })
             : '';
         const publishLinkUrl = isLinkAttachmentPost ? previewUrl : finalLink;
-        const shouldUseControlledPreviewForLinkCard = isLinkAttachmentPost && requiresRichLinkCard && !!publishLinkUrl;
+        const shouldUseControlledPreviewForLinkCard = isLinkAttachmentPost
+            && requiresRichLinkCard
+            && !!publishLinkUrl
+            && !richLinkImageUnavailable;
 
         const shouldQueueInSystem = !!scheduleTimestamp && !!scheduleInSystem && !internalRun;
         const currentBatchId = typeof batchId === 'string' && batchId.trim()
@@ -2702,7 +2702,11 @@ app.post('/', async (c) => {
             }
         }
         const normalizedCallToAction = normalizeCallToActionType(callToAction);
-        const canUseAdCreativeFlow = adCreativeFlowEnabled && isLinkAttachmentPost && !!effectiveAccessToken && !!resolvedAdAccountId;
+        const canUseAdCreativeFlow = adCreativeFlowEnabled
+            && isLinkAttachmentPost
+            && !!effectiveAccessToken
+            && !!resolvedAdAccountId
+            && !richLinkImageUnavailable;
 
         if (isLinkAttachmentPost) {
             // Include access token as last-resort candidate for feed fallback.
@@ -2716,6 +2720,9 @@ app.post('/', async (c) => {
                 effectiveAccessToken,
             ]);
             const feedLinkCandidates = (() => {
+                if (richLinkImageUnavailable) {
+                    return [];
+                }
                 if (shouldUseControlledPreviewForLinkCard && publishLinkUrl) {
                     return [publishLinkUrl];
                 }
@@ -2742,6 +2749,7 @@ app.post('/', async (c) => {
                 pageTokenCandidateCount: pageTokenCandidates.length,
                 requiresSquareLinkCard,
                 imageTransformStrategy: normalizedImageTransformStrategy || 'none',
+                richLinkImageUnavailable,
             });
 
             // Primary: ad creative produces rich cards with custom image, title, CTA button.

@@ -26,6 +26,8 @@ if (window.location.pathname.startsWith('/api/')) {
 }
 
 const HOST_API_MAP = {
+    'localhost': 'http://127.0.0.1:8787',
+    '127.0.0.1': 'http://127.0.0.1:8787',
     'pubilo.com': 'https://api.pubilo.com',
     'www.pubilo.com': 'https://api.pubilo.com',
     'pubilo-web-prod.pages.dev': 'https://api.pubilo.com',
