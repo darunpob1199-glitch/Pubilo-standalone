@@ -1158,10 +1158,15 @@ function setupPublishHandler(mode) {
             return;
         }
         const pageIdAtClick = document.getElementById("pageSelect")?.value || "";
-        const targetPageIdsAtClick =
+        const targetPageIdsAtClickRaw =
             typeof getSelectedTargetPageIds === "function"
                 ? getSelectedTargetPageIds()
                 : [];
+        const targetPageIdsAtClick = [...new Set(
+            (Array.isArray(targetPageIdsAtClickRaw) ? targetPageIdsAtClickRaw : [])
+                .map((id) => String(id || "").trim())
+                .filter((id) => id && id !== String(pageIdAtClick)),
+        )];
         const primaryTextAtClick = els.primaryText?.value?.trim() || "";
         const previewDescElAtClick = document.getElementById("previewDescription");
         const previewCaptionElAtClick = document.getElementById("previewCaption");
@@ -3155,6 +3160,23 @@ function toggleTargetPage(pageId) {
     renderMultiPageTargetPicker();
 }
 
+function handleMultiPageItemSelection(pageId) {
+    const normalizedPageId = String(pageId || "").trim();
+    if (!normalizedPageId) return;
+
+    const currentPageId = String(getCurrentSelectedPageId() || "");
+    if (!currentPageId) {
+        setPrimaryPageById(normalizedPageId);
+        return;
+    }
+
+    if (normalizedPageId === currentPageId) {
+        return;
+    }
+
+    toggleTargetPage(normalizedPageId);
+}
+
 function renderSelectedTargetStrip(selectedPages) {
     if (!multiPageSelectedStrip) return;
     multiPageSelectedStrip.textContent = "";
@@ -3243,11 +3265,7 @@ function renderMultiPageListItems() {
         item.className = `page-dropdown-item multi-page-item${isPrimary ? " selected is-primary" : ""}${isSelected ? " is-selected" : ""}`;
         item.dataset.pageId = normalizedPageId;
         item.addEventListener("click", () => {
-            if (!isPrimary) {
-                setPrimaryPageById(normalizedPageId);
-            } else {
-                setPageDropdownOpen(false);
-            }
+            handleMultiPageItemSelection(normalizedPageId);
         });
 
         const avatar = document.createElement("img");
@@ -3270,13 +3288,24 @@ function renderMultiPageListItems() {
         const action = document.createElement("button");
         action.type = "button";
         action.className = "multi-page-item-action";
+        action.setAttribute("aria-pressed", isPrimary || isSelected ? "true" : "false");
+        action.setAttribute(
+            "aria-label",
+            isPrimary
+                ? `${displayName} เป็นเพจหลัก`
+                : !hasPrimarySelection
+                    ? `ตั้ง ${displayName} เป็นเพจหลัก`
+                    : isSelected
+                        ? `เอา ${displayName} ออกจากปลายทางโพสต์`
+                        : `เลือก ${displayName} เป็นปลายทางโพสต์`,
+        );
         action.textContent = isPrimary
             ? "หลัก"
             : !hasPrimarySelection
                 ? "หลัก"
                 : isSelected
-                    ? "×"
-                    : "✓";
+                    ? "เลือกแล้ว"
+                    : "เลือก";
         action.title = isPrimary
             ? `${displayName} คือเพจหลัก`
             : !hasPrimarySelection
@@ -3286,18 +3315,7 @@ function renderMultiPageListItems() {
                     : `เลือก ${displayName}`;
         action.addEventListener("click", (event) => {
             event.stopPropagation();
-
-            if (isPrimary) {
-                setPageDropdownOpen(false);
-                return;
-            }
-
-            if (!hasPrimarySelection) {
-                setPrimaryPageById(normalizedPageId);
-                return;
-            }
-
-            toggleTargetPage(normalizedPageId);
+            handleMultiPageItemSelection(normalizedPageId);
         });
 
         item.appendChild(avatar);

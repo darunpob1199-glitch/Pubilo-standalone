@@ -18,6 +18,7 @@ function mustInclude(content, needle, filePath, label, errors) {
 const errors = []
 
 const webConfigPath = 'apps/web/js/config.js'
+const webIndexPath = 'apps/web/index.html'
 const webPublishPath = 'apps/web/js/parts/12-publish.js'
 const webNewsPublishPath = 'apps/web/js/parts/11-image-generation.js'
 const webWorkerPath = 'apps/web/_worker.js'
@@ -26,6 +27,7 @@ const extensionBackgroundPath = 'apps/extension/background.js'
 const extensionContentPath = 'apps/extension/content.js'
 
 const webConfig = read(webConfigPath)
+const webIndex = read(webIndexPath)
 const webPublish = read(webPublishPath)
 const webNewsPublish = read(webNewsPublishPath)
 const webWorker = read(webWorkerPath)
@@ -41,6 +43,10 @@ mustInclude(webConfig, 'if (apiParam && allowApiParamOverride)', webConfigPath, 
 mustInclude(webConfig, 'Ignored ?api override on production host', webConfigPath, 'api override warning branch', errors)
 
 mustInclude(webPublish, 'allowAdCreativePublish: true', webPublishPath, 'client-side ad creative opt-in for card links', errors)
+mustInclude(webPublish, 'targetPageIds: targetPageIdsAtClick,', webPublishPath, 'publish snapshot includes multi-page targets', errors)
+mustInclude(webPublish, 'function handleMultiPageItemSelection', webPublishPath, 'multi-page picker row toggle handler', errors)
+mustInclude(webPublish, 'toggleTargetPage(normalizedPageId);', webPublishPath, 'multi-page picker toggles target pages', errors)
+mustInclude(webIndex, '/js/parts/12-publish.js?v=11.31', webIndexPath, 'publish script cache-busted version', errors)
 
 mustInclude(webWorker, 'function rewriteLocalHtmlAssetVersions', webWorkerPath, 'local dev html asset cache busting', errors)
 mustInclude(webWorker, 'parsed.searchParams.set("dev", devVersion);', webWorkerPath, 'local dev asset version query', errors)
