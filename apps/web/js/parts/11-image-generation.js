@@ -1095,6 +1095,14 @@ function publishNewsViaExtensionDirect(payload = {}, timeoutMs = 70000) {
     });
 }
 
+function deriveNewsPreviewSiteNameFromUrl(rawUrl = "") {
+    try {
+        return new URL(String(rawUrl || "").trim()).hostname.replace(/^www\./, "").toUpperCase();
+    } catch (_) {
+        return "";
+    }
+}
+
 function buildNewsExtensionSafePreviewUrl(payload = {}, hostedImageUrl = "") {
     const targetUrl = String(payload.linkUrl || "").trim();
     if (!targetUrl) return "";
@@ -1110,9 +1118,10 @@ function buildNewsExtensionSafePreviewUrl(payload = {}, hostedImageUrl = "") {
             return window.location.origin;
         })();
         const previewUrl = new URL("/api/news-link", origin);
-        const title = String(payload.linkName || payload.description || "").trim();
+        const productText = String(payload.description || "").trim();
+        const title = String(payload.linkName || (productText ? `พิกัด : ${productText}` : "") || "").trim();
         const description = String(payload.description || payload.primaryText || "").trim();
-        const siteName = String(payload.caption || "").trim();
+        const siteName = deriveNewsPreviewSiteNameFromUrl(targetUrl);
         const imageUrl = String(hostedImageUrl || payload.hostedImageUrl || "").trim();
         previewUrl.searchParams.set("target", targetUrl);
         if (imageUrl) previewUrl.searchParams.set("image", imageUrl);
@@ -1188,12 +1197,6 @@ function forceNewsExtensionCleanLinkCardPayload(payload = {}, apiData = {}) {
     payload.linkName = "";
     payload.caption = "";
     payload.description = "";
-
-    const originalLinkUrl = String(payload.linkUrl || "").trim();
-    const originalPrimaryText = String(payload.primaryText || "").trim();
-    if (originalLinkUrl && !originalPrimaryText.includes(originalLinkUrl)) {
-        payload.primaryText = [originalPrimaryText, originalLinkUrl].filter(Boolean).join("\n\n");
-    }
 
     return payload;
 }

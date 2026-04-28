@@ -23,6 +23,7 @@ const webPublishPath = 'apps/web/js/parts/12-publish.js'
 const webNewsPublishPath = 'apps/web/js/parts/11-image-generation.js'
 const webWorkerPath = 'apps/web/_worker.js'
 const apiPublishPath = 'apps/api/src/routes/publish.ts'
+const apiNewsLinkPath = 'apps/api/src/routes/news-link.ts'
 const extensionBackgroundPath = 'apps/extension/background.js'
 const extensionContentPath = 'apps/extension/content.js'
 
@@ -32,6 +33,7 @@ const webPublish = read(webPublishPath)
 const webNewsPublish = read(webNewsPublishPath)
 const webWorker = read(webWorkerPath)
 const apiPublish = read(apiPublishPath)
+const apiNewsLink = read(apiNewsLinkPath)
 const extensionBackground = read(extensionBackgroundPath)
 const extensionContent = read(extensionContentPath)
 
@@ -51,7 +53,7 @@ mustInclude(webPublish, 'const pagePickerClearBtn = document.getElementById("pag
 mustInclude(webPublish, 'toggleTargetPage(normalizedPageId);', webPublishPath, 'multi-page picker toggles target pages', errors)
 mustInclude(webIndex, 'id="pagePickerClearBtn"', webIndexPath, 'page picker clear button markup', errors)
 mustInclude(webIndex, '/js/parts/12-publish.js?v=11.34', webIndexPath, 'publish script cache-busted version', errors)
-mustInclude(webIndex, '/js/parts/11-image-generation.js?v=9.19', webIndexPath, 'news publish script cache-busted version', errors)
+mustInclude(webIndex, '/js/parts/11-image-generation.js?v=9.20', webIndexPath, 'news publish script cache-busted version', errors)
 mustInclude(webIndex, '/css/styles.css?v=8.6', webIndexPath, 'styles cache-busted version', errors)
 mustInclude(webIndex, '/css/parts/modern-ui.css?v=1.6', webIndexPath, 'modern ui cache-busted version', errors)
 
@@ -159,6 +161,27 @@ mustInclude(
   errors,
 )
 mustInclude(
+  apiPublish,
+  "const previewSiteName = deriveSiteName('', finalLink);",
+  apiPublishPath,
+  'server preview site label follows target URL instead of caption',
+  errors,
+)
+mustInclude(
+  apiNewsLink,
+  '<meta property="og:url" content="${target}" />',
+  apiNewsLinkPath,
+  'news preview canonical OG URL uses Lazada target URL',
+  errors,
+)
+mustInclude(
+  apiNewsLink,
+  '<link rel="canonical" href="${target}" />',
+  apiNewsLinkPath,
+  'news preview canonical link uses Lazada target URL',
+  errors,
+)
+mustInclude(
   webNewsPublish,
   'payload.forcePhotoFallback = false;',
   webNewsPublishPath,
@@ -228,6 +251,16 @@ mustInclude(
   'news extension direct fallback requires updated extension version',
   errors,
 )
+mustInclude(
+  webNewsPublish,
+  'function deriveNewsPreviewSiteNameFromUrl',
+  webNewsPublishPath,
+  'news extension fallback derives preview site label from target URL',
+  errors,
+)
+if (webNewsPublish.includes('payload.primaryText = [originalPrimaryText, originalLinkUrl]')) {
+  errors.push(`${webNewsPublishPath}: raw Lazada link must not be auto-appended to primary text`)
+}
 mustInclude(
   extensionBackground,
   'directFallbackMode === "photo-text"',

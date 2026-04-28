@@ -2323,7 +2323,7 @@ app.post('/', async (c) => {
         const attachmentTitle = (linkName || (description ? `พิกัด : ${description}` : '') || '').trim();
         const attachmentCaption = (caption || '').trim();
         const attachmentDescription = (description || '').trim();
-        const previewSiteName = deriveSiteName(caption, finalLink);
+        const previewSiteName = deriveSiteName('', finalLink);
         const previewUrlBase = getPublicNewsPreviewOrigin(getAppOrigin(c.env, c.req.url));
         const previewRecordId = isLinkAttachmentPost
             ? await createNewsLinkPreview(c.env, {

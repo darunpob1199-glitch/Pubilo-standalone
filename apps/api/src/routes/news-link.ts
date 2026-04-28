@@ -97,14 +97,15 @@ app.get('/', async (c) => {
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
                 <meta name="robots" content="noindex, nofollow" />
                 <meta property="og:type" content="website" />
-                <meta property="og:url" content="${previewUrl}" />
+                <meta property="og:url" content="${target}" />
                 <meta property="og:title" content="${title}" />
                 <meta property="og:description" content="${description}" />
                 <meta property="og:site_name" content="${siteName}" />
+                <meta property="og:see_also" content="${previewUrl}" />
                 <meta property="og:see_also" content="${target}" />
                 <meta name="twitter:title" content="${title}" />
                 <meta name="twitter:description" content="${description}" />
-                <link rel="canonical" href="${previewUrl}" />
+                <link rel="canonical" href="${target}" />
                 ${image
                     ? html`
                         <meta property="og:image" content="${image}" />
