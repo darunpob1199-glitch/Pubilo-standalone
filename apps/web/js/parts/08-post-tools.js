@@ -1635,68 +1635,102 @@ function renderSharePostResults() {
     if (!dom.statusPanel) return;
 
     const result = state.lastShareResult;
-    if (!result) {
+    if (!result && !state.actionInFlight) {
         dom.statusPanel.className = "post-tool-run-status is-idle";
-        dom.statusPanel.innerHTML = `
-            <div class="post-tool-run-status-head">
-                <span class="post-tool-run-status-badge is-idle">พร้อมแชร์</span>
-            </div>
-            <div class="post-tool-run-status-main">เลือกโพสต์ต้นทางและเลือกหลายเพจปลายทาง</div>
-            <div class="post-tool-run-status-sub">ระบบจะลองแชร์ native ก่อน ถ้า Facebook ไม่อนุญาตจะคัดลอกโพสต์ไปลงเพจปลายทางแทน</div>
-        `;
+        dom.statusPanel.innerHTML = "";
         return;
     }
 
-    const rows = Array.isArray(result.results) ? result.results.slice(0, 12) : [];
-    if (state.actionInFlight && !rows.length) {
-        const total = Number(result.total || 0);
-        dom.statusPanel.className = "post-tool-run-status is-processing";
-        dom.statusPanel.innerHTML = `
-            <div class="post-tool-run-status-head">
-                <span class="post-tool-run-status-badge is-processing">กำลังแชร์</span>
-                <span class="post-tool-run-status-meta">${total} รายการ</span>
-            </div>
-            <div class="post-tool-run-status-main">กำลังส่งคำสั่งแชร์ไปยังเพจปลายทาง</div>
-            <div class="post-tool-run-status-sub">รอผลจาก Facebook ทีละเพจ ถ้าบางเพจ token หมดอายุระบบจะแสดงผลแยกให้เห็นทันที</div>
-        `;
-        return;
+    const rows = Array.isArray(result?.results) ? result.results : [];
+    const successCount = Number(result?.successCount || 0);
+    const failedCount = Number(result?.failedCount || 0);
+    const total = Number(result?.total || (state.actionInFlight ? 0 : successCount + failedCount));
+    
+    const isProcessing = state.actionInFlight;
+    const progressPercent = total > 0 ? Math.round(((successCount + failedCount) / total) * 100) : (isProcessing ? 15 : 100);
+
+    let tone = isProcessing ? "processing" : (failedCount > 0 ? "failed" : "completed");
+    let label = isProcessing ? "กำลังเผยแพร่" : (failedCount > 0 ? "แชร์เสร็จสิ้น (มีปัญหาบางเพจ)" : "เผยแพร่สำเร็จแล้ว");
+    let subLabel = isProcessing ? "กำลังคำนวณ..." : `สำเร็จทั้งหมด ${successCount} เพจ`;
+    
+    if (!dom.statusPanel.dataset.boundMinimize) {
+        dom.statusPanel.addEventListener("click", (e) => {
+            if (e.target.closest(".share-status-minimize-btn")) {
+                dom.statusPanel.classList.toggle("is-minimized");
+            }
+        });
+        dom.statusPanel.dataset.boundMinimize = "true";
     }
 
-    const successCount = Number(result.successCount || 0);
-    const failedCount = Number(result.failedCount || 0);
-    const total = Number(result.total || successCount + failedCount);
-    const tone = failedCount > 0 ? (successCount > 0 ? "processing" : "failed") : "completed";
-    const label = failedCount > 0 ? "แชร์บางรายการไม่สำเร็จ" : "แชร์สำเร็จ";
+    const wasMinimized = dom.statusPanel.classList.contains("is-minimized");
     dom.statusPanel.className = `post-tool-run-status is-${tone}`;
+    if (wasMinimized) {
+        dom.statusPanel.classList.add("is-minimized");
+    }
+
     dom.statusPanel.innerHTML = `
         <div class="post-tool-run-status-head">
-            <span class="post-tool-run-status-badge is-${tone}">${escapePostToolHtml(label)}</span>
-            <span class="post-tool-run-status-meta">${successCount}/${total} สำเร็จ</span>
+            <div>
+                <div class="post-tool-run-status-badge is-${tone}">
+                    ${isProcessing ? `
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="animate-spin" style="animation: spin 2s linear infinite;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+                    ` : `
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    `}
+                    ${escapePostToolHtml(label)}
+                </div>
+                <div class="post-tool-run-status-main">${escapePostToolHtml(subLabel)}</div>
+            </div>
+            <button class="share-status-minimize-btn" title="ย่อ/ขยาย">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4"/></svg>
+            </button>
         </div>
-        <div class="post-tool-run-status-main">แชร์สำเร็จ ${successCount} • ไม่สำเร็จ ${failedCount} • ทั้งหมด ${total}</div>
-        <div class="share-result-list">
-            ${rows.map((row) => {
-                const isOk = row.status === "shared";
-                const pageLabel = row.targetPageName || row.targetPageId || "-";
-                const postLabel = String(row.postId || "").slice(0, 48);
-                const methodLabel = row.method === "copy_post"
-                    ? "คัดลอกโพสต์"
-                    : row.method === "extension_direct_copy"
-                        ? "Extension fallback"
-                        : "แชร์ native";
-                const detail = isOk
-                    ? `${methodLabel} • ${row.sharedPostId || "shared"}`
-                    : (row.error || "แชร์ไม่สำเร็จ");
-                return `
-                    <div class="share-result-item is-${isOk ? "success" : "failed"}">
-                        <span>${escapePostToolHtml(isOk ? "สำเร็จ" : "ไม่สำเร็จ")}</span>
-                        <strong>${escapePostToolHtml(pageLabel)}</strong>
-                        <small>${escapePostToolHtml(postLabel)} • ${escapePostToolHtml(detail)}</small>
+        <div class="share-status-progress-bar">
+            <div class="share-status-progress-fill" style="width: ${progressPercent}%;"></div>
+        </div>
+        <div class="share-status-body">
+            <div class="share-result-list">
+                ${rows.map((row) => {
+                    const isOk = row.status === "shared";
+                    const pageLabel = row.targetPageName || row.targetPageId || "-";
+                    const methodLabel = row.method === "copy_post"
+                        ? "คัดลอกโพสต์"
+                        : row.method === "extension_direct_copy"
+                            ? "Extension fallback"
+                            : "แชร์ native";
+                    const detail = isOk
+                        ? `${methodLabel} • ${row.sharedPostId || "shared"}`
+                        : (row.error || "แชร์ไม่สำเร็จ");
+                    
+                    return `
+                        <div class="share-result-item is-${isOk ? "success" : "failed"}">
+                            <div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: ${isOk ? '#22c55e' : '#ef4444'}; color: #fff;">
+                                ${isOk 
+                                    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>`
+                                    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+                                }
+                            </div>
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="display: flex; gap: 8px; align-items: baseline;">
+                                    <strong style="color: #1e293b; font-size: 0.95rem;">${escapePostToolHtml(pageLabel)}</strong>
+                                </div>
+                                <small style="color: #64748b; font-size: 0.8rem; display: flex; gap: 6px; align-items: center;">
+                                    <span style="color: ${isOk ? '#16a34a' : '#dc2626'}; font-weight: 700;">${isOk ? '✓ สำเร็จ' : '✗ ไม่สำเร็จ'}</span>
+                                    <span>•</span>
+                                    ${escapePostToolHtml(detail)}
+                                </small>
+                            </div>
+                        </div>
+                    `;
+                }).join("")}
+                ${!rows.length && isProcessing ? `
+                    <div style="text-align: center; color: #64748b; padding: 2.5rem 0; font-size: 0.9rem; display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin" style="animation: spin 1s linear infinite;"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        กำลังติดต่อกับเพจปลายทาง...
                     </div>
-                `;
-            }).join("")}
+                ` : ''}
+            </div>
         </div>
-        ${total > rows.length ? `<div class="post-tool-run-status-sub">แสดง ${rows.length} จาก ${total} รายการล่าสุด</div>` : ""}
     `;
 }
 

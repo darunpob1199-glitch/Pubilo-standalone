@@ -1412,24 +1412,97 @@ header.header {
 }
 
 #sharePostsPanel .post-tool-run-status {
+    position: fixed !important;
+    bottom: 24px !important;
+    right: 24px !important;
+    width: 380px !important;
+    z-index: 1000 !important;
     border-radius: 18px !important;
     margin-bottom: 0 !important;
-    padding: 1rem 1.1rem !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.15) !important;
+    border: 1px solid #e2e8f0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    max-height: 80vh !important;
+    transition: transform 0.3s ease, opacity 0.3s ease !important;
+    pointer-events: auto !important;
 }
 
 #sharePostsPanel .post-tool-run-status.is-idle {
-    background: #f8fafc !important;
-    border-color: #e2e8f0 !important;
+    display: none !important;
 }
 
-#sharePostsPanel .post-tool-run-status.is-processing {
-    background: #f0fdfa !important;
-    border-color: #99f6e4 !important;
+#sharePostsPanel .post-tool-run-status.is-minimized {
+    transform: translateY(calc(100% - 64px)) !important;
+}
+
+#sharePostsPanel .post-tool-run-status-head {
+    background: linear-gradient(135deg, #a855f7 0%, #8b5cf6 100%) !important;
+    padding: 1rem 1.2rem !important;
+    color: #fff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+}
+
+#sharePostsPanel .post-tool-run-status-badge {
+    background: transparent !important;
+    color: #fff !important;
+    font-size: 1.1rem !important;
+    font-weight: 800 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
 }
 
 #sharePostsPanel .post-tool-run-status-badge.is-processing {
-    background: #ccfbf1 !important;
-    color: #0f766e !important;
+    background: transparent !important;
+    color: #fff !important;
+}
+
+.share-status-minimize-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: #fff;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.share-status-minimize-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+#sharePostsPanel .post-tool-run-status-main {
+    font-size: 0.85rem !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+    margin-top: 4px !important;
+    font-weight: 500 !important;
+}
+
+.share-status-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.3);
+    width: 100%;
+}
+.share-status-progress-fill {
+    height: 100%;
+    background: #ffffff;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.share-status-body {
+    padding: 1rem !important;
+    overflow-y: auto !important;
+    flex: 1 !important;
 }
 
 #sharePostsPanel .post-tool-control-card,
@@ -1601,7 +1674,7 @@ header.header {
 }
 
 .share-posts-body {
-    grid-template-columns: minmax(0, 1fr) 320px !important;
+    grid-template-columns: 1fr !important;
 }
 
 .share-posts-body .pending-table-container {
