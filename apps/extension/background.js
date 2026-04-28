@@ -1,4 +1,4 @@
-// Pubilo Token Helper v9.0
+// Pubilo Token Helper v9.2.18
 // Auto-fetches Ads Token + Cookie from Facebook
 // Post Token is now managed manually via Page Settings (not from Extension)
 

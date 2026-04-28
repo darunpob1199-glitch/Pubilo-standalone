@@ -1165,21 +1165,23 @@ function forceNewsExtensionSafeFallbackPayload(payload = {}, apiData = {}) {
     const debug = apiData?._debug && typeof apiData._debug === "object" ? apiData._debug : {};
     const previewLinkUrl = String(debug.previewUrl || payload.previewLinkUrl || "").trim();
     const hostedImageUrl = String(debug.hostedImageUrl || payload.hostedImageUrl || "").trim();
-    const safePreviewUrl = buildNewsExtensionSafePreviewUrl(payload, hostedImageUrl);
+    const hasInlineImage = String(payload.imageUrl || "").trim().startsWith("data:");
 
-    if (safePreviewUrl) {
-        payload.previewLinkUrl = safePreviewUrl;
-    } else if (previewLinkUrl) {
-        payload.previewLinkUrl = previewLinkUrl;
-    }
-    if (hostedImageUrl) {
+    // Safe mode must not feed link-card metadata to older extension builds.
+    // They can ignore forcePhotoFallback and still try /feed with picture/name,
+    // which Facebook rejects for third-party URLs such as s.lazada.co.th.
+    payload.previewLinkUrl = "";
+    if (hostedImageUrl && !hasInlineImage) {
         payload.hostedImageUrl = hostedImageUrl;
+    } else if (hasInlineImage) {
+        payload.hostedImageUrl = "";
     }
 
     payload.forcePhotoFallback = true;
     payload.directFallbackMode = "photo-text";
-    payload.imageTransformStrategy = "fit";
-    payload.requireSquareLinkCard = true;
+    payload.imageTransformStrategy = "original";
+    payload.requireSquareLinkCard = false;
+    payload.allowAdCreativePublish = false;
     payload.callToAction = "";
     payload.callToActionLabel = "";
     payload.linkName = "";
@@ -1195,9 +1197,51 @@ function forceNewsExtensionSafeFallbackPayload(payload = {}, apiData = {}) {
     return payload;
 }
 
+function isExtensionDirectFallbackStale(result = {}, requestPayload = {}) {
+    if (!requestPayload?.forcePhotoFallback || result?.success) return false;
+    const debug = result?.debug && typeof result.debug === "object" ? result.debug : {};
+    const phase = String(debug.phase || "").toLowerCase();
+    const strategy = String(debug.strategy || "").toLowerCase();
+    const error = String(result?.error || "").toLowerCase();
+    return (
+        phase.includes("feed-link-card") ||
+        strategy.includes("feed-card") ||
+        error.includes("only owners of the url") ||
+        error.includes("link-card")
+    );
+}
+
 function shouldRetryNewsExtensionDirectAsSafeFallback(result = {}) {
     if (result?.success) return false;
     return isNewsLinkCardMetadataFailure(result);
+}
+
+const NEWS_DIRECT_MIN_EXTENSION_VERSION = "9.2.18";
+
+function compareLooseVersions(left = "", right = "") {
+    const leftParts = String(left || "").split(".").map((part) => Number.parseInt(part, 10) || 0);
+    const rightParts = String(right || "").split(".").map((part) => Number.parseInt(part, 10) || 0);
+    const maxLength = Math.max(leftParts.length, rightParts.length);
+    for (let index = 0; index < maxLength; index += 1) {
+        const leftValue = leftParts[index] || 0;
+        const rightValue = rightParts[index] || 0;
+        if (leftValue > rightValue) return 1;
+        if (leftValue < rightValue) return -1;
+    }
+    return 0;
+}
+
+function getDetectedPubiloExtensionVersion() {
+    return String(
+        localStorage.getItem("fewfeed_extensionVersion") ||
+        document.body?.dataset?.extensionVersion ||
+        "",
+    ).trim();
+}
+
+function isDetectedPubiloExtensionTooOld() {
+    const detectedVersion = getDetectedPubiloExtensionVersion();
+    return !!detectedVersion && compareLooseVersions(detectedVersion, NEWS_DIRECT_MIN_EXTENSION_VERSION) < 0;
 }
 
 // News publish handler
@@ -1763,6 +1807,12 @@ if (newsPublishBtn) {
                 );
 
                 try {
+                    if (isDetectedPubiloExtensionTooOld()) {
+                        const detectedVersion = getDetectedPubiloExtensionVersion();
+                        throw new Error(
+                            `Extension Pubilo Token Helper เวอร์ชัน ${detectedVersion} เก่าเกินไป ต้อง reload/update เป็น ${NEWS_DIRECT_MIN_EXTENSION_VERSION}+ ก่อนโพสต์ลิงก์แบบ fallback`,
+                        );
+                    }
                     const directPayload = await buildPublishRequest();
                     const apiDebugFlow = String(data?._debug?.flow || "").toLowerCase();
                     const apiErrorText = String(data?.error || "").toLowerCase();
@@ -1799,6 +1849,31 @@ if (newsPublishBtn) {
                             },
                         );
                         directResult = await publishNewsViaExtensionDirect(retryPayload, 70000);
+                        if (isExtensionDirectFallbackStale(directResult, retryPayload)) {
+                            directResult = {
+                                ...(directResult || {}),
+                                success: false,
+                                error: "Extension เก่ายังยิง Link Card อยู่ กรุณา reload Pubilo Token Helper ที่ chrome://extensions แล้วรีเฟรชหน้า Pubilo",
+                                errorType: "StaleExtensionDirectPublish",
+                                debug: {
+                                    ...(directResult?.debug || {}),
+                                    phase: "stale-extension-feed-link-card",
+                                    strategy: "reload-extension-required",
+                                },
+                            };
+                        }
+                    } else if (isExtensionDirectFallbackStale(directResult, directPayload)) {
+                        directResult = {
+                            ...(directResult || {}),
+                            success: false,
+                            error: "Extension เก่ายังยิง Link Card อยู่ กรุณา reload Pubilo Token Helper ที่ chrome://extensions แล้วรีเฟรชหน้า Pubilo",
+                            errorType: "StaleExtensionDirectPublish",
+                            debug: {
+                                ...(directResult?.debug || {}),
+                                phase: "stale-extension-feed-link-card",
+                                strategy: "reload-extension-required",
+                            },
+                        };
                     }
                     if (directResult?.success && (directResult?.postId || directResult?.id)) {
                         response = { ok: true, status: 200 };

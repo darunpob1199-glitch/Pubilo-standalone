@@ -4990,6 +4990,7 @@ function normalizeExtensionSessionData(rawData = {}) {
         userId: pickString(rawData.userId, rawData.fewfeed_userId),
         userName: pickString(rawData.userName, rawData.fewfeed_userName),
         avatarUrl: pickString(rawData.avatarUrl, rawData.fewfeed_avatarUrl, rawData.avatar_url),
+        extensionVersion: pickString(rawData.extensionVersion, rawData.fewfeed_extensionVersion),
         pageTokenMap: rawData.pageTokenMap || rawData.fewfeed_pageTokenMap || null,
         pageTokenMapOwnerId: pickString(rawData.pageTokenMapOwnerId, rawData.fewfeed_pageTokenMapOwnerId),
         pageSummaryMap: rawData.pageSummaryMap || null,
@@ -5245,6 +5246,10 @@ function applyExtensionSessionData(sessionData, source = "extension", options = 
     }
     if (session.avatarUrl) {
         localStorage.setItem("fewfeed_avatarUrl", session.avatarUrl);
+    }
+    if (session.extensionVersion) {
+        localStorage.setItem("fewfeed_extensionVersion", session.extensionVersion);
+        document.body.dataset.extensionVersion = session.extensionVersion;
     }
 
     // Persist page tokens from extension into localStorage + DB

@@ -1,4 +1,4 @@
-// Pubilo Token Helper v9.0 - Content Script
+// Pubilo Token Helper v9.2.18 - Content Script
 // Runs on localhost and Pubilo dashboard domains - fetches Ads Token + Cookie only
 // Post Token is now managed manually via Page Settings (not from Extension)
 
@@ -727,6 +727,21 @@ setInterval(ensureAutoTokenControls, 1500);
 window.addEventListener("message", async (event) => {
   if (event.source !== window) return;
 
+  if (event.data.type === "FEWFEED_EXTENSION_STATUS") {
+    window.postMessage({
+      type: "FEWFEED_EXTENSION_STATUS_RESPONSE",
+      data: {
+        success: true,
+        extensionVersion: chrome.runtime.getManifest().version,
+        features: {
+          publishNewsDirectForcePhotoFallback: true,
+          publishNewsDirectSafePhotoText: true,
+        },
+      },
+      requestId: String(event.data.requestId || "").trim(),
+    }, "*");
+  }
+
   // Page requesting stored data
   if (event.data.type === "FEWFEED_GET_DATA") {
     let response;
@@ -1034,5 +1049,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // Mark that extension is installed
 document.documentElement.setAttribute("data-fewfeed-extension", "true");
-window.postMessage({ type: "FEWFEED_EXTENSION_READY" }, "*");
-console.log("[Pubilo Content] Extension v9.2.14 ready - robust message channel recovery");
+window.postMessage({
+  type: "FEWFEED_EXTENSION_READY",
+  extensionVersion: chrome.runtime.getManifest().version,
+  features: {
+    publishNewsDirectForcePhotoFallback: true,
+    publishNewsDirectSafePhotoText: true,
+  },
+}, "*");
+console.log(`[Pubilo Content] Extension v${chrome.runtime.getManifest().version} ready - robust message channel recovery`);

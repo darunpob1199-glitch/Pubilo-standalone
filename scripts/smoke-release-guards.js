@@ -50,8 +50,8 @@ mustInclude(webPublish, 'multiPageList.dataset.routePickerBound = "true";', webP
 mustInclude(webPublish, 'const pagePickerClearBtn = document.getElementById("pagePickerClearBtn");', webPublishPath, 'multi-page picker clear button binding', errors)
 mustInclude(webPublish, 'toggleTargetPage(normalizedPageId);', webPublishPath, 'multi-page picker toggles target pages', errors)
 mustInclude(webIndex, 'id="pagePickerClearBtn"', webIndexPath, 'page picker clear button markup', errors)
-mustInclude(webIndex, '/js/parts/12-publish.js?v=11.33', webIndexPath, 'publish script cache-busted version', errors)
-mustInclude(webIndex, '/js/parts/11-image-generation.js?v=9.17', webIndexPath, 'news publish script cache-busted version', errors)
+mustInclude(webIndex, '/js/parts/12-publish.js?v=11.34', webIndexPath, 'publish script cache-busted version', errors)
+mustInclude(webIndex, '/js/parts/11-image-generation.js?v=9.18', webIndexPath, 'news publish script cache-busted version', errors)
 mustInclude(webIndex, '/css/styles.css?v=8.6', webIndexPath, 'styles cache-busted version', errors)
 mustInclude(webIndex, '/css/parts/modern-ui.css?v=1.6', webIndexPath, 'modern ui cache-busted version', errors)
 
@@ -181,9 +181,9 @@ mustInclude(
 )
 mustInclude(
   webNewsPublish,
-  'buildNewsExtensionSafePreviewUrl(payload, hostedImageUrl)',
+  'payload.previewLinkUrl = "";',
   webNewsPublishPath,
-  'news extension direct fallback builds controlled preview for legacy extensions',
+  'news extension direct fallback strips link preview for legacy extensions',
   errors,
 )
 mustInclude(
@@ -205,6 +205,20 @@ mustInclude(
   'payload.callToAction = "";',
   webNewsPublishPath,
   'news extension direct fallback strips CTA for legacy extensions',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'isExtensionDirectFallbackStale(directResult, retryPayload)',
+  webNewsPublishPath,
+  'news extension direct fallback detects stale extension builds',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'NEWS_DIRECT_MIN_EXTENSION_VERSION = "9.2.18"',
+  webNewsPublishPath,
+  'news extension direct fallback requires updated extension version',
   errors,
 )
 mustInclude(
@@ -268,6 +282,13 @@ mustInclude(
   'directFallbackMode: event.data.directFallbackMode,',
   extensionContentPath,
   'extension content forwards safe fallback mode',
+  errors,
+)
+mustInclude(
+  extensionContent,
+  'publishNewsDirectForcePhotoFallback: true',
+  extensionContentPath,
+  'extension content advertises force-photo fallback support',
   errors,
 )
 
