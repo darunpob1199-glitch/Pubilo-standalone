@@ -879,13 +879,36 @@ function showPublishToast(message, type = "success") {
     if (!toast) {
         toast = document.createElement("div");
         toast.id = "publishToast";
-        toast.className = "publish-toast";
         document.body.appendChild(toast);
+        
+        toast.addEventListener('click', (e) => {
+            if (e.target.closest('.toast-close')) {
+                toast.classList.remove("is-visible");
+            }
+        });
     }
 
-    toast.textContent = message;
-    toast.classList.remove("is-success", "is-error", "is-visible");
-    toast.classList.add(type === "error" ? "is-error" : "is-success");
+    let iconHtml = '';
+    if (type === 'success') {
+        iconHtml = `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+    } else if (type === 'error') {
+        iconHtml = `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+    } else if (type === 'warning') {
+        iconHtml = `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+    } else {
+        iconHtml = `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
+    }
+
+    toast.className = `publish-toast is-${type}`;
+    toast.innerHTML = `
+        <div class="toast-icon-wrapper ${type}">${iconHtml}</div>
+        <div class="toast-text">${message}</div>
+        <button class="toast-close" aria-label="Close toast">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+    `;
+
+    void toast.offsetWidth;
 
     requestAnimationFrame(() => {
         toast.classList.add("is-visible");
@@ -896,7 +919,7 @@ function showPublishToast(message, type = "success") {
     }
     publishToastTimer = setTimeout(() => {
         toast.classList.remove("is-visible");
-    }, 2200);
+    }, 4500);
 }
 
 window.showPublishToast = showPublishToast;
