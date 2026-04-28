@@ -40,6 +40,7 @@ mustInclude(navigationJs, 'hash === "hide-posts"', navigationPath, "hide-posts r
 mustInclude(navigationJs, 'hash === "delete-posts"', navigationPath, "delete-posts route", errors);
 mustInclude(navigationJs, 'hash === "share-posts"', navigationPath, "share-posts route", errors);
 mustInclude(postToolsJs, 'fetch("/api/share-posts"', postToolsPath, "share posts API call", errors);
+mustInclude(postToolsJs, "runSharePostToolBrowserFallback", postToolsPath, "share posts browser fallback", errors);
 mustInclude(apiIndexTs, "app.route('/api/share-posts', sharePostsRouter)", apiIndexPath, "share posts API route", errors);
 
 const hiddenListMatch = configJs.match(/PUBILO_HIDDEN_HASHES\s*=\s*\[([^\]]*)\]/);

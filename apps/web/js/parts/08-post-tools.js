@@ -2708,6 +2708,104 @@ function getShareTargetPageTokens(targetPageIds) {
     return tokens;
 }
 
+function buildSharePostBrowserLink(post, sourcePageId) {
+    const explicitUrl = String(post.facebook_url || post.facebookUrl || "").trim();
+    if (explicitUrl) return explicitUrl;
+
+    const rawPostId = String(getPostToolItemId(post) || "").trim().replace(/^fb:/i, "");
+    if (!rawPostId) return "";
+
+    const postType = getPostToolType(post);
+    const parts = rawPostId.split("_").filter(Boolean);
+    const objectId = parts.length > 1 ? parts[parts.length - 1] : rawPostId;
+    const ownerId = parts.length > 1 ? parts[0] : String(sourcePageId || "").trim();
+
+    if (postType === "reels") {
+        return `https://www.facebook.com/reel/${encodeURIComponent(objectId)}/`;
+    }
+    if (ownerId && objectId) {
+        return `https://www.facebook.com/${encodeURIComponent(ownerId)}/posts/${encodeURIComponent(objectId)}`;
+    }
+    return `https://www.facebook.com/${encodeURIComponent(rawPostId)}`;
+}
+
+async function sharePostBrowserSide(post, sourcePageId, targetPage, targetPageToken) {
+    const link = buildSharePostBrowserLink(post, sourcePageId);
+    if (!link) {
+        throw new Error("Missing source post link");
+    }
+
+    const response = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(targetPage.id)}/feed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+            link,
+            access_token: targetPageToken,
+        }).toString(),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data?.id) {
+        return String(data.id);
+    }
+
+    const code = data?.error?.code ? ` code=${data.error.code}` : "";
+    const type = data?.error?.type ? ` type=${data.error.type}` : "";
+    const subcode = data?.error?.error_subcode ? ` subcode=${data.error.error_subcode}` : "";
+    throw new Error(String(data?.error?.message || data?.message || `HTTP ${response.status}`) + code + type + subcode);
+}
+
+async function runSharePostToolBrowserFallback(selectedPosts, pageId, targetPages, targetPageTokens) {
+    const results = [];
+
+    for (const post of selectedPosts) {
+        const postId = getPostToolItemId(post);
+        for (const targetPage of targetPages) {
+            const targetPageId = String(targetPage.id || "").trim();
+            const token = String(targetPageTokens?.[targetPageId] || "").trim();
+            if (!token) {
+                results.push({
+                    postId,
+                    targetPageId,
+                    targetPageName: targetPage.name,
+                    status: "failed",
+                    error: "ไม่มี Page Token ของเพจปลายทางนี้ กด Token/Cookie แล้วรีเฟรชเพจก่อน",
+                });
+                continue;
+            }
+
+            try {
+                const sharedPostId = await sharePostBrowserSide(post, pageId, targetPage, token);
+                results.push({
+                    postId,
+                    targetPageId,
+                    targetPageName: targetPage.name,
+                    status: "shared",
+                    sharedPostId,
+                    facebookUrl: `https://www.facebook.com/${sharedPostId}`,
+                });
+            } catch (error) {
+                results.push({
+                    postId,
+                    targetPageId,
+                    targetPageName: targetPage.name,
+                    status: "failed",
+                    error: error?.message || String(error),
+                });
+            }
+        }
+    }
+
+    const successCount = results.filter((result) => result.status === "shared").length;
+    return {
+        success: true,
+        source: "browser-fallback",
+        total: results.length,
+        successCount,
+        failedCount: results.length - successCount,
+        results,
+    };
+}
+
 async function runSharePostToolAction(selectedPosts, pageId) {
     const toolKey = "share";
     const state = postToolStates[toolKey];
@@ -2766,8 +2864,10 @@ async function runSharePostToolAction(selectedPosts, pageId) {
                 })),
             }),
         });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.success) {
+        let data = await response.json().catch(() => ({}));
+        if (response.status === 404) {
+            data = await runSharePostToolBrowserFallback(selectedPosts, pageId, targetPages, targetPageTokens);
+        } else if (!response.ok || !data.success) {
             throw new Error(data.error || `HTTP ${response.status}`);
         }
 
