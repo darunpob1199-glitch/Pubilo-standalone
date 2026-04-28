@@ -1621,7 +1621,7 @@ function renderSharePostResults() {
                 <span class="post-tool-run-status-badge is-idle">พร้อมแชร์</span>
             </div>
             <div class="post-tool-run-status-main">เลือกโพสต์ต้นทางและเลือกหลายเพจปลายทาง</div>
-            <div class="post-tool-run-status-sub">ระบบจะแชร์โพสต์จากเพจต้นทางไปยังเพจปลายทางที่เลือก และแสดงผลสำเร็จ/ล้มเหลวรายเพจ</div>
+            <div class="post-tool-run-status-sub">ระบบจะลองแชร์ native ก่อน ถ้า Facebook ไม่อนุญาตจะคัดลอกโพสต์ไปลงเพจปลายทางแทน</div>
         `;
         return;
     }
@@ -1659,7 +1659,7 @@ function renderSharePostResults() {
                 const pageLabel = row.targetPageName || row.targetPageId || "-";
                 const postLabel = String(row.postId || "").slice(0, 48);
                 const detail = isOk
-                    ? (row.sharedPostId || "shared")
+                    ? `${row.method === "copy_post" ? "คัดลอกโพสต์" : "แชร์ native"} • ${row.sharedPostId || "shared"}`
                     : (row.error || "แชร์ไม่สำเร็จ");
                 return `
                     <div class="share-result-item is-${isOk ? "success" : "failed"}">
@@ -2778,6 +2778,7 @@ async function runSharePostToolAction(selectedPosts, pageId) {
                 publishedAt: post.published_at || post.created_at || "",
                 facebookUrl: post.facebook_url || "",
                 mediaUrl: post.media_url || post.media_thumb_url || "",
+                mediaThumbUrl: post.media_thumb_url || post.media_url || "",
             })),
         };
         const response = await fetch("/api/share-posts", {

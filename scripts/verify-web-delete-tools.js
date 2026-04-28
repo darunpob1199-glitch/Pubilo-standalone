@@ -22,6 +22,7 @@ const configPath = "apps/web/js/config.js";
 const navigationPath = "apps/web/js/parts/09-navigation.js";
 const postToolsPath = "apps/web/js/parts/08-post-tools.js";
 const apiIndexPath = "apps/api/src/index.ts";
+const apiSharePostsPath = "apps/api/src/routes/share-posts.ts";
 const webWorkerPath = "apps/web/_worker.js";
 
 const indexHtml = read(indexHtmlPath);
@@ -29,6 +30,7 @@ const configJs = read(configPath);
 const navigationJs = read(navigationPath);
 const postToolsJs = read(postToolsPath);
 const apiIndexTs = read(apiIndexPath);
+const apiSharePostsTs = read(apiSharePostsPath);
 const webWorkerJs = read(webWorkerPath);
 
 mustInclude(indexHtml, 'id="hidePostsNavItem"', indexHtmlPath, "hide posts nav item", errors);
@@ -44,7 +46,9 @@ mustInclude(navigationJs, 'hash === "share-posts"', navigationPath, "share-posts
 mustInclude(postToolsJs, 'fetch("/api/share-posts"', postToolsPath, "share posts API call", errors);
 mustInclude(postToolsJs, "runSharePostToolSameOriginFallback", postToolsPath, "share posts same-origin fallback", errors);
 mustInclude(apiIndexTs, "app.route('/api/share-posts', sharePostsRouter)", apiIndexPath, "share posts API route", errors);
+mustInclude(apiSharePostsTs, "shareOrCopyPostToPage", apiSharePostsPath, "share posts copy fallback", errors);
 mustInclude(webWorkerJs, 'url.pathname === "/api/share-posts"', webWorkerPath, "share posts web worker route", errors);
+mustInclude(webWorkerJs, "shareOrCopyPostToPage", webWorkerPath, "share posts web worker copy fallback", errors);
 
 const hiddenListMatch = configJs.match(/PUBILO_HIDDEN_HASHES\s*=\s*\[([^\]]*)\]/);
 const hiddenListRaw = hiddenListMatch ? hiddenListMatch[1] : "";

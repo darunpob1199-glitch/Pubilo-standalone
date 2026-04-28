@@ -52,6 +52,11 @@ function buildFacebookPostUrl(post, sourcePageId = "") {
   return `https://www.facebook.com/${encodeURIComponent(postId)}`;
 }
 
+function isHttpUrl(value) {
+  const normalized = normalizeText(value);
+  return normalized.startsWith("https://") || normalized.startsWith("http://");
+}
+
 function buildFacebookHeaders(cookieData) {
   const normalizedCookie = normalizeText(cookieData);
   if (!normalizedCookie) return undefined;
@@ -113,6 +118,13 @@ async function fetchFreshPageToken(pageId, accessToken, cookieData) {
   return "";
 }
 
+function formatFacebookError(data, fallback = "Graph request failed") {
+  const code = data?.error?.code ? ` code=${data.error.code}` : "";
+  const type = data?.error?.type ? ` type=${data.error.type}` : "";
+  const subcode = data?.error?.error_subcode ? ` subcode=${data.error.error_subcode}` : "";
+  return String(data?.error?.message || data?.message || fallback) + code + type + subcode;
+}
+
 async function sharePostToPage(post, sourcePageId, targetPageId, targetPageToken) {
   const link = buildFacebookPostUrl(post, sourcePageId);
   if (!link) {
@@ -133,10 +145,77 @@ async function sharePostToPage(post, sourcePageId, targetPageId, targetPageToken
     return String(data.id);
   }
 
-  const code = data?.error?.code ? ` code=${data.error.code}` : "";
-  const type = data?.error?.type ? ` type=${data.error.type}` : "";
-  const subcode = data?.error?.error_subcode ? ` subcode=${data.error.error_subcode}` : "";
-  throw new Error(String(data?.error?.message || data?.message || "Graph share failed") + code + type + subcode);
+  throw new Error(formatFacebookError(data, "Graph share failed"));
+}
+
+async function copyPostToPage(post, sourcePageId, targetPageId, targetPageToken) {
+  const postType = normalizePostType(post.postType || post.post_type);
+  const mediaUrl = normalizeText(post.mediaUrl || post.media_url || post.mediaThumbUrl || post.media_thumb_url);
+  const messageText = normalizeText(post.messageText || post.message_text);
+  const sourceUrl = buildFacebookPostUrl(post, sourcePageId);
+  let photoCopyError = "";
+
+  if (postType === "image" && isHttpUrl(mediaUrl)) {
+    const response = await fetch(`${FB_API}/${encodeURIComponent(targetPageId)}/photos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        url: mediaUrl,
+        caption: messageText,
+        access_token: targetPageToken,
+      }).toString(),
+    });
+    const data = await response.json();
+    if (response.ok && (data?.post_id || data?.id)) {
+      return String(data.post_id || data.id);
+    }
+    photoCopyError = formatFacebookError(data, "Graph photo copy failed");
+  }
+
+  const messageParts = [messageText];
+  if (postType !== "text" || !messageText) {
+    messageParts.push(sourceUrl);
+  }
+  const message = messageParts.map((part) => normalizeText(part)).filter(Boolean).join("\n\n");
+  if (!message) {
+    throw new Error("Missing message or source link for copy fallback");
+  }
+
+  const response = await fetch(`${FB_API}/${encodeURIComponent(targetPageId)}/feed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      message,
+      access_token: targetPageToken,
+    }).toString(),
+  });
+  const data = await response.json();
+  if (response.ok && data?.id) {
+    return String(data.id);
+  }
+  const postCopyError = formatFacebookError(data, "Graph post copy failed");
+  throw new Error(photoCopyError ? `${photoCopyError}; text fallback failed: ${postCopyError}` : postCopyError);
+}
+
+async function shareOrCopyPostToPage(post, sourcePageId, targetPageId, targetPageToken) {
+  try {
+    return {
+      id: await sharePostToPage(post, sourcePageId, targetPageId, targetPageToken),
+      method: "native_share",
+    };
+  } catch (shareError) {
+    const shareMessage = shareError instanceof Error ? shareError.message : String(shareError);
+    try {
+      return {
+        id: await copyPostToPage(post, sourcePageId, targetPageId, targetPageToken),
+        method: "copy_post",
+        warningMessage: `Native share failed, copied post instead: ${shareMessage}`,
+      };
+    } catch (copyError) {
+      const copyMessage = copyError instanceof Error ? copyError.message : String(copyError);
+      throw new Error(`Native share failed: ${shareMessage}; copy fallback failed: ${copyMessage}`);
+    }
+  }
 }
 
 function jsonResponse(payload, init = {}) {
@@ -170,6 +249,7 @@ async function handleSharePosts(request) {
           publishedAt: normalizeText(post.publishedAt || post.published_at),
           facebookUrl: normalizeText(post.facebookUrl || post.facebook_url),
           mediaUrl: normalizeText(post.mediaUrl || post.media_url),
+          mediaThumbUrl: normalizeText(post.mediaThumbUrl || post.media_thumb_url),
         }))
         .filter((post) => post.id)
       : [];
@@ -228,14 +308,16 @@ async function handleSharePosts(request) {
         }
 
         try {
-          const sharedPostId = await sharePostToPage(post, sourcePageId, target.id, token);
+          const shareResult = await shareOrCopyPostToPage(post, sourcePageId, target.id, token);
           results.push({
             postId: post.id,
             targetPageId: target.id,
             targetPageName: target.name,
             status: "shared",
-            sharedPostId,
-            facebookUrl: `https://www.facebook.com/${sharedPostId}`,
+            method: shareResult.method,
+            warning: shareResult.warningMessage,
+            sharedPostId: shareResult.id,
+            facebookUrl: `https://www.facebook.com/${shareResult.id}`,
           });
         } catch (error) {
           results.push({

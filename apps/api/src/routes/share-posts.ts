@@ -16,11 +16,18 @@ type SharePostInput = {
     publishedAt?: string;
     facebookUrl?: string;
     mediaUrl?: string;
+    mediaThumbUrl?: string;
 };
 
 type ShareTargetInput = {
     id: string;
     name?: string;
+};
+
+type SharePublishResult = {
+    id: string;
+    method: 'native_share' | 'copy_post';
+    warningMessage?: string;
 };
 
 function normalizeText(value: unknown): string {
@@ -60,6 +67,18 @@ function buildFacebookPostUrl(post: SharePostInput, sourcePageId = ''): string {
     }
 
     return `https://www.facebook.com/${encodeURIComponent(postId)}`;
+}
+
+function isHttpUrl(value: unknown): boolean {
+    const normalized = normalizeText(value);
+    return normalized.startsWith('https://') || normalized.startsWith('http://');
+}
+
+function formatFacebookError(data: any, fallback = 'Graph request failed'): string {
+    const code = data?.error?.code ? ` code=${data.error.code}` : '';
+    const type = data?.error?.type ? ` type=${data.error.type}` : '';
+    const subcode = data?.error?.error_subcode ? ` subcode=${data.error.error_subcode}` : '';
+    return String(data?.error?.message || data?.message || fallback) + code + type + subcode;
 }
 
 async function getStoredPageToken(env: Env, workspaceId: string, pageId: string): Promise<string> {
@@ -136,10 +155,82 @@ async function sharePostToPage(post: SharePostInput, sourcePageId: string, targe
         return String(data.id);
     }
 
-    const code = data?.error?.code ? ` code=${data.error.code}` : '';
-    const type = data?.error?.type ? ` type=${data.error.type}` : '';
-    const subcode = data?.error?.error_subcode ? ` subcode=${data.error.error_subcode}` : '';
-    throw new Error(String(data?.error?.message || data?.message || 'Graph share failed') + code + type + subcode);
+    throw new Error(formatFacebookError(data, 'Graph share failed'));
+}
+
+async function copyPostToPage(post: SharePostInput, sourcePageId: string, targetPageId: string, targetPageToken: string): Promise<string> {
+    const postType = normalizePostType(post.postType);
+    const mediaUrl = normalizeText(post.mediaUrl || post.mediaThumbUrl);
+    const messageText = normalizeText(post.messageText);
+    const sourceUrl = buildFacebookPostUrl(post, sourcePageId);
+    let photoCopyError = '';
+
+    if (postType === 'image' && isHttpUrl(mediaUrl)) {
+        const response = await fetch(`${FB_API}/${encodeURIComponent(targetPageId)}/photos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                url: mediaUrl,
+                caption: messageText,
+                access_token: targetPageToken,
+            }).toString(),
+        });
+        const data = await response.json() as any;
+        if (response.ok && (data?.post_id || data?.id)) {
+            return String(data.post_id || data.id);
+        }
+        photoCopyError = formatFacebookError(data, 'Graph photo copy failed');
+    }
+
+    const messageParts = [messageText];
+    if (postType !== 'text' || !messageText) {
+        messageParts.push(sourceUrl);
+    }
+    const message = messageParts.map((part) => normalizeText(part)).filter(Boolean).join('\n\n');
+    if (!message) {
+        throw new Error('Missing message or source link for copy fallback');
+    }
+
+    const response = await fetch(`${FB_API}/${encodeURIComponent(targetPageId)}/feed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            message,
+            access_token: targetPageToken,
+        }).toString(),
+    });
+    const data = await response.json() as any;
+    if (response.ok && data?.id) {
+        return String(data.id);
+    }
+    const postCopyError = formatFacebookError(data, 'Graph post copy failed');
+    throw new Error(photoCopyError ? `${photoCopyError}; text fallback failed: ${postCopyError}` : postCopyError);
+}
+
+async function shareOrCopyPostToPage(
+    post: SharePostInput,
+    sourcePageId: string,
+    targetPageId: string,
+    targetPageToken: string,
+): Promise<SharePublishResult> {
+    try {
+        return {
+            id: await sharePostToPage(post, sourcePageId, targetPageId, targetPageToken),
+            method: 'native_share',
+        };
+    } catch (shareError) {
+        const shareMessage = shareError instanceof Error ? shareError.message : String(shareError);
+        try {
+            return {
+                id: await copyPostToPage(post, sourcePageId, targetPageId, targetPageToken),
+                method: 'copy_post',
+                warningMessage: `Native share failed, copied post instead: ${shareMessage}`,
+            };
+        } catch (copyError) {
+            const copyMessage = copyError instanceof Error ? copyError.message : String(copyError);
+            throw new Error(`Native share failed: ${shareMessage}; copy fallback failed: ${copyMessage}`);
+        }
+    }
 }
 
 async function recordShareQueueResult(
@@ -198,6 +289,7 @@ app.post('/', async (c) => {
                     publishedAt: normalizeText(post.publishedAt || post.published_at),
                     facebookUrl: normalizeText(post.facebookUrl || post.facebook_url),
                     mediaUrl: normalizeText(post.mediaUrl || post.media_url),
+                    mediaThumbUrl: normalizeText(post.mediaThumbUrl || post.media_thumb_url),
                 }))
                 .filter((post: SharePostInput) => post.id)
             : [];
@@ -278,7 +370,7 @@ app.post('/', async (c) => {
                 }
 
                 try {
-                    const sharedPostId = await sharePostToPage(post, sourcePageId, target.id, token);
+                    const shareResult = await shareOrCopyPostToPage(post, sourcePageId, target.id, token);
                     await recordShareQueueResult(c.env, {
                         workspaceId,
                         sourcePageId,
@@ -286,28 +378,33 @@ app.post('/', async (c) => {
                         postId: post.id,
                         postType,
                         status: 'shared',
-                        sharedPostId,
+                        sharedPostId: shareResult.id,
+                        errorMessage: shareResult.warningMessage,
                     });
                     await recordPublishHistory(c.env, {
                         organizationId: workspaceId,
-                        externalKey: `manual-share:${sourcePageId}:${target.id}:${sharedPostId}`,
+                        externalKey: `manual-share:${sourcePageId}:${target.id}:${shareResult.id}`,
                         pageId: target.id,
                         source: 'manual_share',
                         sourceRef: post.id,
-                        postType: 'share',
+                        postType: shareResult.method === 'copy_post' ? postType : 'share',
                         messageText: post.messageText || '',
-                        mediaKind: 'share',
+                        mediaKind: shareResult.method === 'copy_post' ? postType : 'share',
                         mediaUrl: post.mediaUrl || '',
-                        facebookPostId: sharedPostId,
-                        facebookUrl: `https://www.facebook.com/${sharedPostId}`,
+                        mediaThumbUrl: post.mediaThumbUrl || post.mediaUrl || '',
+                        facebookPostId: shareResult.id,
+                        facebookUrl: `https://www.facebook.com/${shareResult.id}`,
                         publishedAt: new Date().toISOString(),
+                        warningMessage: shareResult.warningMessage,
                         extraJson: JSON.stringify({
+                            method: shareResult.method,
                             sourcePageId,
                             sourcePageName,
                             targetPageId: target.id,
                             targetPageName: target.name,
                             originalPostId: post.id,
                             originalPostUrl: buildFacebookPostUrl(post, sourcePageId),
+                            warningMessage: shareResult.warningMessage || null,
                         }),
                     });
                     results.push({
@@ -315,8 +412,10 @@ app.post('/', async (c) => {
                         targetPageId: target.id,
                         targetPageName: target.name,
                         status: 'shared',
-                        sharedPostId,
-                        facebookUrl: `https://www.facebook.com/${sharedPostId}`,
+                        method: shareResult.method,
+                        warning: shareResult.warningMessage,
+                        sharedPostId: shareResult.id,
+                        facebookUrl: `https://www.facebook.com/${shareResult.id}`,
                     });
                 } catch (error) {
                     const errorMessage = error instanceof Error ? error.message : String(error);
