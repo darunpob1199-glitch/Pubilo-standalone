@@ -47,14 +47,20 @@ mustInclude(navigationJs, 'hash === "delete-posts"', navigationPath, "delete-pos
 mustInclude(navigationJs, 'hash === "share-posts"', navigationPath, "share-posts route", errors);
 mustInclude(postToolsJs, 'fetch("/api/share-posts"', postToolsPath, "share posts API call", errors);
 mustInclude(postToolsJs, "runSharePostToolSameOriginFallback", postToolsPath, "share posts same-origin fallback", errors);
+mustInclude(postToolsJs, "runSharePostToolExtensionDirectFallback", postToolsPath, "share posts extension direct fallback", errors);
+mustInclude(postToolsJs, "FEWFEED_PUBLISH_NEWS_DIRECT", postToolsPath, "share posts extension direct bridge", errors);
 mustInclude(postToolsJs, 'allowHistoryFallback = !pageId;', postToolsPath, "share posts disables history fallback when page is selected", errors);
 mustInclude(postToolsJs, 'excludeDeleted = true;', postToolsPath, "post tools exclude deleted posts", errors);
 mustInclude(apiIndexTs, "app.route('/api/share-posts', sharePostsRouter)", apiIndexPath, "share posts API route", errors);
 mustInclude(apiSharePostsTs, "shareOrCopyPostToPage", apiSharePostsPath, "share posts copy fallback", errors);
+mustInclude(apiSharePostsTs, "verifyTargetPageToken", apiSharePostsPath, "share posts target token verification", errors);
+mustInclude(apiSharePostsTs, "source: 'fresh'", apiSharePostsPath, "share posts fresh token preference", errors);
 mustInclude(apiPublishedPostsTs, "function filterDeletedPublishedResult", apiPublishedPostsPath, "published posts deleted filter", errors);
 mustInclude(apiPublishedPostsTs, "allowHistoryFallback === false", apiPublishedPostsPath, "published posts history fallback opt-out", errors);
 mustInclude(webWorkerJs, 'url.pathname === "/api/share-posts"', webWorkerPath, "share posts web worker route", errors);
 mustInclude(webWorkerJs, "shareOrCopyPostToPage", webWorkerPath, "share posts web worker copy fallback", errors);
+mustInclude(webWorkerJs, "verifyTargetPageToken", webWorkerPath, "share posts web worker target token verification", errors);
+mustInclude(webWorkerJs, 'acceptToken(freshToken, "fresh")', webWorkerPath, "share posts web worker fresh token preference", errors);
 
 const hiddenListMatch = configJs.match(/PUBILO_HIDDEN_HASHES\s*=\s*\[([^\]]*)\]/);
 const hiddenListRaw = hiddenListMatch ? hiddenListMatch[1] : "";

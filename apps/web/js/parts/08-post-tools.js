@@ -357,6 +357,27 @@ function getPostToolItemId(post) {
     return String(post.facebook_post_id || post.source_ref || post.id || "").trim();
 }
 
+function buildSharePostSourceUrl(post, sourcePageId = "") {
+    const explicitUrl = String(post?.facebook_url || post?.facebookUrl || "").trim();
+    if (explicitUrl) return explicitUrl;
+
+    const postId = getPostToolItemId(post).replace(/^fb:/i, "");
+    if (!postId) return "";
+
+    const parts = postId.split("_").filter(Boolean);
+    const objectId = parts.length > 1 ? parts[parts.length - 1] : postId;
+    const ownerId = parts.length > 1 ? parts[0] : String(sourcePageId || "").trim();
+    const postType = getPostToolType(post);
+
+    if (postType === "reels") {
+        return `https://www.facebook.com/reel/${encodeURIComponent(objectId)}/`;
+    }
+    if (ownerId && objectId) {
+        return `https://www.facebook.com/${encodeURIComponent(ownerId)}/posts/${encodeURIComponent(objectId)}`;
+    }
+    return `https://www.facebook.com/${encodeURIComponent(postId)}`;
+}
+
 function getPostToolPositiveInt(value, fallback) {
     const parsed = parseInt(String(value || ""), 10);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
@@ -1658,8 +1679,13 @@ function renderSharePostResults() {
                 const isOk = row.status === "shared";
                 const pageLabel = row.targetPageName || row.targetPageId || "-";
                 const postLabel = String(row.postId || "").slice(0, 48);
+                const methodLabel = row.method === "copy_post"
+                    ? "คัดลอกโพสต์"
+                    : row.method === "extension_direct_copy"
+                        ? "Extension fallback"
+                        : "แชร์ native";
                 const detail = isOk
-                    ? `${row.method === "copy_post" ? "คัดลอกโพสต์" : "แชร์ native"} • ${row.sharedPostId || "shared"}`
+                    ? `${methodLabel} • ${row.sharedPostId || "shared"}`
                     : (row.error || "แชร์ไม่สำเร็จ");
                 return `
                     <div class="share-result-item is-${isOk ? "success" : "failed"}">
@@ -2741,6 +2767,149 @@ async function runSharePostToolSameOriginFallback(payload) {
     };
 }
 
+function publishSharePostViaExtensionDirect(payload = {}, timeoutMs = 70000) {
+    const requestId = `share-direct-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    return new Promise((resolve, reject) => {
+        let finished = false;
+        const cleanup = () => {
+            if (finished) return;
+            finished = true;
+            window.removeEventListener("message", handleMessage);
+            clearTimeout(timeoutId);
+        };
+
+        const handleMessage = (event) => {
+            if (event.source !== window) return;
+            if (event.data?.type !== "FEWFEED_PUBLISH_NEWS_DIRECT_RESPONSE") return;
+            if (String(event.data?.requestId || "") !== requestId) return;
+            cleanup();
+            resolve(event.data?.data || { success: false, error: "no_response_payload" });
+        };
+
+        const timeoutId = setTimeout(() => {
+            cleanup();
+            reject(new Error("Extension direct share timeout"));
+        }, Math.max(5000, Number(timeoutMs || 70000)));
+
+        window.addEventListener("message", handleMessage);
+        window.postMessage({
+            type: "FEWFEED_PUBLISH_NEWS_DIRECT",
+            requestId,
+            ...payload,
+        }, "*");
+    });
+}
+
+function buildShareExtensionPayload({ post, targetPageId, targetPageToken, auth, sourcePageId }) {
+    const postType = getPostToolType(post);
+    const sourceUrl = buildSharePostSourceUrl(post, sourcePageId);
+    const mediaUrl = String(post.media_url || post.media_thumb_url || "").trim();
+    const messageText = String(post.message_text || "").trim();
+    const usePhotoFallback = postType === "image" && /^https?:\/\//i.test(mediaUrl);
+
+    return {
+        pageId: targetPageId,
+        pageToken: targetPageToken || "",
+        accessToken: auth.accessToken || "",
+        cookieData: auth.cookieData || "",
+        linkUrl: sourceUrl,
+        previewLinkUrl: "",
+        hostedImageUrl: usePhotoFallback ? mediaUrl : "",
+        imageUrl: usePhotoFallback ? mediaUrl : "",
+        primaryText: messageText,
+        linkName: messageText ? messageText.slice(0, 120) : "",
+        description: sourceUrl,
+        caption: "",
+        imageTransformStrategy: "original",
+        requireSquareLinkCard: false,
+        forcePhotoFallback: usePhotoFallback,
+        directFallbackMode: usePhotoFallback ? "photo-text" : "",
+    };
+}
+
+async function runSharePostToolExtensionDirectFallback({
+    data,
+    selectedPosts,
+    targetPages,
+    targetPageTokens,
+    auth,
+    sourcePageId,
+}) {
+    const originalResults = Array.isArray(data?.results) ? data.results : [];
+    const failedRows = originalResults.filter((row) => row?.status !== "shared");
+    if (!failedRows.length) return data;
+
+    const postById = new Map(selectedPosts.map((post) => [getPostToolItemId(post), post]));
+    const targetById = new Map(targetPages.map((page) => [String(page.id), page]));
+    const replacementByKey = new Map();
+
+    for (const row of failedRows) {
+        const postId = String(row.postId || "").trim();
+        const targetPageId = String(row.targetPageId || "").trim();
+        const key = `${postId}\n${targetPageId}`;
+        const post = postById.get(postId);
+        const targetPage = targetById.get(targetPageId);
+
+        if (!post || !targetPage) {
+            replacementByKey.set(key, row);
+            continue;
+        }
+
+        try {
+            const directResult = await publishSharePostViaExtensionDirect(
+                buildShareExtensionPayload({
+                    post,
+                    targetPageId,
+                    targetPageToken: targetPageTokens[targetPageId],
+                    auth,
+                    sourcePageId,
+                }),
+                70000,
+            );
+
+            if (!directResult?.success) {
+                throw new Error(directResult?.error || directResult?.reason || "extension_direct_share_failed");
+            }
+
+            replacementByKey.set(key, {
+                postId,
+                targetPageId,
+                targetPageName: targetPage.name || row.targetPageName,
+                status: "shared",
+                method: "extension_direct_copy",
+                warning: directResult.warning || "แชร์ผ่าน Extension direct fallback",
+                sharedPostId: directResult.postId || directResult.sharedPostId || "",
+                facebookUrl: directResult.url || (directResult.postId ? `https://www.facebook.com/${directResult.postId}` : ""),
+            });
+        } catch (error) {
+            replacementByKey.set(key, {
+                ...row,
+                status: "failed",
+                error: `Extension fallback failed: ${error instanceof Error ? error.message : String(error)}`,
+            });
+        }
+    }
+
+    const results = originalResults.map((row) => {
+        if (row?.status === "shared") return row;
+        const key = `${String(row.postId || "").trim()}\n${String(row.targetPageId || "").trim()}`;
+        return replacementByKey.get(key) || row;
+    });
+    const successCount = results.filter((row) => row?.status === "shared").length;
+    const failedCount = results.length - successCount;
+
+    return {
+        ...data,
+        source: `${data?.source || "api"}+extension-direct`,
+        total: results.length,
+        successCount,
+        failedCount,
+        extensionFallbackTried: true,
+        results,
+    };
+}
+
 async function runSharePostToolAction(selectedPosts, pageId) {
     const toolKey = "share";
     const state = postToolStates[toolKey];
@@ -2806,6 +2975,20 @@ async function runSharePostToolAction(selectedPosts, pageId) {
             data = await runSharePostToolSameOriginFallback(sharePayload);
         } else if (!response.ok || !data.success) {
             throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        if (Number(data.failedCount || 0) > 0) {
+            state.lastShareResult = data;
+            renderSharePostResults();
+            showPostToolStatusToast("API แชร์ไม่ผ่านบางรายการ กำลังลองผ่าน Extension fallback", "warning");
+            data = await runSharePostToolExtensionDirectFallback({
+                data,
+                selectedPosts,
+                targetPages,
+                targetPageTokens,
+                auth,
+                sourcePageId: pageId,
+            });
         }
 
         state.lastShareResult = data;

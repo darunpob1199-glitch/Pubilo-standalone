@@ -8,6 +8,7 @@ import { getWorkspaceId } from '../lib/workspace';
 const app = new Hono<{ Bindings: Env }>();
 const FB_API = 'https://graph.facebook.com/v21.0';
 const MAX_SHARE_OPERATIONS = 100;
+const FACEBOOK_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 type SharePostInput = {
     id: string;
@@ -30,8 +31,30 @@ type SharePublishResult = {
     warningMessage?: string;
 };
 
+type ResolvedTargetToken = {
+    token: string;
+    source: 'fresh' | 'provided' | 'stored' | 'none';
+    warning?: string;
+};
+
 function normalizeText(value: unknown): string {
     return String(value || '').trim();
+}
+
+function buildFacebookHeaders(cookieData?: string): Record<string, string> | undefined {
+    const normalizedCookie = normalizeText(cookieData);
+    if (!normalizedCookie) return undefined;
+    return {
+        Cookie: normalizedCookie,
+        'User-Agent': FACEBOOK_USER_AGENT,
+    };
+}
+
+function buildFacebookPostHeaders(cookieData?: string): Record<string, string> {
+    return {
+        ...(buildFacebookHeaders(cookieData) || {}),
+        'Content-Type': 'application/x-www-form-urlencoded',
+    };
 }
 
 function normalizePostType(value: unknown): string {
@@ -81,6 +104,40 @@ function formatFacebookError(data: any, fallback = 'Graph request failed'): stri
     return String(data?.error?.message || data?.message || fallback) + code + type + subcode;
 }
 
+async function verifyTargetPageToken(
+    pageId: string,
+    token: string,
+    cookieData?: string,
+): Promise<{ ok: boolean; error?: string }> {
+    const normalizedPageId = normalizeText(pageId);
+    const normalizedToken = normalizeText(token);
+    if (!normalizedPageId || !normalizedToken) {
+        return { ok: false, error: 'Missing target page token' };
+    }
+
+    try {
+        const response = await fetch(
+            `${FB_API}/${encodeURIComponent(normalizedPageId)}?fields=id,name&access_token=${encodeURIComponent(normalizedToken)}`,
+            {
+                headers: buildFacebookHeaders(cookieData),
+            },
+        );
+        const data = await response.json() as any;
+        if (response.ok && String(data?.id || '') === normalizedPageId) {
+            return { ok: true };
+        }
+        return {
+            ok: false,
+            error: formatFacebookError(data, `Token is not valid for target page ${normalizedPageId}`),
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
+}
+
 async function getStoredPageToken(env: Env, workspaceId: string, pageId: string): Promise<string> {
     const row = await env.DB.prepare(`
         SELECT post_token_encrypted
@@ -120,30 +177,67 @@ async function resolveTargetPageToken(
         accessToken?: string;
         cookieData?: string;
     },
-): Promise<string> {
-    const providedToken = normalizeText(params.providedToken);
-    if (providedToken) {
-        await savePageToken(env, params.workspaceId, params.pageId, params.pageName, providedToken);
-        return providedToken;
-    }
+): Promise<ResolvedTargetToken> {
+    const warnings: string[] = [];
+    const cookieData = normalizeText(params.cookieData);
+
+    const acceptToken = async (
+        token: string,
+        source: ResolvedTargetToken['source'],
+        shouldSave: boolean,
+    ): Promise<ResolvedTargetToken | null> => {
+        const normalizedToken = normalizeText(token);
+        if (!normalizedToken || source === 'none') return null;
+
+        const verification = await verifyTargetPageToken(params.pageId, normalizedToken, cookieData);
+        if (!verification.ok) {
+            warnings.push(`${source} token rejected: ${verification.error || 'unknown verification error'}`);
+            return null;
+        }
+
+        if (shouldSave) {
+            await savePageToken(env, params.workspaceId, params.pageId, params.pageName, normalizedToken);
+        }
+
+        return {
+            token: normalizedToken,
+            source,
+            warning: warnings.join('; ') || undefined,
+        };
+    };
 
     const freshToken = await fetchFreshPageToken(
         params.pageId,
         normalizeText(params.accessToken),
-        normalizeText(params.cookieData),
+        cookieData,
     );
-    if (freshToken) {
-        await savePageToken(env, params.workspaceId, params.pageId, params.pageName, freshToken);
-        return freshToken;
-    }
+    const freshResult = await acceptToken(freshToken, 'fresh', true);
+    if (freshResult) return freshResult;
 
-    return getStoredPageToken(env, params.workspaceId, params.pageId);
+    const providedResult = await acceptToken(params.providedToken || '', 'provided', true);
+    if (providedResult) return providedResult;
+
+    const storedToken = await getStoredPageToken(env, params.workspaceId, params.pageId);
+    const storedResult = await acceptToken(storedToken, 'stored', false);
+    if (storedResult) return storedResult;
+
+    return {
+        token: '',
+        source: 'none',
+        warning: warnings.join('; ') || 'Missing post token for target page',
+    };
 }
 
-async function sharePostToPage(post: SharePostInput, sourcePageId: string, targetPageId: string, targetPageToken: string): Promise<string> {
+async function sharePostToPage(
+    post: SharePostInput,
+    sourcePageId: string,
+    targetPageId: string,
+    targetPageToken: string,
+    cookieData?: string,
+): Promise<string> {
     const response = await fetch(`${FB_API}/${encodeURIComponent(targetPageId)}/feed`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: buildFacebookPostHeaders(cookieData),
         body: new URLSearchParams({
             link: buildFacebookPostUrl(post, sourcePageId),
             access_token: targetPageToken,
@@ -158,7 +252,22 @@ async function sharePostToPage(post: SharePostInput, sourcePageId: string, targe
     throw new Error(formatFacebookError(data, 'Graph share failed'));
 }
 
-async function copyPostToPage(post: SharePostInput, sourcePageId: string, targetPageId: string, targetPageToken: string): Promise<string> {
+function buildCopyFallbackMessages(messageText: string, sourceUrl: string, postType: string): string[] {
+    const messages = [
+        [messageText, postType !== 'text' || !messageText ? sourceUrl : ''].map(normalizeText).filter(Boolean).join('\n\n'),
+        messageText,
+        sourceUrl,
+    ].map(normalizeText).filter(Boolean);
+    return Array.from(new Set(messages));
+}
+
+async function copyPostToPage(
+    post: SharePostInput,
+    sourcePageId: string,
+    targetPageId: string,
+    targetPageToken: string,
+    cookieData?: string,
+): Promise<string> {
     const postType = normalizePostType(post.postType);
     const mediaUrl = normalizeText(post.mediaUrl || post.mediaThumbUrl);
     const messageText = normalizeText(post.messageText);
@@ -168,7 +277,7 @@ async function copyPostToPage(post: SharePostInput, sourcePageId: string, target
     if (postType === 'image' && isHttpUrl(mediaUrl)) {
         const response = await fetch(`${FB_API}/${encodeURIComponent(targetPageId)}/photos`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            headers: buildFacebookPostHeaders(cookieData),
             body: new URLSearchParams({
                 url: mediaUrl,
                 caption: messageText,
@@ -182,28 +291,30 @@ async function copyPostToPage(post: SharePostInput, sourcePageId: string, target
         photoCopyError = formatFacebookError(data, 'Graph photo copy failed');
     }
 
-    const messageParts = [messageText];
-    if (postType !== 'text' || !messageText) {
-        messageParts.push(sourceUrl);
-    }
-    const message = messageParts.map((part) => normalizeText(part)).filter(Boolean).join('\n\n');
-    if (!message) {
+    const fallbackMessages = buildCopyFallbackMessages(messageText, sourceUrl, postType);
+    if (!fallbackMessages.length) {
         throw new Error('Missing message or source link for copy fallback');
     }
 
-    const response = await fetch(`${FB_API}/${encodeURIComponent(targetPageId)}/feed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            message,
-            access_token: targetPageToken,
-        }).toString(),
-    });
-    const data = await response.json() as any;
-    if (response.ok && data?.id) {
-        return String(data.id);
+    const postCopyErrors: string[] = [];
+    for (const message of fallbackMessages) {
+        const response = await fetch(`${FB_API}/${encodeURIComponent(targetPageId)}/feed`, {
+            method: 'POST',
+            headers: buildFacebookPostHeaders(cookieData),
+            body: new URLSearchParams({
+                message,
+                published: 'true',
+                access_token: targetPageToken,
+            }).toString(),
+        });
+        const data = await response.json() as any;
+        if (response.ok && data?.id) {
+            return String(data.id);
+        }
+        postCopyErrors.push(formatFacebookError(data, 'Graph post copy failed'));
     }
-    const postCopyError = formatFacebookError(data, 'Graph post copy failed');
+
+    const postCopyError = Array.from(new Set(postCopyErrors)).join(' | ') || 'Graph post copy failed';
     throw new Error(photoCopyError ? `${photoCopyError}; text fallback failed: ${postCopyError}` : postCopyError);
 }
 
@@ -212,17 +323,18 @@ async function shareOrCopyPostToPage(
     sourcePageId: string,
     targetPageId: string,
     targetPageToken: string,
+    cookieData?: string,
 ): Promise<SharePublishResult> {
     try {
         return {
-            id: await sharePostToPage(post, sourcePageId, targetPageId, targetPageToken),
+            id: await sharePostToPage(post, sourcePageId, targetPageId, targetPageToken, cookieData),
             method: 'native_share',
         };
     } catch (shareError) {
         const shareMessage = shareError instanceof Error ? shareError.message : String(shareError);
         try {
             return {
-                id: await copyPostToPage(post, sourcePageId, targetPageId, targetPageToken),
+                id: await copyPostToPage(post, sourcePageId, targetPageId, targetPageToken, cookieData),
                 method: 'copy_post',
                 warningMessage: `Native share failed, copied post instead: ${shareMessage}`,
             };
@@ -329,7 +441,7 @@ app.post('/', async (c) => {
             await savePageToken(c.env, workspaceId, sourcePageId, sourcePageName, '');
         }
 
-        const tokenByTarget = new Map<string, string>();
+        const tokenByTarget = new Map<string, ResolvedTargetToken>();
         const results: Array<Record<string, any>> = [];
 
         for (const target of targets) {
@@ -347,9 +459,9 @@ app.post('/', async (c) => {
         for (const post of posts) {
             const postType = normalizePostType(post.postType);
             for (const target of targets) {
-                const token = tokenByTarget.get(target.id) || '';
-                if (!token) {
-                    const errorMessage = 'Missing post token for target page';
+                const targetToken = tokenByTarget.get(target.id) || { token: '', source: 'none' as const };
+                if (!targetToken.token) {
+                    const errorMessage = targetToken.warning || 'Missing post token for target page';
                     await recordShareQueueResult(c.env, {
                         workspaceId,
                         sourcePageId,
@@ -364,13 +476,14 @@ app.post('/', async (c) => {
                         targetPageId: target.id,
                         targetPageName: target.name,
                         status: 'failed',
+                        tokenSource: targetToken.source,
                         error: errorMessage,
                     });
                     continue;
                 }
 
                 try {
-                    const shareResult = await shareOrCopyPostToPage(post, sourcePageId, target.id, token);
+                    const shareResult = await shareOrCopyPostToPage(post, sourcePageId, target.id, targetToken.token, cookieData);
                     await recordShareQueueResult(c.env, {
                         workspaceId,
                         sourcePageId,
@@ -404,6 +517,7 @@ app.post('/', async (c) => {
                             targetPageName: target.name,
                             originalPostId: post.id,
                             originalPostUrl: buildFacebookPostUrl(post, sourcePageId),
+                            tokenSource: targetToken.source,
                             warningMessage: shareResult.warningMessage || null,
                         }),
                     });
@@ -413,6 +527,7 @@ app.post('/', async (c) => {
                         targetPageName: target.name,
                         status: 'shared',
                         method: shareResult.method,
+                        tokenSource: targetToken.source,
                         warning: shareResult.warningMessage,
                         sharedPostId: shareResult.id,
                         facebookUrl: `https://www.facebook.com/${shareResult.id}`,
@@ -433,6 +548,7 @@ app.post('/', async (c) => {
                         targetPageId: target.id,
                         targetPageName: target.name,
                         status: 'failed',
+                        tokenSource: targetToken.source,
                         error: errorMessage,
                     });
                 }
