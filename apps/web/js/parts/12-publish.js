@@ -3069,7 +3069,8 @@ function emitPagesUpdated(reason = "") {
     );
 }
 
-function clearPrimaryPageSelection() {
+function clearPrimaryPageSelection(options = {}) {
+    const keepPickerOpen = !!options.keepPickerOpen;
     const skeleton = document.getElementById("pageSelectorSkeleton");
     const selector = document.getElementById("pageSelector");
     if (skeleton) skeleton.style.display = "none";
@@ -3077,7 +3078,9 @@ function clearPrimaryPageSelection() {
         selector.style.display = "flex";
         selector.classList.add("is-empty");
     }
-    setPageDropdownOpen(false);
+    if (!keepPickerOpen) {
+        setPageDropdownOpen(false);
+    }
 
     localStorage.removeItem("fewfeed_selectedPageId");
     localStorage.removeItem("fewfeed_selectedPageName");
@@ -3100,8 +3103,13 @@ function clearPrimaryPageSelection() {
         previewImg.alt = PRIMARY_PAGE_PLACEHOLDER_NAME;
     }
 
+    selectedTargetPageIds = [];
+    persistTargetPageIds();
+
     document.querySelectorAll(".page-dropdown-item").forEach((item) => {
         item.classList.remove("selected");
+        item.classList.remove("is-primary");
+        item.classList.remove("is-selected");
     });
 
     if (typeof loadSettings === "function") {
@@ -3143,6 +3151,7 @@ function toggleTargetPage(pageId) {
     }
 
     if (normalizedPageId === currentPageId) {
+        clearPrimaryPageSelection({ keepPickerOpen: true });
         return;
     }
 
@@ -3292,7 +3301,7 @@ function renderMultiPageListItems() {
         action.setAttribute(
             "aria-label",
             isPrimary
-                ? `${displayName} เป็นเพจหลัก`
+                ? `${displayName} เป็นเพจหลัก กดอีกครั้งเพื่อยกเลิกการเลือก`
                 : !hasPrimarySelection
                     ? `ตั้ง ${displayName} เป็นเพจหลัก`
                     : isSelected
@@ -3307,7 +3316,7 @@ function renderMultiPageListItems() {
                     ? "เลือกแล้ว"
                     : "เลือก";
         action.title = isPrimary
-            ? `${displayName} คือเพจหลัก`
+            ? `${displayName} คือเพจหลัก กดอีกครั้งเพื่อไม่เลือกเพจ`
             : !hasPrimarySelection
                 ? `ตั้ง ${displayName} เป็นเพจหลัก`
                 : isSelected

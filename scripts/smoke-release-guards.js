@@ -45,8 +45,9 @@ mustInclude(webConfig, 'Ignored ?api override on production host', webConfigPath
 mustInclude(webPublish, 'allowAdCreativePublish: true', webPublishPath, 'client-side ad creative opt-in for card links', errors)
 mustInclude(webPublish, 'targetPageIds: targetPageIdsAtClick,', webPublishPath, 'publish snapshot includes multi-page targets', errors)
 mustInclude(webPublish, 'function handleMultiPageItemSelection', webPublishPath, 'multi-page picker row toggle handler', errors)
+mustInclude(webPublish, 'clearPrimaryPageSelection({ keepPickerOpen: true });', webPublishPath, 'selected primary can be deselected from picker', errors)
 mustInclude(webPublish, 'toggleTargetPage(normalizedPageId);', webPublishPath, 'multi-page picker toggles target pages', errors)
-mustInclude(webIndex, '/js/parts/12-publish.js?v=11.31', webIndexPath, 'publish script cache-busted version', errors)
+mustInclude(webIndex, '/js/parts/12-publish.js?v=11.32', webIndexPath, 'publish script cache-busted version', errors)
 
 mustInclude(webWorker, 'function rewriteLocalHtmlAssetVersions', webWorkerPath, 'local dev html asset cache busting', errors)
 mustInclude(webWorker, 'parsed.searchParams.set("dev", devVersion);', webWorkerPath, 'local dev asset version query', errors)
