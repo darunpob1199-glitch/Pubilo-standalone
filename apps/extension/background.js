@@ -1,4 +1,4 @@
-// Pubilo Token Helper v9.2.18
+// Pubilo Token Helper v9.2.19
 // Auto-fetches Ads Token + Cookie from Facebook
 // Post Token is now managed manually via Page Settings (not from Extension)
 
@@ -3186,6 +3186,27 @@ async function publishNewsDirect(request = {}) {
         }
       }
     }
+  }
+
+  if (requireSquareLinkCard && !forcePhotoFallback) {
+    return {
+      success: false,
+      error: `link_card_required_failed: ${lastError || "Facebook rejected link-card publish"}`,
+      errorType: "SquareLinkCardUnavailable",
+      errorCode: Number(lastFacebookError?.code || 0) || undefined,
+      errorSubcode: Number(lastFacebookError?.error_subcode || 0) || undefined,
+      debug: {
+        phase: lastPhase || "feed-link-card",
+        strategy: lastStrategy || "browser-side-feed-card",
+        pageId,
+        tokenCandidateCount: pageTokenCandidates.length,
+        hasCookie: !!cookie,
+        hasLivePageToken: !!livePageToken,
+        usesControlledPreview,
+        previewLinkUrl,
+        requireSquareLinkCard,
+      },
+    };
   }
 
   for (const token of pageTokenCandidates) {

@@ -51,7 +51,7 @@ mustInclude(webPublish, 'const pagePickerClearBtn = document.getElementById("pag
 mustInclude(webPublish, 'toggleTargetPage(normalizedPageId);', webPublishPath, 'multi-page picker toggles target pages', errors)
 mustInclude(webIndex, 'id="pagePickerClearBtn"', webIndexPath, 'page picker clear button markup', errors)
 mustInclude(webIndex, '/js/parts/12-publish.js?v=11.34', webIndexPath, 'publish script cache-busted version', errors)
-mustInclude(webIndex, '/js/parts/11-image-generation.js?v=9.18', webIndexPath, 'news publish script cache-busted version', errors)
+mustInclude(webIndex, '/js/parts/11-image-generation.js?v=9.19', webIndexPath, 'news publish script cache-busted version', errors)
 mustInclude(webIndex, '/css/styles.css?v=8.6', webIndexPath, 'styles cache-busted version', errors)
 mustInclude(webIndex, '/css/parts/modern-ui.css?v=1.6', webIndexPath, 'modern ui cache-busted version', errors)
 
@@ -152,24 +152,31 @@ mustInclude(
   errors,
 )
 mustInclude(
-  webNewsPublish,
-  'payload.forcePhotoFallback = true;',
-  webNewsPublishPath,
-  'news extension direct fallback uses photo-only after link-card failures',
+  apiPublish,
+  "errorType: 'SquareLinkCardUnavailable'",
+  apiPublishPath,
+  'server fails instead of silently posting photo when card link is required',
   errors,
 )
 mustInclude(
   webNewsPublish,
-  'shouldRetryApiAsPhotoFallback',
+  'payload.forcePhotoFallback = false;',
   webNewsPublishPath,
-  'news publish retries API as photo fallback before extension fallback',
+  'news extension direct fallback keeps link-card mode after link-card failures',
   errors,
 )
 mustInclude(
   webNewsPublish,
-  'forcePhotoFallback: true,',
+  'shouldRetryApiAsCleanLinkCard',
   webNewsPublishPath,
-  'news API retry can force photo fallback',
+  'news publish retries API as clean link-card before extension fallback',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'directFallbackMode: "link-card"',
+  webNewsPublishPath,
+  'news API retry can force clean link-card mode',
   errors,
 )
 mustInclude(
@@ -181,9 +188,9 @@ mustInclude(
 )
 mustInclude(
   webNewsPublish,
-  'payload.previewLinkUrl = "";',
+  'payload.previewLinkUrl = previewLinkUrl;',
   webNewsPublishPath,
-  'news extension direct fallback strips link preview for legacy extensions',
+  'news extension direct fallback keeps controlled preview URL for card output',
   errors,
 )
 mustInclude(
@@ -195,13 +202,6 @@ mustInclude(
 )
 mustInclude(
   webNewsPublish,
-  'shouldRetryNewsExtensionDirectAsSafeFallback(directResult)',
-  webNewsPublishPath,
-  'news extension direct fallback retries safely if extension still hits link-card',
-  errors,
-)
-mustInclude(
-  webNewsPublish,
   'payload.callToAction = "";',
   webNewsPublishPath,
   'news extension direct fallback strips CTA for legacy extensions',
@@ -209,14 +209,21 @@ mustInclude(
 )
 mustInclude(
   webNewsPublish,
-  'isExtensionDirectFallbackStale(directResult, retryPayload)',
+  'shouldRetryNewsExtensionDirectAsSafeFallback(directResult)',
   webNewsPublishPath,
-  'news extension direct fallback detects stale extension builds',
+  'news extension direct fallback retries with clean card payload if needed',
   errors,
 )
 mustInclude(
   webNewsPublish,
-  'NEWS_DIRECT_MIN_EXTENSION_VERSION = "9.2.18"',
+  'isExtensionDirectFallbackWrongFormat(directResult, retryPayload)',
+  webNewsPublishPath,
+  'news extension direct fallback rejects photo/text output when card is required',
+  errors,
+)
+mustInclude(
+  webNewsPublish,
+  'NEWS_DIRECT_MIN_EXTENSION_VERSION = "9.2.19"',
   webNewsPublishPath,
   'news extension direct fallback requires updated extension version',
   errors,
@@ -226,6 +233,20 @@ mustInclude(
   'directFallbackMode === "photo-text"',
   extensionBackgroundPath,
   'extension photo-only fallback mode flag',
+  errors,
+)
+mustInclude(
+  extensionBackground,
+  'requireSquareLinkCard && !forcePhotoFallback',
+  extensionBackgroundPath,
+  'extension fails instead of posting photo/text when card link is required',
+  errors,
+)
+mustInclude(
+  extensionBackground,
+  'errorType: "SquareLinkCardUnavailable"',
+  extensionBackgroundPath,
+  'extension reports card-link required failure',
   errors,
 )
 mustInclude(
@@ -289,6 +310,13 @@ mustInclude(
   'publishNewsDirectForcePhotoFallback: true',
   extensionContentPath,
   'extension content advertises force-photo fallback support',
+  errors,
+)
+mustInclude(
+  extensionContent,
+  'publishNewsDirectCleanLinkCard: true',
+  extensionContentPath,
+  'extension content advertises clean card-link support',
   errors,
 )
 

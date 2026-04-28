@@ -3082,6 +3082,24 @@ app.post('/', async (c) => {
                 }
             }
 
+            if (requiresSquareLinkCard && !forceSafePhotoFallback) {
+                const cardError = lastFeedError || adCreativeError || 'Facebook rejected link-card publish';
+                return c.json({
+                    success: false,
+                    error: `โพสต์ไม่สำเร็จ: ต้องเป็น Link Card แต่ Facebook ปฏิเสธการสร้างการ์ด (${cardError})`,
+                    errorType: 'SquareLinkCardUnavailable',
+                    _debug: {
+                        flow: 'link-card-required-failed',
+                        adCreativeError,
+                        feedError: lastFeedError,
+                        requiresSquareLinkCard,
+                        previewUrl,
+                        hostedImageUrl,
+                        candidateCount: pageTokenCandidates.length,
+                    },
+                }, 400);
+            }
+
             // Last resort after all link-card attempts: downgrade to photo + caption (+ link in text).
             // This preserves publish success even when Facebook rejects link-card payload with generic
             // Invalid request / Unsupported request errors.

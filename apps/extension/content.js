@@ -1,4 +1,4 @@
-// Pubilo Token Helper v9.2.18 - Content Script
+// Pubilo Token Helper v9.2.19 - Content Script
 // Runs on localhost and Pubilo dashboard domains - fetches Ads Token + Cookie only
 // Post Token is now managed manually via Page Settings (not from Extension)
 
@@ -736,6 +736,7 @@ window.addEventListener("message", async (event) => {
         features: {
           publishNewsDirectForcePhotoFallback: true,
           publishNewsDirectSafePhotoText: true,
+          publishNewsDirectCleanLinkCard: true,
         },
       },
       requestId: String(event.data.requestId || "").trim(),
@@ -1055,6 +1056,7 @@ window.postMessage({
   features: {
     publishNewsDirectForcePhotoFallback: true,
     publishNewsDirectSafePhotoText: true,
+    publishNewsDirectCleanLinkCard: true,
   },
 }, "*");
 console.log(`[Pubilo Content] Extension v${chrome.runtime.getManifest().version} ready - robust message channel recovery`);

@@ -1161,26 +1161,27 @@ function isNewsLinkCardMetadataFailure(value = {}) {
     );
 }
 
-function forceNewsExtensionSafeFallbackPayload(payload = {}, apiData = {}) {
+function forceNewsExtensionCleanLinkCardPayload(payload = {}, apiData = {}) {
     const debug = apiData?._debug && typeof apiData._debug === "object" ? apiData._debug : {};
     const previewLinkUrl = String(debug.previewUrl || payload.previewLinkUrl || "").trim();
     const hostedImageUrl = String(debug.hostedImageUrl || payload.hostedImageUrl || "").trim();
-    const hasInlineImage = String(payload.imageUrl || "").trim().startsWith("data:");
+    const safePreviewUrl = buildNewsExtensionSafePreviewUrl(payload, hostedImageUrl);
 
-    // Safe mode must not feed link-card metadata to older extension builds.
-    // They can ignore forcePhotoFallback and still try /feed with picture/name,
-    // which Facebook rejects for third-party URLs such as s.lazada.co.th.
-    payload.previewLinkUrl = "";
-    if (hostedImageUrl && !hasInlineImage) {
+    // Clean card mode keeps the post as a real Facebook Link Card but sends only
+    // the Pubilo-owned preview URL. Do not send picture/name directly to Lazada.
+    if (previewLinkUrl) {
+        payload.previewLinkUrl = previewLinkUrl;
+    } else if (safePreviewUrl) {
+        payload.previewLinkUrl = safePreviewUrl;
+    }
+    if (hostedImageUrl) {
         payload.hostedImageUrl = hostedImageUrl;
-    } else if (hasInlineImage) {
-        payload.hostedImageUrl = "";
     }
 
-    payload.forcePhotoFallback = true;
-    payload.directFallbackMode = "photo-text";
-    payload.imageTransformStrategy = "original";
-    payload.requireSquareLinkCard = false;
+    payload.forcePhotoFallback = false;
+    payload.directFallbackMode = "link-card";
+    payload.imageTransformStrategy = "fit";
+    payload.requireSquareLinkCard = true;
     payload.allowAdCreativePublish = false;
     payload.callToAction = "";
     payload.callToActionLabel = "";
@@ -1197,17 +1198,20 @@ function forceNewsExtensionSafeFallbackPayload(payload = {}, apiData = {}) {
     return payload;
 }
 
-function isExtensionDirectFallbackStale(result = {}, requestPayload = {}) {
-    if (!requestPayload?.forcePhotoFallback || result?.success) return false;
+function isExtensionDirectFallbackWrongFormat(result = {}, requestPayload = {}) {
+    if (String(requestPayload?.directFallbackMode || "").toLowerCase() !== "link-card") return false;
     const debug = result?.debug && typeof result.debug === "object" ? result.debug : {};
     const phase = String(debug.phase || "").toLowerCase();
     const strategy = String(debug.strategy || "").toLowerCase();
     const error = String(result?.error || "").toLowerCase();
     return (
-        phase.includes("feed-link-card") ||
-        strategy.includes("feed-card") ||
+        phase.includes("photo") ||
+        phase.includes("text-only") ||
+        strategy.includes("photo") ||
+        strategy.includes("text-only") ||
         error.includes("only owners of the url") ||
-        error.includes("link-card")
+        error.includes("photo fallback") ||
+        error.includes("text fallback")
     );
 }
 
@@ -1216,7 +1220,7 @@ function shouldRetryNewsExtensionDirectAsSafeFallback(result = {}) {
     return isNewsLinkCardMetadataFailure(result);
 }
 
-const NEWS_DIRECT_MIN_EXTENSION_VERSION = "9.2.18";
+const NEWS_DIRECT_MIN_EXTENSION_VERSION = "9.2.19";
 
 function compareLooseVersions(left = "", right = "") {
     const leftParts = String(left || "").split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -1737,9 +1741,8 @@ if (newsPublishBtn) {
                 }
             }
 
-            const shouldRetryApiAsPhotoFallback = (() => {
+            const shouldRetryApiAsCleanLinkCard = (() => {
                 if (response?.ok && data?.success) return false;
-                if (data?._debug?.forcePhotoFallback === true) return false;
                 const debugFlow = String(data?._debug?.flow || "").toLowerCase();
                 const errorText = String(data?.error || "").toLowerCase();
                 return (
@@ -1751,18 +1754,19 @@ if (newsPublishBtn) {
                 );
             })();
 
-            if (shouldRetryApiAsPhotoFallback) {
+            if (shouldRetryApiAsCleanLinkCard) {
                 window.showPublishToast?.(
-                    "Facebook ปฏิเสธ Link Card กำลังสลับเป็นโพสต์รูปภาพ+แคปชันให้อัตโนมัติ...",
+                    "Facebook ปฏิเสธ Link Card รอบแรก กำลังลองสร้างการ์ดแบบ clean ผ่าน Pubilo preview...",
                     "warning",
                 );
                 ({ response, data } = await sendPublishRequest({
-                    forcePhotoFallback: true,
-                    directFallbackMode: "photo-text",
+                    forcePhotoFallback: false,
+                    directFallbackMode: "link-card",
                     allowAdCreativePublish: false,
                     callToAction: "",
                     callToActionLabel: "",
-                    requireSquareLinkCard: false,
+                    imageTransformStrategy: "fit",
+                    requireSquareLinkCard: true,
                 }));
             }
 
@@ -1831,13 +1835,13 @@ if (newsPublishBtn) {
                         directPayload.hostedImageUrl = hostedImageUrl;
                     }
                     if (shouldForceExtensionSafeFallback) {
-                        forceNewsExtensionSafeFallbackPayload(directPayload, data);
+                        forceNewsExtensionCleanLinkCardPayload(directPayload, data);
                     }
                     let directResult = await publishNewsViaExtensionDirect(directPayload, 70000);
                     let retriedSafeFallback = false;
                     if (shouldRetryNewsExtensionDirectAsSafeFallback(directResult)) {
                         retriedSafeFallback = true;
-                        const retryPayload = forceNewsExtensionSafeFallbackPayload(
+                        const retryPayload = forceNewsExtensionCleanLinkCardPayload(
                             { ...(directPayload || {}) },
                             {
                                 ...(data || {}),
@@ -1849,29 +1853,29 @@ if (newsPublishBtn) {
                             },
                         );
                         directResult = await publishNewsViaExtensionDirect(retryPayload, 70000);
-                        if (isExtensionDirectFallbackStale(directResult, retryPayload)) {
+                        if (isExtensionDirectFallbackWrongFormat(directResult, retryPayload)) {
                             directResult = {
                                 ...(directResult || {}),
                                 success: false,
-                                error: "Extension เก่ายังยิง Link Card อยู่ กรุณา reload Pubilo Token Helper ที่ chrome://extensions แล้วรีเฟรชหน้า Pubilo",
-                                errorType: "StaleExtensionDirectPublish",
+                                error: "โพสต์ไม่สำเร็จ: ระบบต้องสร้างเป็น Link Card แต่ Extension fallback ได้ผลลัพธ์เป็นโพสต์ธรรมดา",
+                                errorType: "LinkCardRequired",
                                 debug: {
                                     ...(directResult?.debug || {}),
-                                    phase: "stale-extension-feed-link-card",
-                                    strategy: "reload-extension-required",
+                                    phase: "link-card-required",
+                                    strategy: "reject-non-card-fallback",
                                 },
                             };
                         }
-                    } else if (isExtensionDirectFallbackStale(directResult, directPayload)) {
+                    } else if (isExtensionDirectFallbackWrongFormat(directResult, directPayload)) {
                         directResult = {
                             ...(directResult || {}),
                             success: false,
-                            error: "Extension เก่ายังยิง Link Card อยู่ กรุณา reload Pubilo Token Helper ที่ chrome://extensions แล้วรีเฟรชหน้า Pubilo",
-                            errorType: "StaleExtensionDirectPublish",
+                            error: "โพสต์ไม่สำเร็จ: ระบบต้องสร้างเป็น Link Card แต่ Extension fallback ได้ผลลัพธ์เป็นโพสต์ธรรมดา",
+                            errorType: "LinkCardRequired",
                             debug: {
                                 ...(directResult?.debug || {}),
-                                phase: "stale-extension-feed-link-card",
-                                strategy: "reload-extension-required",
+                                phase: "link-card-required",
+                                strategy: "reject-non-card-fallback",
                             },
                         };
                     }
