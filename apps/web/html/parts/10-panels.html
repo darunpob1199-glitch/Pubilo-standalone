@@ -290,6 +290,93 @@
                     </div>
                 </div>
 
+                <div class="pending-panel post-tool-panel share-posts-panel" id="sharePostsPanel" style="display: none">
+                    <div class="pending-panel-header">
+                        <h2>Share Posts</h2>
+                        <div class="pending-panel-toolbar">
+                            <button class="pending-refresh-btn" id="sharePostsRefreshBtn" type="button">โหลดโพสต์</button>
+                            <button class="tool-primary-btn tool-primary-btn-share" id="sharePostsRunBtn" type="button">แชร์ที่เลือก</button>
+                        </div>
+                    </div>
+                    <div class="post-tool-run-status is-idle" id="sharePostsStatusPanel">
+                        <div class="post-tool-run-status-head">
+                            <span class="post-tool-run-status-badge is-idle">พร้อมแชร์</span>
+                        </div>
+                        <div class="post-tool-run-status-main">เลือกโพสต์ต้นทางและเลือกหลายเพจปลายทาง</div>
+                        <div class="post-tool-run-status-sub">ระบบจะแชร์โพสต์จากเพจต้นทางไปยังเพจปลายทางที่เลือก และแสดงผลสำเร็จ/ล้มเหลวรายเพจ</div>
+                    </div>
+                    <div class="post-tool-note is-share">
+                        ใช้สำหรับกระจายโพสต์ที่เผยแพร่แล้วไปยังหลายเพจของบัญชีเดียวกัน เลือกได้ทั้งโพสต์เดียวหรือหลายโพสต์ในรอบเดียว
+                    </div>
+                    <div class="pending-summary-bar" id="sharePostsSummaryBar"></div>
+                    <div class="post-tool-control-card share-filter-card">
+                        <div class="post-tool-control-head">
+                            <span>Source</span>
+                            <strong>เลือกโพสต์ต้นทาง</strong>
+                        </div>
+                        <div class="pending-filter-bar post-tool-filter-bar">
+                            <div class="pending-filter-search">
+                                <input class="pending-filter-input" id="sharePostsSearchInput" type="search" placeholder="ค้นหาข้อความหรือ post id" />
+                            </div>
+                            <select class="pending-filter-select" id="sharePostsPageSelect"></select>
+                            <select class="pending-filter-select" id="sharePostsTypeFilter">
+                                <option value="all">ทุกประเภท</option>
+                                <option value="link">Link</option>
+                                <option value="text">Text</option>
+                                <option value="image">Image</option>
+                                <option value="reels">Reels</option>
+                            </select>
+                            <div class="pending-quick-filters" id="sharePostsDayFilters">
+                                <button type="button" class="pending-filter-chip is-active" data-filter="all">ทั้งหมด</button>
+                                <button type="button" class="pending-filter-chip" data-filter="today">วันนี้</button>
+                                <button type="button" class="pending-filter-chip" data-filter="last7">7 วัน</button>
+                                <button type="button" class="pending-filter-chip" data-filter="last30">30 วัน</button>
+                            </div>
+                            <div class="pending-filter-search published-date-filter">
+                                <input class="pending-filter-input" id="sharePostsDateInput" type="date" />
+                            </div>
+                            <div class="pending-filter-meta" id="sharePostsFilterMeta"></div>
+                        </div>
+                    </div>
+                    <div class="post-tool-control-card share-target-card">
+                        <div class="post-tool-control-head">
+                            <span>Targets</span>
+                            <strong>เลือกเพจปลายทาง</strong>
+                        </div>
+                        <div class="share-target-toolbar">
+                            <div class="pending-filter-search">
+                                <input class="pending-filter-input" id="sharePostsTargetSearchInput" type="search" placeholder="ค้นหาเพจปลายทาง" />
+                            </div>
+                            <button class="post-tool-secondary-btn" id="sharePostsSelectAllTargetsBtn" type="button">เลือกทุกเพจ</button>
+                            <button class="post-tool-secondary-btn" id="sharePostsClearTargetsBtn" type="button">ล้างเพจ</button>
+                            <div class="pending-filter-meta" id="sharePostsTargetMeta"></div>
+                        </div>
+                        <div class="share-target-list" id="sharePostsTargetList"></div>
+                    </div>
+                    <div class="post-tool-selection-bar">
+                        <div class="post-tool-selection-meta" id="sharePostsSelectionMeta">ยังไม่ได้เลือกโพสต์</div>
+                        <div class="post-tool-selection-actions">
+                            <button class="post-tool-secondary-btn" id="sharePostsSelectVisibleBtn" type="button">เลือกที่เห็น</button>
+                            <button class="post-tool-secondary-btn" id="sharePostsClearSelectionBtn" type="button">ล้างที่เลือก</button>
+                        </div>
+                    </div>
+                    <div class="post-tool-body share-posts-body">
+                        <div class="post-tool-main">
+                            <div class="pending-table-container" id="sharePostsTableContainer">
+                                <div class="pending-empty">ยังไม่ได้โหลดโพสต์จากเพจ</div>
+                            </div>
+                            <div class="post-tool-pagination">
+                                <div class="post-tool-pagination-meta" id="sharePostsLoadMoreMeta"></div>
+                                <button class="post-tool-secondary-btn" id="sharePostsLoadMoreBtn" type="button">โหลดเพิ่ม</button>
+                            </div>
+                        </div>
+                        <aside class="post-tool-side" style="display: none;">
+                            <div class="post-tool-side-header">Recent Jobs</div>
+                            <div class="post-tool-jobs" id="sharePostsJobs"></div>
+                        </aside>
+                    </div>
+                </div>
+
                 <!-- Earnings Panel -->
                 <div
                     class="pending-panel"

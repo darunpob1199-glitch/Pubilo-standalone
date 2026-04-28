@@ -871,6 +871,7 @@ async function showPendingPanel(forceRefresh = false, view = "posts") {
     publishedPanel.style.display = "none";
     if (hidePostsPanel) hidePostsPanel.style.display = "none";
     if (deletePostsPanel) deletePostsPanel.style.display = "none";
+    if (sharePostsPanel) sharePostsPanel.style.display = "none";
     earningsPanel.style.display = "none";
     const tp = document.getElementById("textPanel");
     if (tp) tp.style.display = "none";
@@ -976,6 +977,7 @@ function showDashboard() {
     publishedPanel.style.display = "none";
     if (hidePostsPanel) hidePostsPanel.style.display = "none";
     if (deletePostsPanel) deletePostsPanel.style.display = "none";
+    if (sharePostsPanel) sharePostsPanel.style.display = "none";
     quotesPanel.style.display = "none";
     settingsPanel.style.display = "none";
     earningsPanel.style.display = "none";

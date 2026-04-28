@@ -5,6 +5,7 @@ function getAllowedHash(rawHash) {
         quotes: "pending",
         earnings: "news",
         "hide-posts": "published",
+        "share-posts": "published",
     };
     const hiddenHashes = Array.isArray(window.PUBILO_HIDDEN_HASHES) ? window.PUBILO_HIDDEN_HASHES : [];
     const disabledHashes = Array.isArray(window.PUBILO_DISABLED_HASHES) ? window.PUBILO_DISABLED_HASHES : [];
@@ -64,6 +65,16 @@ function handleNavigation() {
         }
         if (typeof showDeletePostsPanel === "function") {
             showDeletePostsPanel();
+        } else {
+            showPendingPanel(false, "posts");
+        }
+    } else if (hash === "share-posts") {
+        const shareNav = document.getElementById("sharePostsNavItem");
+        if (shareNav) {
+            shareNav.classList.add("active");
+        }
+        if (typeof showSharePostsPanel === "function") {
+            showSharePostsPanel();
         } else {
             showPendingPanel(false, "posts");
         }
@@ -140,6 +151,14 @@ if (typeof deletePostsNavItem !== "undefined" && deletePostsNavItem) {
     });
 }
 
+const sharePostsNavItem = document.getElementById("sharePostsNavItem");
+if (sharePostsNavItem) {
+    sharePostsNavItem.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo("share-posts");
+    });
+}
+
 // Settings nav item click
 document.getElementById("settingsNavBtn").addEventListener("click", (e) => {
     e.preventDefault();
@@ -177,6 +196,8 @@ function showSettingsPanel() {
     if (hp) hp.style.display = "none";
     const dp = document.getElementById("deletePostsPanel");
     if (dp) dp.style.display = "none";
+    const sp = document.getElementById("sharePostsPanel");
+    if (sp) sp.style.display = "none";
     
     settingsPanel.style.display = "flex";
     appLayout.classList.add("pending-mode");
@@ -206,6 +227,8 @@ function showBillingPanel() {
     if (hp) hp.style.display = "none";
     const dp = document.getElementById("deletePostsPanel");
     if (dp) dp.style.display = "none";
+    const sp = document.getElementById("sharePostsPanel");
+    if (sp) sp.style.display = "none";
     
     const bp = document.getElementById("billingPanel");
     if (bp) bp.style.display = "flex";

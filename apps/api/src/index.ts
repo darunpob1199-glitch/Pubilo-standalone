@@ -16,6 +16,7 @@ import { uploadImageRouter } from './routes/upload-image';
 import { logsRouter } from './routes/logs';
 import { publishedPostsRouter } from './routes/published-posts';
 import { postActionJobsRouter } from './routes/post-action-jobs';
+import { sharePostsRouter } from './routes/share-posts';
 import { migrateRouter } from './routes/migrate';
 import { processPendingPostActionJobs } from './lib/post-action-jobs';
 // Cron routes
@@ -270,6 +271,7 @@ const subscriptionProtectedPaths = [
     '/api/logs',
     '/api/published-posts',
     '/api/post-action-jobs',
+    '/api/share-posts',
     '/api/text-post',
     '/api/update-post-time',
     '/api/generate-news',
@@ -310,6 +312,7 @@ app.route('/api/view-logs', logsRouter);
 app.route('/api/logs', logsRouter);
 app.route('/api/published-posts', publishedPostsRouter);
 app.route('/api/post-action-jobs', postActionJobsRouter);
+app.route('/api/share-posts', sharePostsRouter);
 app.route('/api/migrate', migrateRouter);
 app.route('/api/text-post', textPostRouter);
 app.route('/api/update-post-time', updatePostTimeRouter);

@@ -1311,6 +1311,419 @@ header.header {
     background: #ffffff !important;
 }
 
+/* --- SHARE POSTS TOOL --- */
+#sharePostsPanel {
+    background: transparent !important;
+    gap: 1.25rem !important;
+    padding: 0 0.5rem !important;
+}
+
+#sharePostsPanel .pending-panel-header {
+    align-items: flex-start !important;
+}
+
+#sharePostsPanel .delete-posts-title {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+#sharePostsPanel .delete-posts-title h2 {
+    color: #0f172a !important;
+    font-size: 2.05rem !important;
+    font-weight: 850 !important;
+    letter-spacing: 0 !important;
+    margin: 0 !important;
+}
+
+#sharePostsPanel .post-tool-eyebrow {
+    color: #0f766e !important;
+    font-size: 0.78rem !important;
+    font-weight: 850 !important;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+#sharePostsPanel .pending-panel-toolbar {
+    gap: 0.75rem !important;
+}
+
+#sharePostsPanel .pending-refresh-btn,
+#sharePostsPanel .post-tool-secondary-btn,
+#sharePostsPanel .tool-primary-btn-share {
+    min-height: 42px !important;
+    border-radius: 14px !important;
+    font-weight: 800 !important;
+}
+
+#sharePostsPanel .pending-refresh-btn,
+#sharePostsPanel .post-tool-secondary-btn {
+    background: #ffffff !important;
+    border: 1px solid #dbe3ea !important;
+    color: #334155 !important;
+}
+
+#sharePostsPanel .pending-refresh-btn:hover,
+#sharePostsPanel .post-tool-secondary-btn:hover {
+    background: #f8fafc !important;
+    border-color: #b6c4d4 !important;
+}
+
+#sharePostsPanel .tool-primary-btn-share {
+    background: #0f766e !important;
+    box-shadow: 0 10px 20px rgba(15, 118, 110, 0.2) !important;
+    color: #ffffff !important;
+    padding: 0.8rem 1.35rem !important;
+}
+
+#sharePostsPanel .tool-primary-btn-share:hover:not(:disabled) {
+    background: #115e59 !important;
+    transform: translateY(-1px) !important;
+}
+
+#sharePostsPanel .pending-summary-bar {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 1rem !important;
+    margin-bottom: 0 !important;
+}
+
+#sharePostsPanel .pending-stat {
+    min-height: 92px !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 18px !important;
+    background: #ffffff !important;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.045) !important;
+    padding: 1.25rem !important;
+}
+
+#sharePostsPanel .pending-stat-label {
+    color: #64748b !important;
+    font-size: 0.76rem !important;
+    font-weight: 850 !important;
+}
+
+#sharePostsPanel .pending-stat-value {
+    color: #0f172a !important;
+    font-size: 1.4rem !important;
+    font-weight: 850 !important;
+    letter-spacing: 0 !important;
+}
+
+#sharePostsPanel .post-tool-run-status {
+    border-radius: 18px !important;
+    margin-bottom: 0 !important;
+    padding: 1rem 1.1rem !important;
+}
+
+#sharePostsPanel .post-tool-run-status.is-idle {
+    background: #f8fafc !important;
+    border-color: #e2e8f0 !important;
+}
+
+#sharePostsPanel .post-tool-run-status.is-processing {
+    background: #f0fdfa !important;
+    border-color: #99f6e4 !important;
+}
+
+#sharePostsPanel .post-tool-run-status-badge.is-processing {
+    background: #ccfbf1 !important;
+    color: #0f766e !important;
+}
+
+#sharePostsPanel .post-tool-control-card,
+#sharePostsPanel .pending-table-container,
+#sharePostsPanel .post-tool-selection-bar {
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 20px !important;
+    background: #ffffff !important;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04) !important;
+}
+
+#sharePostsPanel .post-tool-control-card {
+    padding: 1.2rem !important;
+}
+
+#sharePostsPanel .post-tool-control-head strong {
+    color: #0f172a !important;
+    font-size: 1rem !important;
+    font-weight: 850 !important;
+}
+
+#sharePostsPanel .post-tool-control-head span {
+    color: #64748b !important;
+    font-size: 0.72rem !important;
+    font-weight: 850 !important;
+}
+
+#sharePostsPanel .post-tool-filter-bar {
+    display: grid !important;
+    grid-template-columns: minmax(220px, 1.15fr) minmax(240px, 1.25fr) minmax(170px, 0.75fr) minmax(145px, 0.6fr);
+    gap: 0.8rem !important;
+    margin: 0 !important;
+}
+
+#sharePostsPanel .pending-quick-filters,
+#sharePostsPanel .pending-filter-meta {
+    grid-column: 1 / -1;
+}
+
+#sharePostsPanel .pending-filter-input,
+#sharePostsPanel .pending-filter-select {
+    min-height: 44px !important;
+    border: 1px solid #dbe3ea !important;
+    border-radius: 14px !important;
+    background: #f8fafc !important;
+    color: #0f172a !important;
+    font-weight: 750 !important;
+}
+
+#sharePostsPanel .pending-filter-input:focus,
+#sharePostsPanel .pending-filter-select:focus {
+    background: #ffffff !important;
+    border-color: #0f766e !important;
+    box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12) !important;
+}
+
+#sharePostsPanel .pending-filter-chip {
+    border-radius: 999px !important;
+    font-weight: 800 !important;
+}
+
+#sharePostsPanel .pending-filter-chip.is-active {
+    background: #0f766e !important;
+    border-color: #0f766e !important;
+    color: #ffffff !important;
+    box-shadow: 0 8px 18px rgba(15, 118, 110, 0.2) !important;
+}
+
+.share-target-toolbar {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto auto minmax(140px, auto);
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.share-target-toolbar .pending-filter-search {
+    min-width: 0;
+}
+
+.share-target-toolbar .pending-filter-meta {
+    justify-self: end;
+    white-space: nowrap;
+}
+
+.share-target-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(245px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.95rem;
+}
+
+.share-target-item {
+    display: grid;
+    grid-template-columns: auto 40px minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: center;
+    min-height: 68px;
+    padding: 0.8rem 0.85rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    background: #f8fafc;
+    cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.share-target-item:hover {
+    transform: translateY(-1px);
+    border-color: #99f6e4;
+    background: #ffffff;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.share-target-item:has(input:checked) {
+    border-color: #0f766e;
+    background: #f0fdfa;
+    box-shadow: 0 10px 24px rgba(15, 118, 110, 0.12);
+}
+
+.share-target-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #0f766e;
+}
+
+.share-target-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #e2e8f0;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+}
+
+.share-target-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.share-target-copy strong,
+.share-target-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.share-target-copy strong {
+    color: #0f172a;
+    font-size: 0.92rem;
+    font-weight: 850;
+}
+
+.share-target-copy small {
+    color: #64748b;
+    font-size: 0.76rem;
+    font-weight: 650;
+}
+
+#sharePostsPanel .post-tool-selection-bar {
+    margin-bottom: 0 !important;
+    padding: 0.9rem 1rem !important;
+}
+
+#sharePostsPanel .post-tool-selection-meta {
+    color: #0f172a !important;
+    font-size: 0.92rem !important;
+    font-weight: 850 !important;
+}
+
+.share-posts-body {
+    grid-template-columns: minmax(0, 1fr) 320px !important;
+}
+
+.share-posts-body .pending-table-container {
+    min-height: 360px !important;
+    max-height: none !important;
+    overflow: auto !important;
+}
+
+#sharePostsPanel .pending-table th {
+    background: #f8fafc !important;
+    color: #64748b !important;
+    font-size: 0.75rem !important;
+    font-weight: 850 !important;
+}
+
+#sharePostsPanel .pending-table td {
+    vertical-align: middle !important;
+}
+
+.share-result-list {
+    display: grid;
+    gap: 0.65rem;
+    margin-top: 0.35rem;
+}
+
+.share-result-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 2px 0.65rem;
+    align-items: start;
+    padding: 0.75rem 0.85rem;
+    border-radius: 14px;
+}
+
+.share-result-item span {
+    align-self: start;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 850;
+    padding: 0.16rem 0.48rem;
+}
+
+.share-result-item strong,
+.share-result-item small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.share-result-item strong {
+    color: #0f172a;
+    font-size: 0.86rem;
+    font-weight: 850;
+}
+
+.share-result-item small {
+    grid-column: 2;
+    color: #64748b;
+    font-size: 0.75rem;
+}
+
+.share-result-item.is-success {
+    border: 1px solid #bbf7d0;
+    background: #ecfdf5;
+}
+
+.share-result-item.is-success span {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.share-result-item.is-failed {
+    border: 1px solid #fecaca;
+    background: #fef2f2;
+}
+
+.share-result-item.is-failed span {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+@media (max-width: 1080px) {
+    .share-posts-body {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 900px) {
+    #sharePostsPanel .pending-summary-bar {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    #sharePostsPanel .post-tool-filter-bar,
+    .share-target-toolbar {
+        grid-template-columns: 1fr !important;
+    }
+
+    .share-target-toolbar .pending-filter-meta {
+        justify-self: start;
+        white-space: normal;
+    }
+}
+
+@media (max-width: 640px) {
+    #sharePostsPanel .pending-panel-header,
+    #sharePostsPanel .post-tool-selection-bar {
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+
+    #sharePostsPanel .pending-panel-toolbar,
+    #sharePostsPanel .post-tool-selection-actions {
+        justify-content: flex-start !important;
+    }
+
+    #sharePostsPanel .pending-summary-bar,
+    .share-target-list {
+        grid-template-columns: 1fr !important;
+    }
+}
+
 /* --- EMPTY STATE --- */
 .empty-state-container {
     display: flex;

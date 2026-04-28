@@ -27,6 +27,22 @@ const postToolConfigs = {
             return confirm(`กำลังจะลบ ${count} โพสต์จากเพจนี้\nยืนยันการลบหรือไม่`);
         },
     },
+    share: {
+        key: "share",
+        action: "share",
+        navId: "sharePostsNavItem",
+        panelId: "sharePostsPanel",
+        prefix: "sharePosts",
+        empty: "ยังไม่ได้โหลดโพสต์จากเพจ",
+        confirm: async (postCount, targetCount) => {
+            const operationCount = postCount * targetCount;
+            const message = `แชร์ ${postCount} โพสต์ ไป ${targetCount} เพจปลายทาง\nรวมทั้งหมด ${operationCount} รายการ ยืนยันหรือไม่`;
+            if (typeof window.pubiloConfirm === "function") {
+                return window.pubiloConfirm(message);
+            }
+            return confirm(message);
+        },
+    },
 };
 
 const DELETE_BATCH_DEFAULT = 50;
@@ -38,6 +54,7 @@ const POST_TOOL_OPTIMISTIC_JOB_TTL_MS = 30000;
 const postToolStates = {
     hide: createPostToolState(),
     delete: createPostToolState(),
+    share: createPostToolState(),
 };
 
 const postToolDateRangeFilterUtils = window.PubiloDateRangeFilter || {
@@ -85,6 +102,9 @@ function createPostToolState() {
         reconciledJobIds: new Set(),
         localRemovedIds: new Set(),
         selectedIds: new Set(),
+        targetPageIds: new Set(),
+        targetPageQuery: "",
+        lastShareResult: null,
         filters: {
             query: "",
             type: "all",
@@ -141,6 +161,9 @@ function resetPostToolStateDefaults(toolKey) {
     state.failedSelections = {};
     state.reconciledJobIds = new Set();
     state.localRemovedIds = new Set();
+    state.targetPageIds = new Set();
+    state.targetPageQuery = "";
+    state.lastShareResult = null;
     state.safeguards.keepLatestEnabled = toolKey === "hide";
     state.safeguards.keepLatestCount = 10;
     state.safeguards.minAgeEnabled = toolKey === "hide";
@@ -180,6 +203,11 @@ function getPostToolDom(toolKey) {
         minAgeToggle: document.getElementById(`${prefix}MinAgeToggle`),
         minAgeInput: document.getElementById(`${prefix}MinAgeInput`),
         safeguardMeta: document.getElementById(`${prefix}SafeguardMeta`),
+        targetSearchInput: document.getElementById(`${prefix}TargetSearchInput`),
+        targetList: document.getElementById(`${prefix}TargetList`),
+        targetMeta: document.getElementById(`${prefix}TargetMeta`),
+        selectAllTargetsBtn: document.getElementById(`${prefix}SelectAllTargetsBtn`),
+        clearTargetsBtn: document.getElementById(`${prefix}ClearTargetsBtn`),
     };
 }
 
@@ -464,6 +492,8 @@ async function tryRecoverPostToolFacebookSession(toolKey, { manual = false } = {
         if (toolKey === "delete") {
             await hydrateDeletePostToolPageOptions();
             syncDeletePostToolPageSelect();
+        } else if (toolKey === "share") {
+            await hydrateSharePostToolPageOptions();
         }
 
         return true;
@@ -515,8 +545,8 @@ function getPostToolActivePageId(toolKey) {
     const selectedDropdownPageId = normalizePageIdCandidate(document.querySelector(".page-dropdown-item.selected")?.dataset?.pageId || "");
     const fallbackPageId = currentPageId || savedPageId || previewPageId || selectedDropdownPageId;
 
-    if (toolKey === "delete") {
-        const dom = getPostToolDom("delete");
+    if (toolKey === "delete" || toolKey === "share") {
+        const dom = getPostToolDom(toolKey);
         const selected = String(dom.pageSelect?.value || "").trim();
         if (selected) return selected;
 
@@ -615,6 +645,194 @@ async function fetchDeleteToolPagesFromApi(timeoutMs = 1800) {
     } finally {
         if (timeoutHandle) clearTimeout(timeoutHandle);
     }
+}
+
+async function getPostToolAvailablePages() {
+    const optionsById = new Map();
+    const pushOption = (id, name, picture = "", hasToken = false) => {
+        const normalizedId = String(id || "").trim();
+        if (!normalizedId) return;
+
+        const resolvedName = resolvePostToolPageName(name, normalizedId);
+        const resolvedPicture = resolvePostToolPagePicture(picture, normalizedId);
+        const existing = optionsById.get(normalizedId);
+        if (!existing) {
+            optionsById.set(normalizedId, {
+                id: normalizedId,
+                name: resolvedName,
+                picture: resolvedPicture,
+                hasToken: Boolean(hasToken),
+            });
+            return;
+        }
+
+        const shouldReplaceName = isPostToolGenericPageName(existing.name, normalizedId)
+            && !isPostToolGenericPageName(resolvedName, normalizedId);
+        if (shouldReplaceName) existing.name = resolvedName;
+        if (!existing.picture && resolvedPicture) existing.picture = resolvedPicture;
+        if (hasToken) existing.hasToken = true;
+    };
+
+    const globalPageSelect = document.getElementById("pageSelect");
+    if (globalPageSelect) {
+        Array.from(globalPageSelect.options || []).forEach((option) => {
+            pushOption(option.value, option.textContent);
+        });
+    }
+
+    getDeleteToolPagesFromSidebarDom().forEach((page) => {
+        pushOption(page.id, page.name, page.picture);
+    });
+
+    const apiPages = await fetchDeleteToolPagesFromApi();
+    apiPages.forEach((page) => {
+        const pageId = page.id || page.page_id;
+        const picture = page?.picture?.data?.url || page?.picture_url || "";
+        pushOption(pageId, page.name || page.page_name, picture, page.has_token);
+    });
+
+    getDeleteToolCachedPagesFromStorage().forEach((page) => {
+        pushOption(page.id, page.name, page.picture);
+    });
+
+    const savedPageId = String(localStorage.getItem("fewfeed_selectedPageId") || "").trim();
+    const savedPageName = String(localStorage.getItem("fewfeed_selectedPageName") || "").trim();
+    const savedPagePicture = String(localStorage.getItem("fewfeed_selectedPagePicture") || "").trim();
+    if (savedPageId) {
+        pushOption(savedPageId, savedPageName || `เพจ ${savedPageId}`, savedPagePicture, Boolean(getPostToolPageToken(savedPageId)));
+    }
+
+    const finalCurrentPageId = String(typeof getCurrentPageId === "function" ? getCurrentPageId() : "").trim();
+    if (finalCurrentPageId) {
+        pushOption(
+            finalCurrentPageId,
+            String(document.querySelector(".page-selector-name")?.textContent || "").trim() || `เพจ ${finalCurrentPageId}`,
+            String(document.getElementById("previewAvatarImg")?.src || "").trim(),
+            Boolean(getPostToolPageToken(finalCurrentPageId)),
+        );
+    }
+
+    const previewPageId = normalizePageIdCandidate(document.getElementById("previewPageId")?.textContent || "");
+    if (previewPageId) {
+        pushOption(
+            previewPageId,
+            String(document.getElementById("previewPageName")?.textContent || "").trim() || savedPageName || `เพจ ${previewPageId}`,
+            String(document.getElementById("previewAvatarImg")?.src || "").trim(),
+            Boolean(getPostToolPageToken(previewPageId)),
+        );
+    }
+
+    return Array.from(optionsById.values()).sort((a, b) => a.name.localeCompare(b.name, "th"));
+}
+
+function renderShareTargetList() {
+    const toolKey = "share";
+    const state = postToolStates[toolKey];
+    const dom = getPostToolDom(toolKey);
+    if (!dom.targetList) return;
+
+    const sourcePageId = getPostToolActivePageId(toolKey);
+    const query = String(state.targetPageQuery || "").trim().toLowerCase();
+    const allPages = Object.values(state.pageMetaById || {})
+        .filter((page) => page?.id && page.id !== sourcePageId);
+
+    const validTargetIds = new Set(allPages.map((page) => page.id));
+    state.targetPageIds.forEach((pageId) => {
+        if (!validTargetIds.has(pageId)) state.targetPageIds.delete(pageId);
+    });
+
+    const filteredPages = allPages.filter((page) => {
+        if (!query) return true;
+        return `${page.name || ""} ${page.id || ""}`.toLowerCase().includes(query);
+    });
+
+    if (!allPages.length) {
+        dom.targetList.innerHTML = '<div class="pending-empty">ยังไม่พบเพจปลายทาง กด Token/Cookie หรือรีเฟรชเพจก่อน</div>';
+        if (dom.targetMeta) dom.targetMeta.textContent = "ไม่มีเพจปลายทางให้เลือก";
+        updatePostToolActionButton(toolKey);
+        renderPostToolSummary(toolKey);
+        return;
+    }
+
+    if (!filteredPages.length) {
+        dom.targetList.innerHTML = '<div class="pending-empty">ไม่พบเพจที่ตรงกับคำค้นหา</div>';
+        if (dom.targetMeta) dom.targetMeta.textContent = `เลือกไว้ ${state.targetPageIds.size} จาก ${allPages.length} เพจ`;
+        updatePostToolActionButton(toolKey);
+        renderPostToolSummary(toolKey);
+        return;
+    }
+
+    dom.targetList.innerHTML = filteredPages.map((page) => {
+        const checked = state.targetPageIds.has(page.id) ? "checked" : "";
+        const pictureUrl = resolvePostToolPagePicture(page.picture, page.id);
+        const tokenLabel = page.hasToken ? "พร้อมใช้" : "จะดึง token ตอนแชร์";
+        return `
+            <label class="share-target-item">
+                <input type="checkbox" data-share-target="${escapePostToolHtml(page.id)}" ${checked} />
+                <img class="share-target-avatar" src="${escapePostToolHtml(pictureUrl)}" alt="${escapePostToolHtml(page.name)}" />
+                <span class="share-target-copy">
+                    <strong>${escapePostToolHtml(resolvePostToolPageName(page.name, page.id))}</strong>
+                    <small>${escapePostToolHtml(page.id)} • ${escapePostToolHtml(tokenLabel)}</small>
+                </span>
+            </label>
+        `;
+    }).join("");
+
+    dom.targetList.querySelectorAll("[data-share-target]").forEach((input) => {
+        input.addEventListener("change", () => {
+            const pageId = String(input.dataset.shareTarget || "").trim();
+            if (!pageId) return;
+            if (input.checked) {
+                state.targetPageIds.add(pageId);
+            } else {
+                state.targetPageIds.delete(pageId);
+            }
+            renderShareTargetList();
+        });
+    });
+
+    if (dom.targetMeta) {
+        const visibleSelected = filteredPages.filter((page) => state.targetPageIds.has(page.id)).length;
+        dom.targetMeta.textContent = `เลือกไว้ ${state.targetPageIds.size} เพจ (${visibleSelected} จากที่เห็น)`;
+    }
+    updatePostToolActionButton(toolKey);
+    renderPostToolSummary(toolKey);
+}
+
+async function hydrateSharePostToolPageOptions() {
+    const toolKey = "share";
+    const state = postToolStates[toolKey];
+    const dom = getPostToolDom(toolKey);
+    if (!dom.pageSelect) return;
+
+    const currentValue = String(dom.pageSelect.value || "").trim();
+    const pages = await getPostToolAvailablePages();
+    state.pageMetaById = Object.fromEntries(
+        pages.map((page) => [
+            page.id,
+            {
+                id: page.id,
+                name: resolvePostToolPageName(page.name, page.id),
+                picture: resolvePostToolPagePicture(page.picture, page.id),
+                hasToken: Boolean(page.hasToken),
+            },
+        ]),
+    );
+
+    dom.pageSelect.innerHTML = pages.length
+        ? `<option value="">-- เลือกเพจต้นทาง --</option>${pages
+            .map((page) => `<option value="${escapePostToolHtml(page.id)}">${escapePostToolHtml(`${resolvePostToolPageName(page.name, page.id)} • ${page.id}`)}</option>`)
+            .join("")}`
+        : '<option value="">-- เลือกเพจต้นทาง --</option>';
+
+    const preferredValue = currentValue
+        || String(typeof getCurrentPageId === "function" ? getCurrentPageId() : "").trim()
+        || String(localStorage.getItem("fewfeed_selectedPageId") || "").trim();
+    if (preferredValue && state.pageMetaById[preferredValue]) {
+        dom.pageSelect.value = preferredValue;
+    }
+
+    renderShareTargetList();
 }
 
 async function hydrateDeletePostToolPageOptions() {
@@ -1108,6 +1326,29 @@ function renderPostToolSummary(toolKey, filtered = getPostToolFilteredPosts(tool
         return;
     }
 
+    if (toolKey === "share") {
+        const targetCount = state.targetPageIds.size;
+        dom.summaryBar.innerHTML = `
+            <div class="pending-stat">
+                <span class="pending-stat-label">โหลดแล้ว</span>
+                <span class="pending-stat-value">${state.posts.length}</span>
+            </div>
+            <div class="pending-stat">
+                <span class="pending-stat-label">ตรง filter</span>
+                <span class="pending-stat-value">${filtered.length}</span>
+            </div>
+            <div class="pending-stat">
+                <span class="pending-stat-label">เลือกโพสต์</span>
+                <span class="pending-stat-value">${selectedCount}</span>
+            </div>
+            <div class="pending-stat">
+                <span class="pending-stat-label">เพจปลายทาง / งานแชร์</span>
+                <span class="pending-stat-value">${targetCount} / ${selectedCount * targetCount}</span>
+            </div>
+        `;
+        return;
+    }
+
     dom.summaryBar.innerHTML = `
         <div class="pending-stat">
             <span class="pending-stat-label">โหลดแล้ว</span>
@@ -1187,16 +1428,30 @@ function updatePostToolActionButton(toolKey, eligible = getPostToolEligibleFilte
     if (!dom.runBtn) return;
 
     const selectedCount = eligible.filter((post) => state.selectedIds.has(getPostToolItemId(post))).length;
-    const hasActionablePage = toolKey !== "delete" || !!getPostToolActivePageId(toolKey);
-    dom.runBtn.disabled = selectedCount === 0 || state.loading || state.actionInFlight || !hasActionablePage;
-    dom.runBtn.title = hasActionablePage ? "" : "เลือกเพจหลักก่อนลบโพสต์";
+    const hasActionablePage = (toolKey !== "delete" && toolKey !== "share") || !!getPostToolActivePageId(toolKey);
+    const hasTargets = toolKey !== "share" || state.targetPageIds.size > 0;
+    dom.runBtn.disabled = selectedCount === 0 || state.loading || state.actionInFlight || !hasActionablePage || !hasTargets;
+    dom.runBtn.title = !hasActionablePage
+        ? "เลือกเพจต้นทางก่อน"
+        : !hasTargets
+            ? "เลือกเพจปลายทางก่อน"
+            : "";
     if (state.actionInFlight) {
-        dom.runBtn.textContent = toolKey === "hide" ? "กำลังเริ่มงานซ่อน..." : "กำลังเริ่มงานลบ...";
+        dom.runBtn.textContent = toolKey === "hide"
+            ? "กำลังเริ่มงานซ่อน..."
+            : toolKey === "share"
+                ? "กำลังแชร์..."
+                : "กำลังเริ่มงานลบ...";
         return;
     }
-    dom.runBtn.textContent = toolKey === "hide"
-        ? `ซ่อนที่เลือก${selectedCount ? ` (${selectedCount})` : ""}`
-        : `ลบที่เลือก${selectedCount ? ` (${selectedCount})` : ""}`;
+    if (toolKey === "hide") {
+        dom.runBtn.textContent = `ซ่อนที่เลือก${selectedCount ? ` (${selectedCount})` : ""}`;
+    } else if (toolKey === "share") {
+        const targetCount = state.targetPageIds.size;
+        dom.runBtn.textContent = `แชร์ที่เลือก${selectedCount && targetCount ? ` (${selectedCount * targetCount})` : ""}`;
+    } else {
+        dom.runBtn.textContent = `ลบที่เลือก${selectedCount ? ` (${selectedCount})` : ""}`;
+    }
 }
 
 function isPostToolJobInFlight(job) {
@@ -1352,10 +1607,82 @@ function getPostToolJobStatusLabel(status) {
     return "รอสถานะล่าสุด";
 }
 
+function renderSharePostResults() {
+    const toolKey = "share";
+    const state = postToolStates[toolKey];
+    const dom = getPostToolDom(toolKey);
+    if (!dom.statusPanel) return;
+
+    const result = state.lastShareResult;
+    if (!result) {
+        dom.statusPanel.className = "post-tool-run-status is-idle";
+        dom.statusPanel.innerHTML = `
+            <div class="post-tool-run-status-head">
+                <span class="post-tool-run-status-badge is-idle">พร้อมแชร์</span>
+            </div>
+            <div class="post-tool-run-status-main">เลือกโพสต์ต้นทางและเลือกหลายเพจปลายทาง</div>
+            <div class="post-tool-run-status-sub">ระบบจะแชร์โพสต์จากเพจต้นทางไปยังเพจปลายทางที่เลือก และแสดงผลสำเร็จ/ล้มเหลวรายเพจ</div>
+        `;
+        return;
+    }
+
+    const rows = Array.isArray(result.results) ? result.results.slice(0, 12) : [];
+    if (state.actionInFlight && !rows.length) {
+        const total = Number(result.total || 0);
+        dom.statusPanel.className = "post-tool-run-status is-processing";
+        dom.statusPanel.innerHTML = `
+            <div class="post-tool-run-status-head">
+                <span class="post-tool-run-status-badge is-processing">กำลังแชร์</span>
+                <span class="post-tool-run-status-meta">${total} รายการ</span>
+            </div>
+            <div class="post-tool-run-status-main">กำลังส่งคำสั่งแชร์ไปยังเพจปลายทาง</div>
+            <div class="post-tool-run-status-sub">รอผลจาก Facebook ทีละเพจ ถ้าบางเพจ token หมดอายุระบบจะแสดงผลแยกให้เห็นทันที</div>
+        `;
+        return;
+    }
+
+    const successCount = Number(result.successCount || 0);
+    const failedCount = Number(result.failedCount || 0);
+    const total = Number(result.total || successCount + failedCount);
+    const tone = failedCount > 0 ? (successCount > 0 ? "processing" : "failed") : "completed";
+    const label = failedCount > 0 ? "แชร์บางรายการไม่สำเร็จ" : "แชร์สำเร็จ";
+    dom.statusPanel.className = `post-tool-run-status is-${tone}`;
+    dom.statusPanel.innerHTML = `
+        <div class="post-tool-run-status-head">
+            <span class="post-tool-run-status-badge is-${tone}">${escapePostToolHtml(label)}</span>
+            <span class="post-tool-run-status-meta">${successCount}/${total} สำเร็จ</span>
+        </div>
+        <div class="post-tool-run-status-main">แชร์สำเร็จ ${successCount} • ไม่สำเร็จ ${failedCount} • ทั้งหมด ${total}</div>
+        <div class="share-result-list">
+            ${rows.map((row) => {
+                const isOk = row.status === "shared";
+                const pageLabel = row.targetPageName || row.targetPageId || "-";
+                const postLabel = String(row.postId || "").slice(0, 48);
+                const detail = isOk
+                    ? (row.sharedPostId || "shared")
+                    : (row.error || "แชร์ไม่สำเร็จ");
+                return `
+                    <div class="share-result-item is-${isOk ? "success" : "failed"}">
+                        <span>${escapePostToolHtml(isOk ? "สำเร็จ" : "ไม่สำเร็จ")}</span>
+                        <strong>${escapePostToolHtml(pageLabel)}</strong>
+                        <small>${escapePostToolHtml(postLabel)} • ${escapePostToolHtml(detail)}</small>
+                    </div>
+                `;
+            }).join("")}
+        </div>
+        ${total > rows.length ? `<div class="post-tool-run-status-sub">แสดง ${rows.length} จาก ${total} รายการล่าสุด</div>` : ""}
+    `;
+}
+
 function renderPostToolExecutionStatus(toolKey) {
     const dom = getPostToolDom(toolKey);
     const state = postToolStates[toolKey];
     if (!dom.statusPanel) return;
+
+    if (toolKey === "share") {
+        renderSharePostResults();
+        return;
+    }
 
     if (toolKey !== "delete") {
         dom.statusPanel.style.display = "none";
@@ -1797,6 +2124,7 @@ function syncPostToolInputs(toolKey) {
     if (toolKey === "delete") renderDeleteBatchPresets();
     if (toolKey === "delete") syncDeletePostToolPageSelect();
     if (toolKey === "delete") updateDeletePageFilterPreview();
+    if (toolKey === "share") renderShareTargetList();
 }
 
 function autoSelectDeletePostsByRule() {
@@ -2295,6 +2623,11 @@ function updatePostToolPolling(toolKey) {
 
 async function loadPostToolJobs(toolKey) {
     const state = postToolStates[toolKey];
+    if (toolKey === "share") {
+        state.jobs = [];
+        renderSharePostResults();
+        return;
+    }
     const pageId = getPostToolActivePageId(toolKey);
     if (!pageId) {
         state.jobs = [];
@@ -2331,6 +2664,148 @@ async function loadPostToolJobs(toolKey) {
     }
 }
 
+function getShareSelectedTargetPages() {
+    const state = postToolStates.share;
+    return Array.from(state.targetPageIds)
+        .map((pageId) => state.pageMetaById?.[pageId])
+        .filter((page) => page?.id)
+        .map((page) => ({
+            id: page.id,
+            name: resolvePostToolPageName(page.name, page.id),
+        }));
+}
+
+function getShareTargetPageTokens(targetPageIds) {
+    const tokens = {};
+    let tokenMap = {};
+    try {
+        tokenMap = JSON.parse(localStorage.getItem("fewfeed_pageTokenMap") || "{}") || {};
+    } catch (_) {
+        tokenMap = {};
+    }
+
+    targetPageIds.forEach((pageId) => {
+        const normalizedPageId = String(pageId || "").trim();
+        if (!normalizedPageId) return;
+
+        const loadedToken = typeof getLoadedPageToken === "function"
+            ? String(getLoadedPageToken(normalizedPageId) || "").trim()
+            : "";
+        const mappedTokenValue = tokenMap?.[normalizedPageId];
+        const mappedToken = typeof mappedTokenValue === "string"
+            ? mappedTokenValue.trim()
+            : String(mappedTokenValue?.token || "").trim();
+        const currentPageId = String(typeof getCurrentPageId === "function" ? getCurrentPageId() : "").trim();
+        const selectedToken = String(
+            normalizedPageId === currentPageId && typeof getPageToken === "function"
+                ? getPageToken() || ""
+                : "",
+        ).trim();
+        const token = loadedToken || mappedToken || selectedToken;
+        if (token) tokens[normalizedPageId] = token;
+    });
+
+    return tokens;
+}
+
+async function runSharePostToolAction(selectedPosts, pageId) {
+    const toolKey = "share";
+    const state = postToolStates[toolKey];
+    const eligible = getPostToolEligibleFilteredPosts(toolKey);
+    const targetPages = getShareSelectedTargetPages().filter((page) => page.id !== pageId);
+
+    if (!pageId) {
+        alert("เลือกเพจต้นทางก่อน");
+        return;
+    }
+    if (!targetPages.length) {
+        alert("เลือกเพจปลายทางก่อน");
+        return;
+    }
+
+    const operationCount = selectedPosts.length * targetPages.length;
+    if (operationCount > 100) {
+        alert(`แชร์ต่อรอบได้สูงสุด 100 รายการ ตอนนี้เลือกไว้ ${operationCount} รายการ\nลดจำนวนโพสต์หรือเพจปลายทางลงก่อน`);
+        return;
+    }
+
+    const confirmed = await postToolConfigs[toolKey].confirm(selectedPosts.length, targetPages.length);
+    if (!confirmed) return;
+
+    const auth = getPostToolAuth(pageId);
+    state.actionInFlight = true;
+    state.lastShareResult = {
+        total: operationCount,
+        successCount: 0,
+        failedCount: 0,
+        results: [],
+    };
+    updatePostToolActionButton(toolKey, eligible);
+    renderSharePostResults();
+
+    try {
+        const targetPageTokens = getShareTargetPageTokens(targetPages.map((page) => page.id));
+        const response = await fetch("/api/share-posts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+                sourcePageId: pageId,
+                sourcePageName: getPostToolPageName(),
+                accessToken: auth.accessToken,
+                cookieData: auth.cookieData,
+                targetPages,
+                targetPageTokens,
+                posts: selectedPosts.map((post) => ({
+                    id: getPostToolItemId(post),
+                    messageText: post.message_text || "",
+                    postType: getPostToolType(post),
+                    publishedAt: post.published_at || post.created_at || "",
+                    facebookUrl: post.facebook_url || "",
+                    mediaUrl: post.media_url || post.media_thumb_url || "",
+                })),
+            }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        state.lastShareResult = data;
+        state.selectedIds.clear();
+        renderSharePostResults();
+        renderPostToolTable(toolKey);
+        const failedCount = Number(data.failedCount || 0);
+        showPostToolStatusToast(
+            failedCount > 0
+                ? `แชร์เสร็จ: สำเร็จ ${data.successCount || 0} • ไม่สำเร็จ ${failedCount}`
+                : `แชร์สำเร็จ ${data.successCount || 0} รายการ`,
+            failedCount > 0 ? "error" : "success",
+        );
+    } catch (error) {
+        state.lastShareResult = {
+            total: operationCount,
+            successCount: 0,
+            failedCount: operationCount,
+            results: [{
+                status: "failed",
+                targetPageName: "Share Posts",
+                postId: pageId,
+                error: error.message || String(error),
+            }],
+        };
+        renderSharePostResults();
+        if (typeof window.showPubiloBlockingMessage === "function") {
+            await window.showPubiloBlockingMessage(`Error: ${error.message}`);
+        } else {
+            alert(`Error: ${error.message}`);
+        }
+    } finally {
+        state.actionInFlight = false;
+        renderPostToolTable(toolKey);
+    }
+}
+
 async function runPostToolAction(toolKey) {
     const state = postToolStates[toolKey];
     if (state.actionInFlight) return;
@@ -2343,12 +2818,17 @@ async function runPostToolAction(toolKey) {
         return;
     }
 
+    const pageId = getPostToolActivePageId(toolKey);
+    if (toolKey === "share") {
+        await runSharePostToolAction(selectedPosts, pageId);
+        return;
+    }
+
     if (toolKey === "delete" && selectedPosts.length > batchSize) {
         alert(`ตั้งค่าให้ลบทีละ ${batchSize} โพสต์ แต่ตอนนี้เลือกไว้ ${selectedPosts.length} โพสต์\nกรุณาลดจำนวนที่เลือก หรือกด "เลือกตามวันเวลา + จำนวน"`);
         return;
     }
 
-    const pageId = getPostToolActivePageId(toolKey);
     if (toolKey === "delete" && !pageId) {
         alert("เลือกเพจหลักก่อนลบโพสต์");
         return;
@@ -2437,6 +2917,8 @@ function bindPostToolEvents(toolKey) {
             hydrateDeletePostToolPageOptions()
                 .then(() => syncDeletePostToolPageSelect())
                 .catch(() => {});
+        } else if (toolKey === "share") {
+            hydrateSharePostToolPageOptions().catch(() => {});
         }
         loadPostToolPosts(toolKey);
         loadPostToolJobs(toolKey);
@@ -2480,7 +2962,8 @@ function bindPostToolEvents(toolKey) {
         const globalPageSelect = document.getElementById("pageSelect");
         const nextPageId = String(dom.pageSelect.value || "");
         if (!nextPageId) {
-            updateDeletePageFilterPreview();
+            if (toolKey === "delete") updateDeletePageFilterPreview();
+            if (toolKey === "share") renderShareTargetList();
             return;
         }
 
@@ -2492,7 +2975,8 @@ function bindPostToolEvents(toolKey) {
             }
         }
 
-        updateDeletePageFilterPreview();
+        if (toolKey === "delete") updateDeletePageFilterPreview();
+        if (toolKey === "share") renderShareTargetList();
         loadPostToolPosts(toolKey);
         loadPostToolJobs(toolKey);
     });
@@ -2521,6 +3005,49 @@ function bindPostToolEvents(toolKey) {
                 }
             });
         }
+    }
+
+    if (toolKey === "share") {
+        const globalPageSelect = document.getElementById("pageSelect");
+        if (globalPageSelect && globalPageSelect.dataset.shareToolSyncBound !== "true") {
+            globalPageSelect.dataset.shareToolSyncBound = "true";
+            globalPageSelect.addEventListener("change", async () => {
+                await hydrateSharePostToolPageOptions();
+                if (dom.panel && dom.panel.style.display !== "none") {
+                    loadPostToolPosts("share");
+                }
+            });
+        }
+
+        if (dom.panel && dom.panel.dataset.pagesUpdatedBound !== "true") {
+            dom.panel.dataset.pagesUpdatedBound = "true";
+            window.addEventListener("pubilo:pages-updated", async () => {
+                await hydrateSharePostToolPageOptions();
+                if (dom.panel.style.display !== "none") {
+                    renderPostToolTable("share");
+                }
+            });
+        }
+
+        dom.targetSearchInput?.addEventListener("input", (event) => {
+            state.targetPageQuery = event.target.value || "";
+            renderShareTargetList();
+        });
+
+        dom.selectAllTargetsBtn?.addEventListener("click", () => {
+            const sourcePageId = getPostToolActivePageId("share");
+            Object.values(state.pageMetaById || {}).forEach((page) => {
+                if (page?.id && page.id !== sourcePageId) {
+                    state.targetPageIds.add(page.id);
+                }
+            });
+            renderShareTargetList();
+        });
+
+        dom.clearTargetsBtn?.addEventListener("click", () => {
+            state.targetPageIds.clear();
+            renderShareTargetList();
+        });
     }
 
     dom.clearBeforeInput?.addEventListener("change", (event) => {
@@ -2608,6 +3135,8 @@ async function showPostToolPanel(toolKey) {
     if (publishedPanel) publishedPanel.style.display = "none";
     if (hidePostsPanel) hidePostsPanel.style.display = "none";
     if (deletePostsPanel) deletePostsPanel.style.display = "none";
+    const sharePostsPanel = document.getElementById("sharePostsPanel");
+    if (sharePostsPanel) sharePostsPanel.style.display = "none";
     if (quotesPanel) quotesPanel.style.display = "none";
     if (settingsPanel) settingsPanel.style.display = "none";
     if (earningsPanel) earningsPanel.style.display = "none";
@@ -2628,6 +3157,8 @@ async function showPostToolPanel(toolKey) {
         hydrateDeletePostToolPageOptions()
             .then(() => syncDeletePostToolPageSelect())
             .catch(() => {});
+    } else if (toolKey === "share") {
+        hydrateSharePostToolPageOptions().catch(() => {});
     }
     renderPostToolExecutionStatus(toolKey);
     loadPostToolPosts(toolKey);
@@ -2640,6 +3171,10 @@ function showHidePostsPanel() {
 
 function showDeletePostsPanel() {
     showPostToolPanel("delete");
+}
+
+function showSharePostsPanel() {
+    showPostToolPanel("share");
 }
 
 // Proactive background token refresh.

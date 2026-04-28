@@ -8,6 +8,7 @@ function showEarningsPanel() {
     publishedPanel.style.display = "none";
     if (hidePostsPanel) hidePostsPanel.style.display = "none";
     if (deletePostsPanel) deletePostsPanel.style.display = "none";
+    if (sharePostsPanel) sharePostsPanel.style.display = "none";
     settingsPanel.style.display = "none";
     quotesPanel.style.display = "none";
     const tp = document.getElementById("textPanel");
@@ -124,6 +125,7 @@ function showPublishedPanel() {
     pendingPanel.style.display = "none";
     if (hidePostsPanel) hidePostsPanel.style.display = "none";
     if (deletePostsPanel) deletePostsPanel.style.display = "none";
+    if (sharePostsPanel) sharePostsPanel.style.display = "none";
     quotesPanel.style.display = "none";
     settingsPanel.style.display = "none";
     earningsPanel.style.display = "none";
@@ -810,6 +812,7 @@ function showSettingsPanel() {
     publishedPanel.style.display = "none";
     if (hidePostsPanel) hidePostsPanel.style.display = "none";
     if (deletePostsPanel) deletePostsPanel.style.display = "none";
+    if (sharePostsPanel) sharePostsPanel.style.display = "none";
     quotesPanel.style.display = "none";
     earningsPanel.style.display = "none";
     textPanel.style.display = "none";

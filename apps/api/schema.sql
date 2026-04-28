@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS publish_history (
 
 CREATE TABLE IF NOT EXISTS share_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id TEXT NOT NULL,
     source_page_id TEXT NOT NULL,
     target_page_id TEXT NOT NULL,
     facebook_post_id TEXT NOT NULL,
@@ -211,6 +212,7 @@ CREATE INDEX IF NOT EXISTS idx_publish_history_page_published ON publish_history
 CREATE INDEX IF NOT EXISTS idx_publish_history_source_ref ON publish_history (source, source_ref);
 CREATE INDEX IF NOT EXISTS idx_share_queue_status_created_at ON share_queue (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_share_queue_target_page_id ON share_queue (target_page_id);
+CREATE INDEX IF NOT EXISTS idx_share_queue_org_status_created_at ON share_queue (organization_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_post_action_jobs_page_action_created ON post_action_jobs (page_id, action, created_at);
 CREATE INDEX IF NOT EXISTS idx_post_action_jobs_status_created ON post_action_jobs (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_post_action_items_job_status ON post_action_items (job_id, status, id);

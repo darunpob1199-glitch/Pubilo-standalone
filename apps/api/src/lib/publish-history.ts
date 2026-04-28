@@ -4,7 +4,7 @@ export type PublishHistoryInput = {
     organizationId: string;
     externalKey: string;
     pageId: string;
-    source: 'publish' | 'scheduled_queue' | 'reel' | 'auto_post';
+    source: 'publish' | 'scheduled_queue' | 'reel' | 'auto_post' | 'manual_share';
     sourceRef?: string | null;
     batchId?: string | null;
     queueJobId?: number | null;

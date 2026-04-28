@@ -1095,6 +1095,7 @@ const pendingPanel = document.getElementById("pendingPanel");
 const publishedPanel = document.getElementById("publishedPanel");
 const hidePostsPanel = document.getElementById("hidePostsPanel");
 const deletePostsPanel = document.getElementById("deletePostsPanel");
+const sharePostsPanel = document.getElementById("sharePostsPanel");
 const publishedTableContainer = document.getElementById("publishedTableContainer");
 const quotesPanel = document.getElementById("quotesPanel");
 const earningsPanel = document.getElementById("earningsPanel");
