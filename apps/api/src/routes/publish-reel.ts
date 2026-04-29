@@ -420,6 +420,8 @@ app.post('/', async (c) => {
         const videoInput = isJsonRequest ? null : formData?.get('video');
         const targetPageIds = normalizeTargetPageIds(getValue('targetPageIds'), pageId);
         const internalRun = isTruthyFlag(getValue('internalRun'));
+        const facebookApiOnly = isTruthyFlag(getValue('facebookApiOnly'))
+            || String(getValue('publishTransport') || getValue('transport') || '').trim().toLowerCase() === 'facebook_api';
         const incomingBatchId = String(getValue('batchId') || '').trim();
         const historyExternalKey = String(getValue('historyExternalKey') || '').trim();
         const historySource = String(getValue('historySource') || '').trim();
@@ -493,7 +495,8 @@ app.post('/', async (c) => {
                     pageId: targetPageId,
                     pageToken: '',
                     accessToken,
-                    cookieData,
+                    cookieData: facebookApiOnly ? '' : cookieData,
+                    facebookApiOnly,
                     caption,
                     affiliateComment,
                     affiliateLink,
@@ -577,8 +580,12 @@ app.post('/', async (c) => {
             }
         }
 
-        const facebookHeaders = buildFacebookHeaders(cookieData);
-        const freshPageToken = await fetchFreshPageToken(pageId, accessToken, cookieData);
+        const facebookHeaders = facebookApiOnly ? undefined : buildFacebookHeaders(cookieData);
+        const freshPageToken = await fetchFreshPageToken(
+            pageId,
+            accessToken,
+            facebookApiOnly ? undefined : cookieData,
+        );
         const authCandidates = buildAuthCandidates([
             freshPageToken,
             storedPageToken,
@@ -588,7 +595,9 @@ app.post('/', async (c) => {
         if (!authCandidates.length) {
             return c.json({
                 success: false,
-                error: 'ไม่พบ token สำหรับโพสต์วิดีโอ - กรุณา login extension ใหม่ หรือตั้งค่า Page Token',
+                error: facebookApiOnly
+                    ? 'ไม่พบ Facebook API Page Token สำหรับโพสต์วิดีโอ กรุณากด Token > เชื่อมต่อ Facebook API แล้วรีเฟรชเพจ'
+                    : 'ไม่พบ token สำหรับโพสต์วิดีโอ - กรุณา login extension ใหม่ หรือตั้งค่า Page Token',
             }, 400);
         }
 

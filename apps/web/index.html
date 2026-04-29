@@ -90,10 +90,31 @@
                     </svg>
                 </button>
             </div>
+            <!-- Official Facebook API -->
+            <div class="token-item" id="modalFacebookApiItem">
+                <div class="token-label">
+                    Facebook API (ค่าเริ่มต้น)
+                    <span class="token-status" id="facebookApiStatus">-</span>
+                </div>
+                <div class="token-value" id="facebookApiValue" style="margin-bottom: 0.5rem;">
+                    ระบบโพสต์ผ่าน Meta Graph API และ Page Token โดยตรง ไม่ใช้ Cookie/Extension
+                </div>
+                <div class="token-btn-group">
+                    <button class="token-copy-btn token-save-btn" id="connectFacebookApiBtn" type="button">
+                        เชื่อมต่อ Facebook API
+                    </button>
+                    <button class="token-copy-btn" id="refreshFacebookApiPagesBtn" type="button">
+                        รีเฟรชเพจ
+                    </button>
+                </div>
+                <p style="margin:0.5rem 0 0; font-size:0.78rem; color:#6b7280; line-height:1.4;">
+                    เส้นทางหลักสำหรับโพสต์ตอนนี้คือ pages_show_list, pages_read_engagement และ pages_manage_posts จาก Meta App ของ Pubilo
+                </p>
+            </div>
             <!-- Ads Token -->
             <div class="token-item" id="modalAdsItem">
                 <div class="token-label">
-                    🔑 Ads Token
+                    🔑 Ads Token (Legacy)
                     <span class="token-status" id="modalAdsTokenStatus">-</span>
                 </div>
                 <div class="token-value" id="modalAdsTokenValue" style="margin-bottom: 0.5rem;">-</div>
@@ -158,31 +179,10 @@
                     → เลือก App → กด Get User Access Token (manage_pages, pages_show_list) → เลือกเพจ → copy Page Access Token แล้ววางที่นี่
                 </p>
             </div>
-            <!-- Official Facebook API -->
-            <div class="token-item" id="modalFacebookApiItem">
-                <div class="token-label">
-                    Facebook API
-                    <span class="token-status" id="facebookApiStatus">-</span>
-                </div>
-                <div class="token-value" id="facebookApiValue" style="margin-bottom: 0.5rem;">
-                    เชื่อมต่อผ่าน Meta Login เพื่อดึง Page Access Token ของเพจที่คุณดูแล
-                </div>
-                <div class="token-btn-group">
-                    <button class="token-copy-btn token-save-btn" id="connectFacebookApiBtn" type="button">
-                        เชื่อมต่อ Facebook API
-                    </button>
-                    <button class="token-copy-btn" id="refreshFacebookApiPagesBtn" type="button">
-                        รีเฟรชเพจ
-                    </button>
-                </div>
-                <p style="margin:0.5rem 0 0; font-size:0.78rem; color:#6b7280; line-height:1.4;">
-                    ต้องใช้สิทธิ์ pages_show_list, pages_read_engagement และ pages_manage_posts จาก Meta App เดียวกับ redirect URI ของ Pubilo
-                </p>
-            </div>
             <!-- Token Diagnostic -->
             <div class="token-item" style="border-top: 2px solid #e5e7eb; padding-top: 1rem;">
                 <div class="token-label">
-                    🔍 Extension Diagnostic
+                    🔍 Legacy Diagnostic
                 </div>
                 <button class="token-copy-btn token-save-btn" id="runTokenDiagnosticBtn" style="margin-bottom:0.5rem;">
                     ตรวจสอบ Extension + Token
@@ -2357,7 +2357,7 @@
     <script src="/js/parts/09-navigation.js?v=7.9"></script>
     <script src="/js/parts/10-lazada.js?v=6.6"></script>
     <script src="/js/parts/11-image-generation.js?v=9.20"></script>
-    <script src="/js/parts/12-publish.js?v=11.35"></script>
+    <script src="/js/parts/12-publish.js?v=11.36"></script>
 
     <!-- Lightbox Modal -->
     <div class="lightbox-overlay" id="lightboxOverlay">

@@ -5,6 +5,7 @@ const TEXT_BACKGROUND_STORAGE_KEY_PREFIX = "fewfeed_textBackgroundPreset_";
 const WORKSPACE_FACEBOOK_SESSION_MAP_KEY = "fewfeed_workspaceFacebookSessions_v1";
 const AD_ACCOUNT_CACHE_KEY = "fewfeed_adAccountCache_v1";
 const SHOW_FACEBOOK_CONNECT_BANNER = false;
+const FACEBOOK_API_ONLY_PUBLISH = true;
 let hasSeenExtensionReadySignal = false;
 let extensionMissingHintShown = false;
 const publishSessionRefreshRetryByMode = Object.create(null);
@@ -1249,6 +1250,7 @@ function setupPublishHandler(mode) {
                 const freshPageToken = adsToken
                     ? await getFreshPageTokenFromExtension(pageId, adsToken, {
                         skipWorkspaceFallback: false,
+                        skipExtension: FACEBOOK_API_ONLY_PUBLISH,
                     })
                     : "";
                 const pageToken =
@@ -1287,7 +1289,8 @@ function setupPublishHandler(mode) {
                     targetPageIds,
                     accessToken: adsToken,
                     pageToken,
-                    cookieData: cookie,
+                    facebookApiOnly: FACEBOOK_API_ONLY_PUBLISH,
+                    cookieData: FACEBOOK_API_ONLY_PUBLISH ? "" : cookie,
                     fbDtsg,
                     hideOnPublish: getHideOnPublishEnabledSnapshot(),
                     scheduleInSystem: scheduleSource === "manual",
@@ -1352,6 +1355,7 @@ function setupPublishHandler(mode) {
                 const freshPageToken = adsToken
                     ? await getFreshPageTokenFromExtension(pageId, adsToken, {
                         skipWorkspaceFallback: false,
+                        skipExtension: FACEBOOK_API_ONLY_PUBLISH,
                     })
                     : "";
                 const pageToken =
@@ -1392,7 +1396,8 @@ function setupPublishHandler(mode) {
                 if (affiliateLink) formData.append("affiliateLink", affiliateLink);
                 if (adsToken) formData.append("accessToken", adsToken);
                 if (pageToken) formData.append("pageToken", pageToken);
-                if (cookie) formData.append("cookieData", cookie);
+                formData.append("facebookApiOnly", FACEBOOK_API_ONLY_PUBLISH ? "1" : "0");
+                if (!FACEBOOK_API_ONLY_PUBLISH && cookie) formData.append("cookieData", cookie);
                 if (fbDtsg) formData.append("fbDtsg", fbDtsg);
                 formData.append("videoKey", videoKey);
                 formData.append("videoFileName", publishSnapshot.selectedVideoName || videoFile.name || "pubilo-reel.mp4");
@@ -1440,6 +1445,7 @@ function setupPublishHandler(mode) {
                 const freshPageToken = adsToken
                     ? await getFreshPageTokenFromExtension(pageId, adsToken, {
                         skipWorkspaceFallback: false,
+                        skipExtension: FACEBOOK_API_ONLY_PUBLISH,
                     })
                     : "";
                 const pageToken =
@@ -1494,7 +1500,8 @@ function setupPublishHandler(mode) {
                     targetPageIds,
                     accessToken: adsToken,
                     pageToken,
-                    cookieData: cookie,
+                    facebookApiOnly: FACEBOOK_API_ONLY_PUBLISH,
+                    cookieData: FACEBOOK_API_ONLY_PUBLISH ? "" : cookie,
                     fbDtsg,
                     hideOnPublish: getHideOnPublishEnabledSnapshot(),
                     scheduleInSystem: scheduleSource === "manual",
@@ -1566,6 +1573,7 @@ function setupPublishHandler(mode) {
                 localStorage.getItem("fewfeed_token");
             let freshPageToken = await getFreshPageTokenFromExtension(pageId, adsToken, {
                 skipWorkspaceFallback: false,
+                skipExtension: FACEBOOK_API_ONLY_PUBLISH,
             });
             const cachedPageToken =
                 localStorage.getItem("fewfeed_selectedPageToken") ||
@@ -1605,13 +1613,7 @@ function setupPublishHandler(mode) {
 
             if (!adsToken && !resolvedPageToken) {
                 throw new Error(
-                    "ไม่มี Ads Token หรือ Page Token กรุณาคลิก icon extension เพื่อ login",
-                );
-            }
-
-            if (!cookie) {
-                throw new Error(
-                    "ไม่มี Cookie กรุณาคลิก icon extension เพื่อ login",
+                    "ยังไม่พบ Facebook API Page Token กรุณากด Token > เชื่อมต่อ Facebook API แล้วกดรีเฟรชเพจ",
                 );
             }
 
@@ -1706,7 +1708,8 @@ function setupPublishHandler(mode) {
                 postMode: mode,
                 accessToken: adsToken || resolvedPageToken,
                 pageToken: resolvedPageToken,
-                cookieData: cookie,
+                facebookApiOnly: FACEBOOK_API_ONLY_PUBLISH,
+                cookieData: FACEBOOK_API_ONLY_PUBLISH ? "" : cookie,
                 pageId: pageId,
                 adAccountId: adAccountId,
                 callToAction: ctaConfig.type,
@@ -4446,8 +4449,10 @@ async function getFreshPageTokenFromExtension(pageId, accessToken, options = {})
     const normalizedPageId = String(pageId || "").trim();
     const normalizedAccessToken = String(accessToken || "").trim();
     const skipWorkspaceFallback = !!(options && options.skipWorkspaceFallback);
+    const skipExtension = !!(options && options.skipExtension);
     const hasCookie = !!String(localStorage.getItem("fewfeed_cookie") || "").trim();
-    if (!normalizedPageId || (!normalizedAccessToken && !hasCookie)) return "";
+    if (!normalizedPageId) return "";
+    if (!skipExtension && !normalizedAccessToken && !hasCookie && skipWorkspaceFallback) return "";
 
     // Build extension fetch candidates
     const extensionFetchCandidates = [];
@@ -4525,10 +4530,11 @@ async function getFreshPageTokenFromExtension(pageId, accessToken, options = {})
     // Run extension and workspace fallback in PARALLEL - first non-empty result wins.
     // This prevents the 16+ second delay when extension doesn't respond.
     try {
-        const candidates = [tryExtension()];
+        const candidates = skipExtension ? [] : [tryExtension()];
         if (!skipWorkspaceFallback) {
             candidates.push(tryWorkspace());
         }
+        if (candidates.length === 0) return "";
 
         // True first-wins race: resolve as soon as ANY candidate returns a token.
         // Workspace fallback typically returns in ~1s while extension waits 8s.
@@ -6477,11 +6483,14 @@ async function openTokenModal(type) {
     if (type === "ads" && adsItem) {
         adsItem.style.display = "block";
         if (titleEl) {
-            titleEl.textContent = "🔑 Ads Token";
+            titleEl.textContent = FACEBOOK_API_ONLY_PUBLISH
+                ? "🔑 Facebook API / Ads Token (Legacy)"
+                : "🔑 Ads Token";
         }
         showAdsTokenState(adsToken);
+        const shouldRefreshLegacyAdsToken = !FACEBOOK_API_ONLY_PUBLISH;
 
-        if (!adsToken) {
+        if (shouldRefreshLegacyAdsToken && !adsToken) {
             showAdsTokenState("", "loading");
             try {
                 // Quick path first: pull whatever extension already has without forcing a slow refresh.
@@ -6499,7 +6508,7 @@ async function openTokenModal(type) {
             showAdsTokenState(adsToken, "default");
         }
 
-        if (!adsToken) {
+        if (shouldRefreshLegacyAdsToken && !adsToken) {
             try {
                 // Slow path: force extension to extract fresh token from Facebook session.
                 await withTimeout(syncWithExtensionNow({ forceRefresh: true, requireAdsToken: true }), 9000);
@@ -6516,7 +6525,7 @@ async function openTokenModal(type) {
             showAdsTokenState(adsToken, adsToken ? "default" : "loading");
         }
 
-        if (!adsToken) {
+        if (shouldRefreshLegacyAdsToken && !adsToken) {
             try {
                 await withTimeout(syncLocalCookieTokenToWorkspace({ preferLocalToken: false }), 7000);
             } catch (_) {

@@ -56,7 +56,10 @@ mustInclude(webPublish, 'multiPageList.dataset.routePickerBound = "true";', webP
 mustInclude(webPublish, 'const pagePickerClearBtn = document.getElementById("pagePickerClearBtn");', webPublishPath, 'multi-page picker clear button binding', errors)
 mustInclude(webPublish, 'toggleTargetPage(normalizedPageId);', webPublishPath, 'multi-page picker toggles target pages', errors)
 mustInclude(webIndex, 'id="pagePickerClearBtn"', webIndexPath, 'page picker clear button markup', errors)
-mustInclude(webIndex, '/js/parts/12-publish.js?v=11.35', webIndexPath, 'publish script cache-busted version', errors)
+mustInclude(webIndex, '/js/parts/12-publish.js?v=11.36', webIndexPath, 'publish script cache-busted version', errors)
+mustInclude(webPublish, 'const FACEBOOK_API_ONLY_PUBLISH = true;', webPublishPath, 'official Facebook API-only publish default', errors)
+mustInclude(webPublish, 'facebookApiOnly: FACEBOOK_API_ONLY_PUBLISH', webPublishPath, 'publish payload prefers official Facebook API', errors)
+mustInclude(webPublish, 'skipExtension: FACEBOOK_API_ONLY_PUBLISH', webPublishPath, 'publish token hydration skips extension in API-only mode', errors)
 mustInclude(webIndex, '/js/parts/11-image-generation.js?v=9.20', webIndexPath, 'news publish script cache-busted version', errors)
 mustInclude(webIndex, '/css/styles.css?v=8.6', webIndexPath, 'styles cache-busted version', errors)
 mustInclude(webIndex, '/css/parts/modern-ui.css?v=1.6', webIndexPath, 'modern ui cache-busted version', errors)
@@ -77,6 +80,13 @@ mustInclude(
   'const rawClientAdCreativeFlag = body.allowAdCreativePublish ?? body.useAdCreativeFlow ?? body.enableAdCreativePublish;',
   apiPublishPath,
   'ad creative client flag resolver',
+  errors,
+)
+mustInclude(
+  apiPublish,
+  'const useFacebookApiOnly = parseBooleanFlag(facebookApiOnly)',
+  apiPublishPath,
+  'server honors official Facebook API-only publish flag',
   errors,
 )
 mustInclude(

@@ -580,8 +580,10 @@ async function fetchFreshPageTokenFromWorkspaceCredentials(
     env: Env,
     organizationId: string,
     pageId: string,
+    options?: { allowCookie?: boolean },
 ): Promise<string> {
     try {
+        const allowCookie = options?.allowCookie !== false;
         const rows = await env.DB.prepare(`
             SELECT ads_token_encrypted, cookie_encrypted
             FROM facebook_credentials
@@ -592,7 +594,9 @@ async function fetchFreshPageTokenFromWorkspaceCredentials(
 
         for (const row of rows.results || []) {
             const adsToken = String(await decryptSecret(env, row?.ads_token_encrypted) || '').trim();
-            const cookie = String(await decryptSecret(env, row?.cookie_encrypted) || '').trim();
+            const cookie = allowCookie
+                ? String(await decryptSecret(env, row?.cookie_encrypted) || '').trim()
+                : '';
             if (!adsToken && !cookie) continue;
 
             const token = await fetchFreshPageToken(pageId, adsToken, cookie);
@@ -2129,6 +2133,8 @@ app.post('/', async (c) => {
             requireSquareLinkCard,
             forcePhotoFallback,
             directFallbackMode,
+            facebookApiOnly,
+            publishTransport,
         } = body;
 
         if (!pageId) {
@@ -2141,6 +2147,8 @@ app.post('/', async (c) => {
         if (!organizationId) {
             return c.json({ success: false, error: 'Missing organizationId' }, 400);
         }
+        const useFacebookApiOnly = parseBooleanFlag(facebookApiOnly)
+            || String(publishTransport || body.transport || '').trim().toLowerCase() === 'facebook_api';
 
         const requestedPageToken = typeof pageToken === 'string' ? pageToken.trim() : '';
         let storedPageToken = '';
@@ -2162,7 +2170,9 @@ app.post('/', async (c) => {
         }
 
         const tokenRequestHeaders = buildFacebookGraphHeaders();
-        const workspaceCookieCandidates = await getWorkspaceCookieCandidates(c.env, organizationId);
+        const workspaceCookieCandidates = useFacebookApiOnly
+            ? []
+            : await getWorkspaceCookieCandidates(c.env, organizationId);
         const cookieHeaderCandidates: Array<Record<string, string>> = [];
         const seenCookies = new Set<string>();
         const addCookieHeaderCandidate = (rawCookie?: string) => {
@@ -2173,10 +2183,16 @@ app.post('/', async (c) => {
             seenCookies.add(normalized);
             cookieHeaderCandidates.push(headers);
         };
-        addCookieHeaderCandidate(cookieData);
-        workspaceCookieCandidates.forEach((cookie) => addCookieHeaderCandidate(cookie));
+        if (!useFacebookApiOnly) {
+            addCookieHeaderCandidate(cookieData);
+            workspaceCookieCandidates.forEach((cookie) => addCookieHeaderCandidate(cookie));
+        }
         let effectiveAccessToken = String(accessToken || '').trim();
-        let freshPageToken = await fetchFreshPageToken(pageId, effectiveAccessToken, cookieData);
+        let freshPageToken = await fetchFreshPageToken(
+            pageId,
+            effectiveAccessToken,
+            useFacebookApiOnly ? undefined : cookieData,
+        );
         const recoveredPageTokensFromCandidates: string[] = [];
         const refreshProbeCandidates = buildAuthCandidates([
             effectiveAccessToken,
@@ -2185,7 +2201,11 @@ app.post('/', async (c) => {
         ]);
         for (const probeToken of refreshProbeCandidates) {
             try {
-                const recovered = await fetchFreshPageToken(pageId, probeToken, cookieData);
+                const recovered = await fetchFreshPageToken(
+                    pageId,
+                    probeToken,
+                    useFacebookApiOnly ? undefined : cookieData,
+                );
                 if (recovered) {
                     recoveredPageTokensFromCandidates.push(recovered);
                 }
@@ -2214,13 +2234,18 @@ app.post('/', async (c) => {
             }
         }
         if (!freshPageToken && effectiveAccessToken) {
-            freshPageToken = await fetchFreshPageToken(pageId, effectiveAccessToken, cookieData);
+            freshPageToken = await fetchFreshPageToken(
+                pageId,
+                effectiveAccessToken,
+                useFacebookApiOnly ? undefined : cookieData,
+            );
         }
         if (!freshPageToken) {
             const workspaceFreshPageToken = await fetchFreshPageTokenFromWorkspaceCredentials(
                 c.env,
                 organizationId,
                 pageId,
+                { allowCookie: !useFacebookApiOnly },
             );
             if (workspaceFreshPageToken) {
                 freshPageToken = workspaceFreshPageToken;
@@ -2238,7 +2263,9 @@ app.post('/', async (c) => {
         if (authCandidates.length === 0) {
             return c.json({
                 success: false,
-                error: 'ไม่พบ token สำหรับโพสต์ - กรุณา login extension ใหม่ หรือตั้งค่า Page Token'
+                error: useFacebookApiOnly
+                    ? 'ไม่พบ Facebook API Page Token สำหรับเพจนี้ กรุณากด Token > เชื่อมต่อ Facebook API แล้วรีเฟรชเพจ'
+                    : 'ไม่พบ token สำหรับโพสต์ - กรุณา login extension ใหม่ หรือตั้งค่า Page Token'
             }, 400);
         }
 
@@ -2738,8 +2765,8 @@ app.post('/', async (c) => {
             const pageTokenCandidates = buildAuthCandidates([
                 freshPageToken,
                 ...recoveredPageTokensFromCandidates,
-                requestedPageToken,
                 storedPageToken,
+                requestedPageToken,
                 effectiveAccessToken,
             ]);
             const feedLinkCandidates = (() => {
@@ -2890,7 +2917,9 @@ app.post('/', async (c) => {
                     success: false,
                     error: adCreativeError
                         ? `Ad creative ไม่สำเร็จ: ${adCreativeError} — และไม่พบ Page Token สำหรับ fallback`
-                        : 'ไม่พบ Page Token สำหรับโพสต์ลิงก์ กรุณากด extension ใหม่แล้วลองอีกครั้ง',
+                        : useFacebookApiOnly
+                            ? 'ไม่พบ Facebook API Page Token สำหรับโพสต์ลิงก์ กรุณากด Token > เชื่อมต่อ Facebook API แล้วรีเฟรชเพจ'
+                            : 'ไม่พบ Page Token สำหรับโพสต์ลิงก์ กรุณากด extension ใหม่แล้วลองอีกครั้ง',
                     errorType: 'MissingPageToken',
                     _debug: {
                         adCreativeError,
@@ -3032,7 +3061,7 @@ app.post('/', async (c) => {
             }
 
             // Last resort: cookie-only feed post (no access_token at all, just Cookie header).
-            if (!forceSafePhotoFallback && cookieHeaderCandidates.length > 0) {
+            if (!useFacebookApiOnly && !forceSafePhotoFallback && cookieHeaderCandidates.length > 0) {
                 for (let i = 0; i < cookieHeaderCandidates.length; i += 1) {
                     for (let linkIndex = 0; linkIndex < feedLinkCandidates.length; linkIndex += 1) {
                         const fallbackLinkUrl = feedLinkCandidates[linkIndex];
@@ -3184,7 +3213,7 @@ app.post('/', async (c) => {
 
             // Cookie-only photo fallback (when token-based photo fallback also failed).
             const fallbackImageUrlForCookie = hostedImageUrl || (finalImageUrl.startsWith('http') ? finalImageUrl : '');
-            if (fallbackImageUrlForCookie && cookieHeaderCandidates.length > 0) {
+            if (!useFacebookApiOnly && fallbackImageUrlForCookie && cookieHeaderCandidates.length > 0) {
                 for (let i = 0; i < cookieHeaderCandidates.length; i += 1) {
                     for (const candidateCaption of photoCaptionCandidates) {
                         try {
@@ -3286,7 +3315,7 @@ app.post('/', async (c) => {
                     }
                 }
 
-                if (cookieHeaderCandidates.length > 0) {
+                if (!useFacebookApiOnly && cookieHeaderCandidates.length > 0) {
                     for (let i = 0; i < cookieHeaderCandidates.length; i += 1) {
                         try {
                             const cookieText = await publishTextOnlyCookieOnly({
@@ -3364,7 +3393,9 @@ app.post('/', async (c) => {
             const resolvedErrorSubcode = lastFeedSubcode || lastPhotoFallbackSubcode || 0;
             const invalidRequestWithCode100 = isGenericInvalidRequestMessage(nonSessionReason) && resolvedErrorCode === 100;
             const userMessage = isSessionInvalidated
-                ? 'Facebook session หมดอายุ กรุณา logout แล้ว login Facebook ใหม่ จากนั้นกดปุ่ม extension แล้วรีเฟรชหน้า'
+                ? useFacebookApiOnly
+                    ? 'Facebook API token หมดอายุ กรุณากด Token > เชื่อมต่อ Facebook API ใหม่ แล้วรีเฟรชเพจ'
+                    : 'Facebook session หมดอายุ กรุณา logout แล้ว login Facebook ใหม่ จากนั้นกดปุ่ม extension แล้วรีเฟรชหน้า'
                 : invalidRequestWithCode100
                     ? 'โพสต์ไม่สำเร็จ: Invalid request (Facebook code 100) ระบบลอง fallback แล้วแต่ Facebook ปฏิเสธ payload ทั้งหมด กรุณาลองเปลี่ยนข้อความ/ลิงก์หรือเลือกเพจอื่น'
                 : nonSessionReason
@@ -3572,7 +3603,7 @@ app.post('/', async (c) => {
         }
 
         // Last resort for image mode: cookie-only /photos post (no access_token).
-        if (!isLinkAttachmentPost && cookieHeaderCandidates.length > 0 && finalImageUrl) {
+        if (!useFacebookApiOnly && !isLinkAttachmentPost && cookieHeaderCandidates.length > 0 && finalImageUrl) {
             for (let i = 0; i < cookieHeaderCandidates.length; i += 1) {
                 try {
                     console.log(`[publish] Attempting cookie-only photo post as last resort (${i + 1}/${cookieHeaderCandidates.length})`);
@@ -3617,9 +3648,13 @@ app.post('/', async (c) => {
         return c.json({
             success: false,
             error: shouldReportSessionExpired
-                ? 'Facebook session หมดอายุ กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง'
+                ? useFacebookApiOnly
+                    ? 'Facebook API token หมดอายุ กรุณากด Token > เชื่อมต่อ Facebook API ใหม่ แล้วรีเฟรชเพจ'
+                    : 'Facebook session หมดอายุ กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง'
                 : isTokenAuthError
-                ? 'Token ทั้งหมดไม่ถูกต้อง กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง'
+                ? useFacebookApiOnly
+                    ? 'Facebook API Page Token ไม่ถูกต้อง กรุณากด Token > เชื่อมต่อ Facebook API ใหม่'
+                    : 'Token ทั้งหมดไม่ถูกต้อง กรุณา login Facebook ใหม่ แล้วกด extension อีกครั้ง'
                 : (lastFacebookError?.message || 'Facebook API error'),
             errorCode: shouldReportSessionExpired ? 190 : lastFacebookError?.code,
             errorSubcode: lastFacebookError?.error_subcode,
