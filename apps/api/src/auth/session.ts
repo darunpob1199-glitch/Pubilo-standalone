@@ -32,10 +32,15 @@ export function resolveCookieDomain(appOrigin: string, apiOrigin: string): strin
     try {
         const appHost = new URL(appOrigin).hostname;
         const apiHost = new URL(apiOrigin).hostname;
+        const isLocalOrIp = (host: string) => host === 'localhost'
+            || host === '127.0.0.1'
+            || host === '::1'
+            || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
+        if (isLocalOrIp(appHost) || isLocalOrIp(apiHost)) return undefined;
+
         const appParts = appHost.split('.');
         const apiParts = apiHost.split('.');
 
-        if (appHost === 'localhost' || apiHost === 'localhost') return undefined;
         if (appParts.length < 2 || apiParts.length < 2) return undefined;
 
         const appRoot = appParts.slice(-2).join('.');
@@ -50,6 +55,8 @@ function rootSite(origin: string): string | null {
     try {
         const host = new URL(origin).hostname;
         if (host === 'localhost') return 'localhost';
+        if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return host;
+        if (host === '127.0.0.1' || host === '::1') return host;
         const parts = host.split('.');
         if (parts.length < 2) return host;
         return parts.slice(-2).join('.');

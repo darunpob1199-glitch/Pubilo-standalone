@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 NODE_ENV = "development"
 APP_ORIGIN = "http://127.0.0.1:4173"
-API_ORIGIN = "http://localhost:8787"
+API_ORIGIN = "http://127.0.0.1:8787"
 FACEBOOK_APP_ID = "1451408483674705"
 FACEBOOK_GRAPH_VERSION = "v21.0"
 
