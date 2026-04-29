@@ -1,10 +1,13 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { clearSessionCookie, createSession, deleteSessionByToken, getApiOrigin, getAppOrigin, getSessionFromRequest, SESSION_COOKIE_NAME, setSessionCookie, updateSessionWorkspace } from '../auth/session';
+import { buildFacebookAuthUrl, exchangeFacebookCode, exchangeLongLivedFacebookUserToken, fetchFacebookMe, fetchFacebookPages, hasFacebookLoginConfig } from '../auth/facebook';
 import { buildLineAuthUrl, createCodeChallenge, createCodeVerifier, createLineNonce, exchangeLineCode, fetchLineUserInfo, verifyLineIdToken } from '../auth/line';
 import type { Env } from '../types';
 import { getBillingPlan } from '../config/plans';
 import { getCookie } from 'hono/cookie';
 import { createCheckoutIntent, getLatestWorkspacePaymentOrder } from '../lib/billing-state';
+import { encryptSecret } from '../lib/encryption';
+import { ensureAppSchema } from '../lib/schema';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -63,6 +66,261 @@ function sanitizeReturnTo(rawReturnTo: string | null | undefined, appOrigin: str
         return `${appOrigin}/`;
     }
 }
+
+function appendAuthResult(returnTo: string | null | undefined, appOrigin: string, params: Record<string, string | number | boolean>) {
+    const url = new URL(sanitizeReturnTo(returnTo, appOrigin));
+    Object.entries(params).forEach(([key, value]) => {
+        url.searchParams.set(key, String(value));
+    });
+    return url.toString();
+}
+
+async function resolveActiveWorkspace(authState: Awaited<ReturnType<typeof getSessionFromRequest>>, env: Env) {
+    if (!authState) return null;
+    const activeWorkspaceId = authState.session.active_workspace_id
+        || authState.memberships[0]?.workspace_id
+        || null;
+    if (!activeWorkspaceId) return null;
+
+    if (!authState.session.active_workspace_id) {
+        await updateSessionWorkspace(env, authState.session.id, activeWorkspaceId);
+    }
+
+    const membership = authState.memberships.find((item) => item.workspace_id === activeWorkspaceId);
+    if (!membership) return null;
+
+    return {
+        workspaceId: activeWorkspaceId,
+        userId: authState.user.id,
+    };
+}
+
+function facebookRedirectUri(env: Env, requestUrl: string) {
+    return `${getApiOrigin(env, requestUrl)}/api/auth/facebook/callback`;
+}
+
+async function syncFacebookConnectionToWorkspace(input: {
+    env: Env;
+    workspaceId: string;
+    userId: string;
+    userToken: string;
+}) {
+    const profile = await fetchFacebookMe(input.env, input.userToken);
+    const pages = await fetchFacebookPages(input.env, input.userToken);
+    const now = new Date().toISOString();
+    const encryptedUserToken = await encryptSecret(input.env, input.userToken);
+
+    await input.env.DB.prepare(`
+        INSERT INTO facebook_credentials (
+            id, workspace_id, facebook_user_id, ads_token_encrypted,
+            account_name, avatar_url, created_by_user_id, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            workspace_id = excluded.workspace_id,
+            facebook_user_id = excluded.facebook_user_id,
+            ads_token_encrypted = excluded.ads_token_encrypted,
+            account_name = excluded.account_name,
+            avatar_url = COALESCE(excluded.avatar_url, facebook_credentials.avatar_url),
+            created_by_user_id = COALESCE(facebook_credentials.created_by_user_id, excluded.created_by_user_id),
+            updated_at = excluded.updated_at
+    `).bind(
+        `${input.workspaceId}:${profile.id}`,
+        input.workspaceId,
+        profile.id,
+        encryptedUserToken,
+        profile.name,
+        profile.pictureUrl || null,
+        input.userId,
+        now,
+        now,
+    ).run();
+
+    let syncedPages = 0;
+    let syncedPageTokens = 0;
+    for (const page of pages) {
+        const pageId = String(page.id || '').trim();
+        if (!pageId) continue;
+        const encryptedPageToken = await encryptSecret(input.env, page.accessToken || null);
+        if (encryptedPageToken) syncedPageTokens += 1;
+
+        await input.env.DB.prepare(`
+            INSERT INTO page_settings (
+                organization_id, page_id, page_name, picture_url,
+                post_token_encrypted, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(organization_id, page_id) DO UPDATE SET
+                page_name = excluded.page_name,
+                picture_url = COALESCE(excluded.picture_url, page_settings.picture_url),
+                post_token_encrypted = COALESCE(excluded.post_token_encrypted, page_settings.post_token_encrypted),
+                updated_at = excluded.updated_at
+        `).bind(
+            input.workspaceId,
+            pageId,
+            page.name || pageId,
+            page.pictureUrl || null,
+            encryptedPageToken,
+            now,
+        ).run();
+
+        syncedPages += 1;
+    }
+
+    return {
+        profile,
+        pages,
+        syncedPages,
+        syncedPageTokens,
+    };
+}
+
+app.get('/login/facebook', async (c) => {
+    const appOrigin = getAppOrigin(c.env, c.req.url);
+    const returnTo = sanitizeReturnTo(c.req.query('returnTo'), appOrigin);
+
+    if (!hasFacebookLoginConfig(c.env)) {
+        console.error('[auth] Facebook login is not configured: missing FACEBOOK_APP_ID or FACEBOOK_APP_SECRET');
+        return c.redirect(appendAuthResult(returnTo, appOrigin, { facebook_auth_error: 'facebook_not_configured' }));
+    }
+
+    await ensureAppSchema(c.env);
+    const authState = await getSessionFromRequest(c);
+    const active = await resolveActiveWorkspace(authState, c.env);
+    if (!active) {
+        return c.redirect(appendAuthResult(returnTo, appOrigin, { facebook_auth_error: 'pubilo_login_required' }));
+    }
+
+    const state = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    await c.env.DB.prepare(`
+        INSERT INTO oauth_states (state, return_to, expires_at, provider, user_id, workspace_id, created_at)
+        VALUES (?, ?, ?, 'facebook', ?, ?, CURRENT_TIMESTAMP)
+    `).bind(state, returnTo, expiresAt, active.userId, active.workspaceId).run();
+
+    return c.redirect(buildFacebookAuthUrl({
+        env: c.env,
+        redirectUri: facebookRedirectUri(c.env, c.req.url),
+        state,
+    }));
+});
+
+async function handleFacebookCallback(c: Context<{ Bindings: Env }>) {
+    const appOrigin = getAppOrigin(c.env, c.req.url);
+
+    if (!hasFacebookLoginConfig(c.env)) {
+        return c.redirect(`${appOrigin}/?facebook_auth_error=facebook_not_configured`);
+    }
+
+    const oauthError = c.req.query('error');
+    const code = c.req.query('code');
+    const state = c.req.query('state');
+
+    if (oauthError) {
+        return c.redirect(`${appOrigin}/?facebook_auth_error=${encodeURIComponent(oauthError)}`);
+    }
+
+    if (!code || !state) {
+        return c.redirect(`${appOrigin}/?facebook_auth_error=missing_code`);
+    }
+
+    await ensureAppSchema(c.env);
+    const stateRow = await c.env.DB.prepare(`
+        SELECT state, return_to, user_id, workspace_id
+        FROM oauth_states
+        WHERE state = ?
+          AND provider = 'facebook'
+          AND datetime(expires_at) > datetime('now')
+        LIMIT 1
+    `).bind(state).first<{
+        state: string;
+        return_to: string | null;
+        user_id: string | null;
+        workspace_id: string | null;
+    }>();
+
+    if (!stateRow?.user_id || !stateRow?.workspace_id) {
+        return c.redirect(`${appOrigin}/?facebook_auth_error=invalid_state`);
+    }
+
+    await c.env.DB.prepare(`DELETE FROM oauth_states WHERE state = ?`).bind(state).run();
+
+    try {
+        const redirectUri = facebookRedirectUri(c.env, c.req.url);
+        const shortToken = await exchangeFacebookCode({
+            env: c.env,
+            code,
+            redirectUri,
+        });
+        const longToken = await exchangeLongLivedFacebookUserToken({
+            env: c.env,
+            accessToken: shortToken.accessToken,
+        }).catch((error) => {
+            console.warn('[auth] Facebook long-lived token exchange failed, using short-lived token:', error);
+            return shortToken;
+        });
+
+        const synced = await syncFacebookConnectionToWorkspace({
+            env: c.env,
+            workspaceId: stateRow.workspace_id,
+            userId: stateRow.user_id,
+            userToken: longToken.accessToken,
+        });
+
+        return c.redirect(appendAuthResult(stateRow.return_to, appOrigin, {
+            facebook_auth: 'connected',
+            facebook_pages: synced.syncedPages,
+            facebook_page_tokens: synced.syncedPageTokens,
+            facebook_user: synced.profile.id,
+        }));
+    } catch (error) {
+        console.error('[auth] Facebook callback failed:', error);
+        return c.redirect(appendAuthResult(stateRow.return_to, appOrigin, { facebook_auth_error: 'facebook_callback' }));
+    }
+}
+
+app.get('/facebook/callback', handleFacebookCallback);
+app.get('/callback/facebook', handleFacebookCallback);
+
+app.get('/facebook/status', async (c) => {
+    await ensureAppSchema(c.env);
+    const authState = await getSessionFromRequest(c);
+    const active = await resolveActiveWorkspace(authState, c.env);
+    if (!active) {
+        return c.json({
+            success: false,
+            configured: hasFacebookLoginConfig(c.env),
+            authenticated: false,
+            error: 'Unauthorized',
+        }, 401);
+    }
+
+    const [credentials, pages] = await Promise.all([
+        c.env.DB.prepare(`
+            SELECT COUNT(*) AS count
+            FROM facebook_credentials
+            WHERE workspace_id = ?
+              AND ads_token_encrypted IS NOT NULL
+              AND TRIM(ads_token_encrypted) != ''
+        `).bind(active.workspaceId).first<{ count: number }>(),
+        c.env.DB.prepare(`
+            SELECT COUNT(*) AS count
+            FROM page_settings
+            WHERE organization_id = ?
+              AND post_token_encrypted IS NOT NULL
+              AND TRIM(post_token_encrypted) != ''
+        `).bind(active.workspaceId).first<{ count: number }>(),
+    ]);
+
+    return c.json({
+        success: true,
+        configured: hasFacebookLoginConfig(c.env),
+        authenticated: true,
+        redirectUri: facebookRedirectUri(c.env, c.req.url),
+        credentialCount: Number(credentials?.count || 0),
+        connectedPages: Number(pages?.count || 0),
+    });
+});
 
 app.get('/login/line', async (c) => {
     if (!hasLineLoginConfig(c.env)) {

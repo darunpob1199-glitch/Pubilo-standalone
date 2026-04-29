@@ -16,6 +16,8 @@
 - `AUTH_SECRET`
 - `LINE_LOGIN_CHANNEL_ID`
 - `LINE_LOGIN_CHANNEL_SECRET`
+- `FACEBOOK_APP_ID`
+- `FACEBOOK_APP_SECRET`
 - `DATA_ENCRYPTION_KEY`
 - `APP_ORIGIN`
 - `API_ORIGIN`
@@ -32,6 +34,8 @@ cd apps/api
 npx wrangler secret put AUTH_SECRET
 npx wrangler secret put LINE_LOGIN_CHANNEL_ID
 npx wrangler secret put LINE_LOGIN_CHANNEL_SECRET
+npx wrangler secret put FACEBOOK_APP_ID
+npx wrangler secret put FACEBOOK_APP_SECRET
 npx wrangler secret put DATA_ENCRYPTION_KEY
 npx wrangler secret put INTERNAL_API_SECRET
 ```
@@ -60,6 +64,21 @@ node -e "const bytes=crypto.getRandomValues(new Uint8Array(32));console.log(Buff
 `LINE_LOGIN_CHANNEL_ID/SECRET` เป็นคนละชุดกับ `LINE_CHANNEL_ACCESS_TOKEN` ของ Messaging API
 
 ค่า `APP_ORIGIN` กับ `API_ORIGIN` ต้องตรงกับโดเมนจริง
+
+## Facebook Login / Page API
+
+ใช้ Meta App เดียวกับ Pubilo และตั้งค่า OAuth redirect URI ให้ตรงกับ API:
+
+- Production: `https://api.pubilo.com/api/auth/facebook/callback`
+- Local dev: `http://localhost:8787/api/auth/facebook/callback`
+
+สิทธิ์ที่ต้องขอใน Facebook Login:
+
+- `pages_show_list`
+- `pages_read_engagement`
+- `pages_manage_posts`
+
+หลังผู้ใช้เชื่อมต่อ ระบบจะดึง `/me/accounts` แล้ว sync `Page Access Token` เข้า `page_settings.post_token_encrypted` ของ workspace อัตโนมัติ เพื่อให้ flow โพสต์ใช้ official Page Token แทน cookie automation
 
 ## DNS / Routing Checklist
 

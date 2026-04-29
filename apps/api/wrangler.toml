@@ -8,6 +8,8 @@ compatibility_flags = ["nodejs_compat"]
 NODE_ENV = "production"
 APP_ORIGIN = "https://pubilo.com"
 API_ORIGIN = "https://api.pubilo.com"
+FACEBOOK_APP_ID = "1451408483674705"
+FACEBOOK_GRAPH_VERSION = "v21.0"
 
 [[d1_databases]]
 binding = "DB"

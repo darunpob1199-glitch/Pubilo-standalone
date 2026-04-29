@@ -6411,6 +6411,7 @@ async function openTokenModal(type) {
     const adsItem = document.getElementById("modalAdsItem");
     const cookieItem = document.getElementById("modalCookieItem");
     const postItem = document.getElementById("modalPostItem");
+    const facebookApiItem = document.getElementById("modalFacebookApiItem");
     const titleEl = document.getElementById("tokenModalTitle");
     const adsStatusEl = document.getElementById("modalAdsTokenStatus");
     const adsValueEl = document.getElementById("modalAdsTokenValue");
@@ -6462,9 +6463,15 @@ async function openTokenModal(type) {
     if (adsItem) adsItem.style.display = "none";
     if (cookieItem) cookieItem.style.display = "none";
     if (postItem) postItem.style.display = "none";
+    if (facebookApiItem) facebookApiItem.style.display = "none";
 
     // Open modal immediately so the UI never feels stuck.
     modal.classList.add("show");
+
+    if (facebookApiItem) {
+        facebookApiItem.style.display = "block";
+        refreshFacebookApiStatus({ silent: true }).catch(() => {});
+    }
 
     // Show only the requested type
     if (type === "ads" && adsItem) {
@@ -7025,6 +7032,161 @@ function setupTokenDiagnosticHandler() {
     });
 }
 
+function getFacebookApiReturnToUrl() {
+    const currentUrl = new URL(window.location.href);
+    const safeUrl = new URL("/", window.location.origin);
+    if (!currentUrl.pathname.startsWith("/api/")) {
+        safeUrl.pathname = currentUrl.pathname || "/";
+    }
+    safeUrl.search = currentUrl.search;
+    safeUrl.hash = currentUrl.hash;
+    return safeUrl.toString();
+}
+
+function getFacebookApiLoginUrl() {
+    const apiBase = String(window.API_BASE || window.location.origin).replace(/\/+$/g, "");
+    return `${apiBase}/api/auth/login/facebook?returnTo=${encodeURIComponent(getFacebookApiReturnToUrl())}`;
+}
+
+async function refreshFacebookApiStatus({ silent = false } = {}) {
+    const statusEl = document.getElementById("facebookApiStatus");
+    const valueEl = document.getElementById("facebookApiValue");
+    if (statusEl) {
+        statusEl.textContent = "Checking...";
+        statusEl.className = "token-status invalid";
+    }
+
+    try {
+        const response = await fetch("/api/auth/facebook/status");
+        const data = await response.json().catch(() => ({}));
+        const configured = Boolean(data?.configured);
+        const connectedPages = Number(data?.connectedPages || 0);
+        const credentialCount = Number(data?.credentialCount || 0);
+
+        if (!response.ok || !data?.success) {
+            if (statusEl) {
+                statusEl.textContent = configured ? "Login needed" : "Not set";
+                statusEl.className = "token-status invalid";
+            }
+            if (valueEl) {
+                valueEl.textContent = configured
+                    ? "ต้องเข้าสู่ระบบ Pubilo ก่อนเชื่อม Facebook API"
+                    : "ยังไม่ได้ตั้งค่า FACEBOOK_APP_ID และ FACEBOOK_APP_SECRET บน API";
+                valueEl.className = "token-value empty";
+            }
+            return data;
+        }
+
+        if (statusEl) {
+            statusEl.textContent = configured && connectedPages > 0 ? "Connected" : configured ? "Ready" : "Not set";
+            statusEl.className = `token-status ${configured ? "valid" : "invalid"}`;
+        }
+        if (valueEl) {
+            if (!configured) {
+                valueEl.textContent = "ยังไม่ได้ตั้งค่า FACEBOOK_APP_ID และ FACEBOOK_APP_SECRET บน API";
+                valueEl.className = "token-value empty";
+            } else if (connectedPages > 0) {
+                valueEl.textContent = `เชื่อมต่อแล้ว: ${connectedPages} เพจพร้อม Page Token (${credentialCount} บัญชี Facebook)`;
+                valueEl.className = "token-value";
+            } else {
+                valueEl.textContent = `พร้อมเชื่อมต่อ Meta Login: redirect URI ${data.redirectUri || ""}`;
+                valueEl.className = "token-value";
+            }
+        }
+        return data;
+    } catch (error) {
+        if (statusEl) {
+            statusEl.textContent = "Error";
+            statusEl.className = "token-status invalid";
+        }
+        if (valueEl) {
+            valueEl.textContent = `เช็กสถานะ Facebook API ไม่สำเร็จ: ${String(error?.message || error)}`;
+            valueEl.className = "token-value empty";
+        }
+        if (!silent) {
+            showPublishToast("เช็กสถานะ Facebook API ไม่สำเร็จ", "warning");
+        }
+        return null;
+    }
+}
+
+function clearFacebookAuthResultFromUrl() {
+    const url = new URL(window.location.href);
+    [
+        "facebook_auth",
+        "facebook_pages",
+        "facebook_page_tokens",
+        "facebook_user",
+        "facebook_auth_error",
+    ].forEach((key) => url.searchParams.delete(key));
+    window.history.replaceState(window.history.state, "", url.toString());
+}
+
+function handleFacebookAuthRedirectResult() {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("facebook_auth") === "connected";
+    const error = params.get("facebook_auth_error");
+    if (!connected && !error) return;
+
+    if (connected) {
+        const pages = Number(params.get("facebook_pages") || 0);
+        const pageTokens = Number(params.get("facebook_page_tokens") || 0);
+        showPublishToast(`เชื่อม Facebook API แล้ว: พบ ${pages} เพจ / ${pageTokens} Page Token`, "success");
+        clearFacebookAuthResultFromUrl();
+        setTimeout(() => {
+            lastPagesFetchAttemptKey = "";
+            lastPagesFetchAttemptAt = 0;
+            refreshFacebookApiStatus({ silent: true }).catch(() => {});
+            Promise.resolve(fetchPages("", "")).catch(() => {});
+        }, 250);
+        return;
+    }
+
+    const messages = {
+        facebook_not_configured: "ยังไม่ได้ตั้งค่า Facebook App ID/Secret บน API",
+        pubilo_login_required: "ต้องเข้าสู่ระบบ Pubilo ก่อนเชื่อม Facebook API",
+        missing_code: "Meta callback ไม่ครบ ลองเชื่อมใหม่อีกครั้ง",
+        invalid_state: "Session เชื่อม Meta หมดอายุ ลองเชื่อมใหม่อีกครั้ง",
+        access_denied: "ผู้ใช้ยกเลิกการเชื่อม Facebook API",
+        facebook_callback: "เชื่อม Facebook API ไม่สำเร็จ ตรวจสอบ permission และ redirect URI",
+    };
+    showPublishToast(messages[error] || `เชื่อม Facebook API ไม่สำเร็จ: ${error}`, "warning");
+    clearFacebookAuthResultFromUrl();
+}
+
+function setupFacebookApiConnectHandler() {
+    const connectBtn = document.getElementById("connectFacebookApiBtn");
+    const refreshBtn = document.getElementById("refreshFacebookApiPagesBtn");
+
+    if (connectBtn && connectBtn.dataset.bound !== "true") {
+        connectBtn.dataset.bound = "true";
+        connectBtn.addEventListener("click", () => {
+            window.location.href = getFacebookApiLoginUrl();
+        });
+    }
+
+    if (refreshBtn && refreshBtn.dataset.bound !== "true") {
+        refreshBtn.dataset.bound = "true";
+        refreshBtn.addEventListener("click", async () => {
+            const originalText = refreshBtn.textContent;
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = "กำลังรีเฟรช...";
+            try {
+                lastPagesFetchAttemptKey = "";
+                lastPagesFetchAttemptAt = 0;
+                await refreshFacebookApiStatus();
+                await fetchPages("", "");
+                showPublishToast("รีเฟรชรายชื่อเพจจาก workspace แล้ว", "success");
+            } catch (error) {
+                showPublishToast(`รีเฟรชเพจไม่สำเร็จ: ${String(error?.message || error)}`, "warning");
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = originalText || "รีเฟรชเพจ";
+            }
+        });
+    }
+}
+
 // Setup click handlers for status indicators
 function setupTokenModalHandlers() {
     const tokenIndicator =
@@ -7098,6 +7260,7 @@ function setupTokenModalHandlers() {
     }
 
     setupTokenDiagnosticHandler();
+    setupFacebookApiConnectHandler();
 }
 
 // API Key Modal Functions
@@ -7240,6 +7403,7 @@ if (document.readyState === "loading") {
 // Load saved data from localStorage on page load
 function loadSavedData() {
     initializeAdAccountSelector();
+    handleFacebookAuthRedirectResult();
 
     let accessToken = String(
         localStorage.getItem("fewfeed_accessToken") ||

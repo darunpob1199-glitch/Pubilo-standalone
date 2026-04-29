@@ -271,6 +271,18 @@ async function ensureOauthStateColumns(env: Env) {
     if (!(await columnExists(env, 'oauth_states', 'code_verifier'))) {
         await env.DB.prepare(`ALTER TABLE oauth_states ADD COLUMN code_verifier TEXT`).run();
     }
+
+    if (!(await columnExists(env, 'oauth_states', 'provider'))) {
+        await env.DB.prepare(`ALTER TABLE oauth_states ADD COLUMN provider TEXT`).run();
+    }
+
+    if (!(await columnExists(env, 'oauth_states', 'user_id'))) {
+        await env.DB.prepare(`ALTER TABLE oauth_states ADD COLUMN user_id TEXT`).run();
+    }
+
+    if (!(await columnExists(env, 'oauth_states', 'workspace_id'))) {
+        await env.DB.prepare(`ALTER TABLE oauth_states ADD COLUMN workspace_id TEXT`).run();
+    }
 }
 
 async function migratePageSettings(env: Env) {

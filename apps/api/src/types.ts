@@ -8,6 +8,9 @@ export interface Env {
     LINE_CHANNEL_ACCESS_TOKEN?: string;
     LINE_CHANNEL_SECRET?: string;
     LINE_USER_ID?: string;
+    FACEBOOK_APP_ID?: string;
+    FACEBOOK_APP_SECRET?: string;
+    FACEBOOK_GRAPH_VERSION?: string;
     OG_IMAGE_BASE_URL?: string;
     APP_ORIGIN?: string;
     API_ORIGIN?: string;
