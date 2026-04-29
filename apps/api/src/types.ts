@@ -1,6 +1,7 @@
 export interface Env {
     DB: D1Database;
     IMAGES: R2Bucket;
+    NODE_ENV?: string;
     GEMINI_API_KEY?: string;
     FREEIMAGE_API_KEY?: string;
     LINE_LOGIN_CHANNEL_ID: string;

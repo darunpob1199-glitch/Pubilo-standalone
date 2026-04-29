@@ -75,6 +75,76 @@ function appendAuthResult(returnTo: string | null | undefined, appOrigin: string
     return url.toString();
 }
 
+function stripAuthErrorReturnTo(returnTo: string | null | undefined, appOrigin: string) {
+    const url = new URL(sanitizeReturnTo(returnTo, appOrigin));
+    url.searchParams.delete('auth_error');
+    return url.toString();
+}
+
+function isLocalHostName(hostname: string) {
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function isDevelopmentLocalAuthAllowed(env: Env, requestUrl: string) {
+    if (String(env.NODE_ENV || '').trim() !== 'development') return false;
+
+    try {
+        const requestHost = new URL(requestUrl).hostname;
+        const appHost = new URL(getAppOrigin(env, requestUrl)).hostname;
+        return isLocalHostName(requestHost) && isLocalHostName(appHost);
+    } catch {
+        return false;
+    }
+}
+
+async function createDevelopmentSession(c: Context<{ Bindings: Env }>, returnTo: string) {
+    await ensureAppSchema(c.env);
+
+    const now = new Date().toISOString();
+    const userId = 'dev-local-user';
+    const workspaceId = 'dev-local-workspace';
+
+    await c.env.DB.batch([
+        c.env.DB.prepare(`
+            INSERT INTO users (id, email, name, avatar_url, created_at, updated_at, last_login_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                email = excluded.email,
+                name = excluded.name,
+                updated_at = excluded.updated_at,
+                last_login_at = excluded.last_login_at
+        `).bind(
+            userId,
+            'dev-local@users.pubilo.local',
+            'Local Dev',
+            null,
+            now,
+            now,
+            now,
+        ),
+        c.env.DB.prepare(`
+            INSERT INTO workspaces (id, name, slug, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                slug = excluded.slug,
+                updated_at = excluded.updated_at
+        `).bind(workspaceId, 'Local Dev Workspace', 'local-dev', now, now),
+        c.env.DB.prepare(`
+            INSERT INTO workspace_members (workspace_id, user_id, role, created_at)
+            VALUES (?, ?, 'owner', ?)
+            ON CONFLICT(workspace_id, user_id) DO UPDATE SET
+                role = excluded.role
+        `).bind(workspaceId, userId, now),
+    ]);
+
+    const session = await createSession(c.env, userId, workspaceId);
+    const appOrigin = getAppOrigin(c.env, c.req.url);
+    const apiOrigin = getApiOrigin(c.env, c.req.url);
+    setSessionCookie(c, session.rawToken, session.expiresAt, appOrigin, apiOrigin);
+    return c.redirect(stripAuthErrorReturnTo(returnTo, appOrigin));
+}
+
 async function resolveActiveWorkspace(authState: Awaited<ReturnType<typeof getSessionFromRequest>>, env: Env) {
     if (!authState) return null;
     const activeWorkspaceId = authState.session.active_workspace_id
@@ -323,13 +393,19 @@ app.get('/facebook/status', async (c) => {
 });
 
 app.get('/login/line', async (c) => {
-    if (!hasLineLoginConfig(c.env)) {
-        console.error('[auth] LINE login is not configured: missing LINE_LOGIN_CHANNEL_ID or LINE_LOGIN_CHANNEL_SECRET');
-        return c.redirect(`${getAppOrigin(c.env, c.req.url)}/?auth_error=line_not_configured`);
-    }
-
     const appOrigin = getAppOrigin(c.env, c.req.url);
     const returnTo = sanitizeReturnTo(c.req.query('returnTo'), appOrigin);
+
+    if (!hasLineLoginConfig(c.env)) {
+        if (isDevelopmentLocalAuthAllowed(c.env, c.req.url)) {
+            console.warn('[auth] LINE login is not configured; using local development session fallback');
+            return createDevelopmentSession(c, returnTo);
+        }
+
+        console.error('[auth] LINE login is not configured: missing LINE_LOGIN_CHANNEL_ID or LINE_LOGIN_CHANNEL_SECRET');
+        return c.redirect(`${appOrigin}/?auth_error=line_not_configured`);
+    }
+
     const state = crypto.randomUUID();
     const nonce = createLineNonce();
     const codeVerifier = createCodeVerifier();
